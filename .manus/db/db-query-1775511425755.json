@@ -1,0 +1,18 @@
+{
+  "query": "SELECT id, name, email, role, plan, generationsLimit FROM users WHERE email = 'mycab.officiel@gmail.com';",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway02.us-east-1.prod.aws.tidbcloud.com --port 4000 --user 3yvMDhU7rpcPy6u.ea08c0078ded --database 9PbarF8MkJuJwmMwyqvzWG --execute SELECT id, name, email, role, plan, generationsLimit FROM users WHERE email = 'mycab.officiel@gmail.com';",
+  "rows": [
+    {
+      "id": "1",
+      "name": "Mycab",
+      "email": "mycab.officiel@gmail.com",
+      "role": "ultra",
+      "plan": "agency",
+      "generationsLimit": "999999"
+    }
+  ],
+  "messages": [],
+  "stdout": "id\tname\temail\trole\tplan\tgenerationsLimit\n1\tMycab\tmycab.officiel@gmail.com\tultra\tagency\t999999\n",
+  "stderr": "",
+  "execution_time_ms": 54
+}

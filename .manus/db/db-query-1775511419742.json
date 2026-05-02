@@ -1,0 +1,9 @@
+{
+  "query": "UPDATE users SET role = 'ultra', plan = 'agency', generationsLimit = 999999 WHERE email = 'mycab.officiel@gmail.com';",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway02.us-east-1.prod.aws.tidbcloud.com --port 4000 --user 3yvMDhU7rpcPy6u.ea08c0078ded --database 9PbarF8MkJuJwmMwyqvzWG --execute UPDATE users SET role = 'ultra', plan = 'agency', generationsLimit = 999999 WHERE email = 'mycab.officiel@gmail.com';",
+  "rows": [],
+  "messages": [],
+  "stdout": "",
+  "stderr": "",
+  "execution_time_ms": 63
+}

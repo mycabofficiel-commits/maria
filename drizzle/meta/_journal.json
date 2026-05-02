@@ -1,0 +1,41 @@
+{
+  "version": "7",
+  "dialect": "mysql",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "5",
+      "when": 1774946787497,
+      "tag": "0000_yielding_romulus",
+      "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "5",
+      "when": 1774946952406,
+      "tag": "0001_far_black_crow",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "5",
+      "when": 1775339194788,
+      "tag": "0002_amused_ben_parker",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "5",
+      "when": 1775499492534,
+      "tag": "0003_old_blizzard",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "5",
+      "when": 1775511387254,
+      "tag": "0004_elite_starbolt",
+      "breakpoints": true
+    }
+  ]
+}

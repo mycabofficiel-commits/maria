@@ -1,0 +1,9 @@
+{
+  "query": "CREATE TABLE `project_collaborators` (\n\t`id` int AUTO_INCREMENT NOT NULL,\n\t`projectId` int NOT NULL,\n\t`ownerId` int NOT NULL,\n\t`collaboratorId` int,\n\t`inviteEmail` varchar(320),\n\t`inviteToken` varchar(128) NOT NULL,\n\t`role` enum('viewer','editor') NOT NULL DEFAULT 'viewer',\n\t`status` enum('pending','accepted','revoked') NOT NULL DEFAULT 'pending',\n\t`acceptedAt` timestamp,\n\t`expiresAt` timestamp,\n\t`createdAt` timestamp NOT NULL DEFAULT (now()),\n\tCONSTRAINT `project_collaborators_id` PRIMARY KEY(`id`),\n\tCONSTRAINT `project_collaborators_inviteToken_unique` UNIQUE(`inviteToken`)\n);",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway02.us-east-1.prod.aws.tidbcloud.com --port 4000 --user 3yvMDhU7rpcPy6u.ea08c0078ded --database 9PbarF8MkJuJwmMwyqvzWG --execute CREATE TABLE `project_collaborators` (\n\t`id` int AUTO_INCREMENT NOT NULL,\n\t`projectId` int NOT NULL,\n\t`ownerId` int NOT NULL,\n\t`collaboratorId` int,\n\t`inviteEmail` varchar(320),\n\t`inviteToken` varchar(128) NOT NULL,\n\t`role` enum('viewer','editor') NOT NULL DEFAULT 'viewer',\n\t`status` enum('pending','accepted','revoked') NOT NULL DEFAULT 'pending',\n\t`acceptedAt` timestamp,\n\t`expiresAt` timestamp,\n\t`createdAt` timestamp NOT NULL DEFAULT (now()),\n\tCONSTRAINT `project_collaborators_id` PRIMARY KEY(`id`),\n\tCONSTRAINT `project_collaborators_inviteToken_unique` UNIQUE(`inviteToken`)\n);",
+  "rows": [],
+  "messages": [],
+  "stdout": "",
+  "stderr": "",
+  "execution_time_ms": 745
+}
