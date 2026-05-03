@@ -5,6 +5,7 @@ import { Route, Switch } from "wouter";
 import ErrorBoundary from "./components/ErrorBoundary";
 import { ThemeProvider } from "./contexts/ThemeContext";
 import Home from "./pages/Home";
+import Login from "@/pages/Login";
 import Pricing from "./pages/Pricing";
 import FAQ from "./pages/FAQ";
 import CGU from "./pages/CGU";
@@ -23,7 +24,6 @@ import UltraDashboard from "@/pages/UltraDashboard";
 import Documentation from "@/pages/Documentation";
 import Blog from "@/pages/Blog";
 import Support from "@/pages/Support";
-import Login from "@/pages/Login";
 
 function Router() {
   return (
