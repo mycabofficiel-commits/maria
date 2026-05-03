@@ -23,12 +23,13 @@ import UltraDashboard from "@/pages/UltraDashboard";
 import Documentation from "@/pages/Documentation";
 import Blog from "@/pages/Blog";
 import Support from "@/pages/Support";
+import Login from "@/pages/Login";
 
 function Router() {
   return (
     <Switch>
-      {/* Public */}
       <Route path="/" component={Home} />
+      <Route path="/login" component={Login} />
       <Route path="/pricing" component={Pricing} />
       <Route path="/faq" component={FAQ} />
       <Route path="/cgu" component={CGU} />
@@ -36,7 +37,6 @@ function Router() {
       <Route path="/documentation" component={Documentation} />
       <Route path="/blog" component={Blog} />
       <Route path="/support" component={Support} />
-      {/* App */}
       <Route path="/onboarding" component={Onboarding} />
       <Route path="/dashboard" component={Dashboard} />
       <Route path="/projects" component={Projects} />
@@ -45,11 +45,8 @@ function Router() {
       <Route path="/api-keys" component={ApiKeys} />
       <Route path="/profile" component={Profile} />
       <Route path="/billing" component={Billing} />
-      {/* Public invite */}
       <Route path="/invite/:token" component={AcceptInvite} />
-      {/* Admin */}
       <Route path="/admin" component={Admin} />
-      {/* Ultra */}
       <Route path="/ultra" component={UltraDashboard} />
       <Route path="/404" component={NotFound} />
       <Route component={NotFound} />
