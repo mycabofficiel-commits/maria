@@ -1,22 +1,38 @@
-export { COOKIE_NAME, ONE_YEAR_MS } from "@shared/const";
+import { sdk } from "./_core/sdk";
 
-// getLoginUrl — safe even if env vars are missing
-export const getLoginUrl = (): string => {
+export const APP_NAME = "Maria";
+
+export function getLoginUrl(): string {
+  const oauthUrl = import.meta.env.VITE_OAUTH_PORTAL_URL;
+  const appId = import.meta.env.VITE_APP_ID;
+  if (!oauthUrl || !appId || oauthUrl === 'undefined' || oauthUrl === '') {
+    return '/dashboard';
+  }
   try {
-    const oauthPortalUrl = import.meta.env.VITE_OAUTH_PORTAL_URL;
-    const appId = import.meta.env.VITE_APP_ID;
-    if (!oauthPortalUrl || !appId || oauthPortalUrl === 'undefined') {
-      return '/dashboard';
-    }
-    const redirectUri = `${window.location.origin}/api/oauth/callback`;
-    const state = btoa(redirectUri);
-    const url = new URL(`${oauthPortalUrl}/app-auth`);
-    url.searchParams.set("appId", appId);
-    url.searchParams.set("redirectUri", redirectUri);
-    url.searchParams.set("state", state);
-    url.searchParams.set("type", "signIn");
+    const redirectUri = window.location.origin + '/api/oauth/callback';
+    const url = new URL(oauthUrl + '/app-auth');
+    url.searchParams.set('appId', appId);
+    url.searchParams.set('redirectUri', redirectUri);
+    url.searchParams.set('state', btoa(redirectUri));
+    url.searchParams.set('type', 'signIn');
     return url.toString();
   } catch {
     return '/dashboard';
   }
-};
+}
+
+export function getLogoutUrl(): string {
+  const oauthUrl = import.meta.env.VITE_OAUTH_PORTAL_URL;
+  const appId = import.meta.env.VITE_APP_ID;
+  if (!oauthUrl || !appId || oauthUrl === 'undefined' || oauthUrl === '') {
+    return '/';
+  }
+  try {
+    const url = new URL(oauthUrl + '/app-auth');
+    url.searchParams.set('appId', appId);
+    url.searchParams.set('type', 'signOut');
+    return url.toString();
+  } catch {
+    return '/';
+  }
+}
