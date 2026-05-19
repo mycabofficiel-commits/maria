@@ -8,6 +8,8 @@ import { appRouter } from "../routers";
 import { createContext } from "./context";
 import { serveStatic, setupVite } from "./vite";
 import { registerStreamingRoutes } from "../streaming";
+import { migrate } from "drizzle-orm/node-postgres/migrator";
+import { getDb } from "../db";
 
 function isPortAvailable(port: number): Promise<boolean> {
   return new Promise(resolve => {
@@ -28,12 +30,28 @@ async function findAvailablePort(startPort: number = 3000): Promise<number> {
   throw new Error(`No available port found starting from ${startPort}`);
 }
 
+async function runMigrations() {
+  try {
+    const db = await getDb();
+    if (db) {
+      await migrate(db, { migrationsFolder: "./drizzle/pg" });
+      console.log("[DB] Migrations applied successfully");
+    }
+  } catch (err) {
+    console.warn("[DB] Migration warning:", err);
+  }
+}
+
 async function startServer() {
+  await runMigrations();
   const app = express();
   const server = createServer(app);
   // Configure body parser with larger size limit for file uploads
   app.use(express.json({ limit: "50mb" }));
   app.use(express.urlencoded({ limit: "50mb", extended: true }));
+  // Health check for Render
+  app.get("/api/health", (_req, res) => res.json({ status: "ok", ts: Date.now() }));
+
   // OAuth callback under /api/oauth/callback
   registerOAuthRoutes(app);
   // Streaming SSE routes (Claude real-time)
