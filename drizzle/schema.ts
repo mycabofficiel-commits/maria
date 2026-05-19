@@ -1,34 +1,47 @@
 import {
   bigint,
   boolean,
-  int,
-  json,
-  mysqlEnum,
-  mysqlTable,
+  integer,
+  jsonb,
+  pgEnum,
+  pgTable,
+  serial,
   text,
   timestamp,
   varchar,
-} from "drizzle-orm/mysql-core";
+} from "drizzle-orm/pg-core";
+
+// ─── Enums ────────────────────────────────────────────────────────────────────
+export const roleEnum = pgEnum("role", ["user", "admin", "ultra"]);
+export const planEnum = pgEnum("plan", ["free", "creator", "pro", "agency"]);
+export const frameworkEnum = pgEnum("framework", ["html", "react", "nextjs"]);
+export const projectStatusEnum = pgEnum("project_status", ["draft", "generating", "ready", "published", "archived", "error"]);
+export const versionStatusEnum = pgEnum("version_status", ["generating", "ready", "error"]);
+export const apiKeyStatusEnum = pgEnum("api_key_status", ["valid", "invalid", "expired", "quota_exceeded", "untested"]);
+export const chatRoleEnum = pgEnum("chat_role", ["user", "assistant"]);
+export const collaboratorRoleEnum = pgEnum("collaborator_role", ["viewer", "editor"]);
+export const collaboratorStatusEnum = pgEnum("collaborator_status", ["pending", "accepted", "revoked"]);
+export const usageStatusEnum = pgEnum("usage_status", ["success", "error"]);
 
 // ─── Users ────────────────────────────────────────────────────────────────────
-export const users = mysqlTable("users", {
-  id: int("id").autoincrement().primaryKey(),
+export const users = pgTable("users", {
+  id: serial("id").primaryKey(),
   openId: varchar("openId", { length: 64 }).notNull().unique(),
   name: text("name"),
   email: varchar("email", { length: 320 }),
   avatarUrl: text("avatarUrl"),
   loginMethod: varchar("loginMethod", { length: 64 }),
-  role: mysqlEnum("role", ["user", "admin", "ultra"]).default("user").notNull(),
-  plan: mysqlEnum("plan", ["free", "creator", "pro", "agency"]).default("free").notNull(),
+  role: roleEnum("role").default("user").notNull(),
+  plan: planEnum("plan").default("free").notNull(),
   onboardingDone: boolean("onboardingDone").default(false).notNull(),
   stripeCustomerId: varchar("stripeCustomerId", { length: 128 }),
   stripeSubscriptionId: varchar("stripeSubscriptionId", { length: 128 }),
   subscriptionStatus: varchar("subscriptionStatus", { length: 64 }),
   currentPeriodEnd: timestamp("currentPeriodEnd"),
-  generationsUsed: int("generationsUsed").default(0).notNull(),
-  generationsLimit: int("generationsLimit").default(3).notNull(),
+  generationsUsed: integer("generationsUsed").default(0).notNull(),
+  generationsLimit: integer("generationsLimit").default(3).notNull(),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
-  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().notNull(),
   lastSignedIn: timestamp("lastSignedIn").defaultNow().notNull(),
 });
 
@@ -36,36 +49,36 @@ export type User = typeof users.$inferSelect;
 export type InsertUser = typeof users.$inferInsert;
 
 // ─── API Keys ─────────────────────────────────────────────────────────────────
-export const apiKeys = mysqlTable("api_keys", {
-  id: int("id").autoincrement().primaryKey(),
-  userId: int("userId").notNull(),
+export const apiKeys = pgTable("api_keys", {
+  id: serial("id").primaryKey(),
+  userId: integer("userId").notNull(),
   provider: varchar("provider", { length: 32 }).default("anthropic").notNull(),
   encryptedKey: text("encryptedKey").notNull(),
-  keyHint: varchar("keyHint", { length: 16 }), // last 4 chars visible
+  keyHint: varchar("keyHint", { length: 16 }),
   model: varchar("model", { length: 64 }).default("claude-3-5-sonnet-20241022").notNull(),
-  status: mysqlEnum("status", ["valid", "invalid", "expired", "quota_exceeded", "untested"]).default("untested").notNull(),
+  status: apiKeyStatusEnum("status").default("untested").notNull(),
   lastTestedAt: timestamp("lastTestedAt"),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
-  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().notNull(),
 });
 
 export type ApiKey = typeof apiKeys.$inferSelect;
 export type InsertApiKey = typeof apiKeys.$inferInsert;
 
 // ─── Projects ─────────────────────────────────────────────────────────────────
-export const projects = mysqlTable("projects", {
-  id: int("id").autoincrement().primaryKey(),
-  userId: int("userId").notNull(),
+export const projects = pgTable("projects", {
+  id: serial("id").primaryKey(),
+  userId: integer("userId").notNull(),
   name: varchar("name", { length: 255 }).notNull(),
   slug: varchar("slug", { length: 255 }).notNull(),
   description: text("description"),
-  siteType: varchar("siteType", { length: 64 }), // landing, vitrine, saas, restaurant…
-  style: varchar("style", { length: 64 }), // luxe, moderne, minimaliste…
+  siteType: varchar("siteType", { length: 64 }),
+  style: varchar("style", { length: 64 }),
   language: varchar("language", { length: 8 }).default("fr"),
   colorPalette: varchar("colorPalette", { length: 64 }),
-  framework: mysqlEnum("framework", ["html", "react", "nextjs"]).default("html").notNull(),
-  status: mysqlEnum("status", ["draft", "generating", "ready", "published", "archived", "error"]).default("draft").notNull(),
-  currentVersionId: int("currentVersionId"),
+  framework: frameworkEnum("framework").default("html").notNull(),
+  status: projectStatusEnum("status").default("draft").notNull(),
+  currentVersionId: integer("currentVersionId"),
   previewUrl: text("previewUrl"),
   customDomain: varchar("customDomain", { length: 255 }),
   metaTitle: varchar("metaTitle", { length: 255 }),
@@ -76,28 +89,28 @@ export const projects = mysqlTable("projects", {
   publishedAt: timestamp("publishedAt"),
   deployedUrl: text("deployedUrl"),
   deployedAt: timestamp("deployedAt"),
-  deployedVersionId: int("deployedVersionId"),
+  deployedVersionId: integer("deployedVersionId"),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
-  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().notNull(),
 });
 
 export type Project = typeof projects.$inferSelect;
 export type InsertProject = typeof projects.$inferInsert;
 
 // ─── Versions ─────────────────────────────────────────────────────────────────
-export const versions = mysqlTable("versions", {
-  id: int("id").autoincrement().primaryKey(),
-  projectId: int("projectId").notNull(),
-  userId: int("userId").notNull(),
-  versionNumber: int("versionNumber").notNull().default(1),
+export const versions = pgTable("versions", {
+  id: serial("id").primaryKey(),
+  projectId: integer("projectId").notNull(),
+  userId: integer("userId").notNull(),
+  versionNumber: integer("versionNumber").notNull().default(1),
   label: varchar("label", { length: 128 }),
   prompt: text("prompt"),
-  generatedCode: text("generatedCode"), // full HTML/CSS/JS
-  files: json("files"), // { filename: content }
-  tokensUsed: int("tokensUsed").default(0),
-  generationTimeMs: int("generationTimeMs"),
+  generatedCode: text("generatedCode"),
+  files: jsonb("files"),
+  tokensUsed: integer("tokensUsed").default(0),
+  generationTimeMs: integer("generationTimeMs"),
   model: varchar("model", { length: 64 }),
-  status: mysqlEnum("status", ["generating", "ready", "error"]).default("ready").notNull(),
+  status: versionStatusEnum("status").default("ready").notNull(),
   errorMessage: text("errorMessage"),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
 });
@@ -106,14 +119,14 @@ export type Version = typeof versions.$inferSelect;
 export type InsertVersion = typeof versions.$inferInsert;
 
 // ─── Chat Messages ────────────────────────────────────────────────────────────
-export const chatMessages = mysqlTable("chat_messages", {
-  id: int("id").autoincrement().primaryKey(),
-  projectId: int("projectId").notNull(),
-  userId: int("userId").notNull(),
-  role: mysqlEnum("role", ["user", "assistant"]).notNull(),
+export const chatMessages = pgTable("chat_messages", {
+  id: serial("id").primaryKey(),
+  projectId: integer("projectId").notNull(),
+  userId: integer("userId").notNull(),
+  role: chatRoleEnum("role").notNull(),
   content: text("content").notNull(),
-  versionId: int("versionId"), // version created by this message (if assistant)
-  tokensUsed: int("tokensUsed").default(0),
+  versionId: integer("versionId"),
+  tokensUsed: integer("tokensUsed").default(0),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
 });
 
@@ -121,49 +134,49 @@ export type ChatMessage = typeof chatMessages.$inferSelect;
 export type InsertChatMessage = typeof chatMessages.$inferInsert;
 
 // ─── Project Files ────────────────────────────────────────────────────────────
-export const projectFiles = mysqlTable("project_files", {
-  id: int("id").autoincrement().primaryKey(),
-  projectId: int("projectId").notNull(),
-  versionId: int("versionId").notNull(),
+export const projectFiles = pgTable("project_files", {
+  id: serial("id").primaryKey(),
+  projectId: integer("projectId").notNull(),
+  versionId: integer("versionId").notNull(),
   filename: varchar("filename", { length: 255 }).notNull(),
   content: text("content").notNull(),
-  fileType: varchar("fileType", { length: 32 }), // html, css, js, json…
+  fileType: varchar("fileType", { length: 32 }),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
-  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().notNull(),
 });
 
 export type ProjectFile = typeof projectFiles.$inferSelect;
 export type InsertProjectFile = typeof projectFiles.$inferInsert;
 
 // ─── Usage Logs ───────────────────────────────────────────────────────────────
-export const usageLogs = mysqlTable("usage_logs", {
-  id: int("id").autoincrement().primaryKey(),
-  userId: int("userId").notNull(),
-  projectId: int("projectId"),
-  action: varchar("action", { length: 64 }).notNull(), // generate, edit, build, deploy
+export const usageLogs = pgTable("usage_logs", {
+  id: serial("id").primaryKey(),
+  userId: integer("userId").notNull(),
+  projectId: integer("projectId"),
+  action: varchar("action", { length: 64 }).notNull(),
   model: varchar("model", { length: 64 }),
-  tokensUsed: int("tokensUsed").default(0),
-  costEstimateUsd: bigint("costEstimateUsd", { mode: "number" }).default(0), // in micro-cents
-  durationMs: int("durationMs"),
-  status: mysqlEnum("status", ["success", "error"]).default("success").notNull(),
+  tokensUsed: integer("tokensUsed").default(0),
+  costEstimateUsd: bigint("costEstimateUsd", { mode: "number" }).default(0),
+  durationMs: integer("durationMs"),
+  status: usageStatusEnum("status").default("success").notNull(),
   errorMessage: text("errorMessage"),
-  metadata: json("metadata"),
+  metadata: jsonb("metadata"),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
 });
 
 export type UsageLog = typeof usageLogs.$inferSelect;
 export type InsertUsageLog = typeof usageLogs.$inferInsert;
 
-// ─── Project Collaborators ──────────────────────────────────────────────────
-export const projectCollaborators = mysqlTable("project_collaborators", {
-  id: int("id").autoincrement().primaryKey(),
-  projectId: int("projectId").notNull(),
-  ownerId: int("ownerId").notNull(),       // user who owns the project
-  collaboratorId: int("collaboratorId"),   // null until invite accepted
+// ─── Project Collaborators ────────────────────────────────────────────────────
+export const projectCollaborators = pgTable("project_collaborators", {
+  id: serial("id").primaryKey(),
+  projectId: integer("projectId").notNull(),
+  ownerId: integer("ownerId").notNull(),
+  collaboratorId: integer("collaboratorId"),
   inviteEmail: varchar("inviteEmail", { length: 320 }),
   inviteToken: varchar("inviteToken", { length: 128 }).notNull().unique(),
-  role: mysqlEnum("role", ["viewer", "editor"]).default("viewer").notNull(),
-  status: mysqlEnum("status", ["pending", "accepted", "revoked"]).default("pending").notNull(),
+  role: collaboratorRoleEnum("role").default("viewer").notNull(),
+  status: collaboratorStatusEnum("status").default("pending").notNull(),
   acceptedAt: timestamp("acceptedAt"),
   expiresAt: timestamp("expiresAt"),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
@@ -173,14 +186,14 @@ export type ProjectCollaborator = typeof projectCollaborators.$inferSelect;
 export type InsertProjectCollaborator = typeof projectCollaborators.$inferInsert;
 
 // ─── Plans ────────────────────────────────────────────────────────────────────
-export const plans = mysqlTable("plans", {
-  id: int("id").autoincrement().primaryKey(),
+export const plans = pgTable("plans", {
+  id: serial("id").primaryKey(),
   name: varchar("name", { length: 64 }).notNull().unique(),
   slug: varchar("slug", { length: 32 }).notNull().unique(),
-  priceMonthlyEur: int("priceMonthlyEur").default(0).notNull(), // in cents
-  projectsLimit: int("projectsLimit").default(1).notNull(),
-  generationsLimit: int("generationsLimit").default(3).notNull(),
-  features: json("features"),
+  priceMonthlyEur: integer("priceMonthlyEur").default(0).notNull(),
+  projectsLimit: integer("projectsLimit").default(1).notNull(),
+  generationsLimit: integer("generationsLimit").default(3).notNull(),
+  features: jsonb("features"),
   stripePriceId: varchar("stripePriceId", { length: 128 }),
   isActive: boolean("isActive").default(true).notNull(),
   createdAt: timestamp("createdAt").defaultNow().notNull(),

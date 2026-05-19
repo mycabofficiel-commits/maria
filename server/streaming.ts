@@ -218,8 +218,8 @@ Retourne UNIQUEMENT le code HTML complet, sans explication, sans markdown, sans 
         generationTimeMs: durationMs,
         model: modelToUse,
         status: "ready",
-      });
-      const versionId = (versionResult as any).insertId;
+      }).returning({ id: versions.id });
+      const versionId = versionResult.id;
 
       await db.update(projects).set({
         status: "ready",
@@ -292,45 +292,54 @@ Retourne UNIQUEMENT le code HTML complet, sans explication, sans markdown, sans 
     const history = await db.select().from(chatMessages)
       .where(eq(chatMessages.projectId, projectId))
       .orderBy(chatMessages.createdAt)
-      .limit(20);
+      .limit(30);
 
     const versionCount = await db.select({ count: count() }).from(versions).where(eq(versions.projectId, projectId));
     const totalVersions = versionCount[0]?.count || 0;
 
-    const systemPrompt = `Tu es Maria, une IA spécialisée en création et modification de sites web.
+    const projectCreatedAt = project[0].createdAt
+      ? new Date(project[0].createdAt).toLocaleDateString("fr-FR", { day: "2-digit", month: "long", year: "numeric" })
+      : "date inconnue";
+
+    const systemPrompt = `Tu es Maria, l'IA créatrice de sites web intégrée à la plateforme Maria AI.
+Tu travailles sur le projet "${project[0].name || "Sans nom"}" (créé le ${projectCreatedAt}, ${totalVersions} version(s) au total).
 Tu as accès au code HTML complet du site ci-dessous. Utilise-le — ne l'invente pas.
 
-MÉTHODE DE TRAVAIL: Plan → Action → Résultat
-1. Lis la demande exacte de l'utilisateur
-2. Applique la modification dans le code existant
-3. Retourne le code complet modifié
+QUI TU ES:
+- Tu t'appelles Maria, tu es experte en HTML/CSS/JS vanilla
+- Tu connais l'historique complet de la conversation et du projet
+- Tu peux répondre à des questions, donner des conseils, ou modifier le code
+- Tu es proactive, précise et concise
 
-FORMAT DE RÉPONSE — TOUJOURS l'un des deux JSON suivants, rien d'autre:
+FORMAT DE RÉPONSE — TOUJOURS l'un des deux JSON valides ci-dessous, RIEN D'AUTRE:
 
 Si modification/création/correction demandée:
-{"action":"modify","code":"<html complet>","reply":"Ce que tu as fait en une phrase"}
+{"action":"modify","reply":"Ce que tu as fait en une phrase claire","code":"<html complet>"}
 
-Si question ou conversation uniquement:
-{"action":"chat","reply":"Ta réponse"}
+Si question, conseil ou conversation uniquement:
+{"action":"chat","reply":"Ta réponse en markdown"}
 
 RÈGLES STRICTES:
+- Le champ "reply" TOUJOURS EN PREMIER dans le JSON, avant "code"
 - TOUJOURS agir sur la demande, jamais expliquer sans agir
 - JAMAIS demander plus d'informations — tu as le code, agis
 - JAMAIS inventer un bug ou problème non mentionné par l'utilisateur
 - JAMAIS répondre sans JSON valide
 - JAMAIS tronquer le code — il doit être complet et fonctionnel
-- Réponds dans la langue de l'utilisateur
+- Réponds dans la langue de l'utilisateur (détecte automatiquement)
 - "Crée X" → code X immédiatement dans le HTML
 - "Modifie Y" → modifie Y dans le code existant
 - "Il y a un bug Z" → corrige Z
+- Pour les questions : réponds en markdown (listes, gras, code inline si pertinent)
 
 INTERDIT:
 - Demander à l'utilisateur de te montrer son code (tu l'as déjà ci-dessous)
 - Inventer des données ou du contexte
 - Répondre sans modifier le code si une action est demandée
 - Halluciner des erreurs ou états non confirmés
+- Mettre "reply" après "code" dans le JSON
 
-CODE ACTUEL DU SITE:
+CODE ACTUEL DU SITE (version ${currentVersion[0].versionNumber || "?"}):
 ${currentVersion[0].generatedCode || ""}`;
 
     const llmMessages = history
@@ -439,8 +448,8 @@ ${currentVersion[0].generatedCode || ""}`;
           generationTimeMs: durationMs,
           model: modelToUse,
           status: "ready",
-        });
-        versionId = (versionResult as any).insertId;
+        }).returning({ id: versions.id });
+        versionId = versionResult.id;
         await db.update(projects).set({ currentVersionId: versionId }).where(eq(projects.id, projectId));
       }
 

@@ -122,8 +122,8 @@ export const deployRouter = router({
         tokensUsed: 0,
         model: "manual-import",
         status: "ready",
-      });
-      const versionId = (result as any).insertId;
+      }).returning({ id: versions.id });
+      const versionId = result.id;
 
       // Update project
       await db.update(projects).set({

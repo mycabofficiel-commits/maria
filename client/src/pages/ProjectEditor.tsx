@@ -92,6 +92,7 @@ export default function ProjectEditor() {
   const [streamingTokens, setStreamingTokens] = useState(0);
   const [streamingChars, setStreamingChars] = useState(0);
   const [copiedTab, setCopiedTab] = useState<CodeTab | null>(null);
+  const [streamingReply, setStreamingReply] = useState("");
 
   /* code state (editable) */
   const [htmlCode, setHtmlCode] = useState("");
@@ -238,6 +239,7 @@ export default function ProjectEditor() {
   const sendChatStream = useCallback(async (msg: string) => {
     if (!msg.trim()) return;
     setIsChatPending(true);
+    setStreamingReply("");
     setChatMessage("");
     // Optimistically add user message to local cache
     utils.projects.getChatMessages.setData({ projectId }, (old: any) => [
@@ -255,6 +257,7 @@ export default function ProjectEditor() {
       const reader = res.body.getReader();
       const dec = new TextDecoder();
       let buf = "";
+      let accJson = "";
       while (true) {
         const { done, value } = await reader.read();
         if (done) break;
@@ -265,16 +268,24 @@ export default function ProjectEditor() {
           if (line.startsWith("data: ")) {
             try {
               const evt = JSON.parse(line.slice(6));
+              if (evt.text !== undefined) {
+                accJson += evt.text;
+                // Extract reply field progressively (reply comes before code in JSON)
+                const m = accJson.match(/"reply"\s*:\s*"((?:[^"\\]|\\.)*)"/);
+                if (m) {
+                  setStreamingReply(m[1].replace(/\\n/g, "\n").replace(/\\"/g, '"').replace(/\\\\/g, "\\"));
+                }
+              }
               if (evt.versionId) {
                 setSelectedVersionId(evt.versionId);
                 toast.success("Site modifié !");
               }
               if (evt.reply !== undefined) {
-                // Final done event — refresh messages
+                // Final done event — clear streaming bubble, refresh messages
+                setStreamingReply("");
                 utils.projects.getChatMessages.invalidate({ projectId });
                 utils.projects.getVersions.invalidate({ projectId });
                 utils.projects.get.invalidate({ id: projectId });
-                // If code was modified, update editor immediately
                 if (evt.generatedCode) {
                   setHtmlCode(extractHtml(evt.generatedCode));
                   setCssCode(extractCss(evt.generatedCode));
@@ -290,6 +301,7 @@ export default function ProjectEditor() {
       toast.error(err.message);
     } finally {
       setIsChatPending(false);
+      setStreamingReply("");
     }
   }, [projectId]);
 
@@ -730,7 +742,20 @@ ${jsCode}`;
                       );
                     })
                   )}
-                  {chatEdit.isPending && (
+                  {/* Streaming reply bubble — shown while Maria is generating her response */}
+                  {streamingReply && (
+                    <div className="flex gap-1.5 items-start">
+                      <div className="w-5 h-5 rounded-full bg-primary/20 flex items-center justify-center flex-shrink-0 mt-0.5">
+                        <Sparkles className="w-2.5 h-2.5 text-primary" />
+                      </div>
+                      <div className="bg-card border border-primary/30 rounded-xl rounded-tl-sm px-2.5 py-1.5 max-w-[85%]">
+                        <Streamdown className="text-xs">{streamingReply}</Streamdown>
+                        <span className="inline-block w-1.5 h-3 bg-primary/70 animate-pulse ml-0.5 align-text-bottom rounded-sm" />
+                      </div>
+                    </div>
+                  )}
+                  {/* Typing dots — shown only while waiting for first tokens */}
+                  {chatEdit.isPending && !streamingReply && (
                     <div className="flex gap-1.5 items-start">
                       <div className="w-5 h-5 rounded-full bg-primary/20 flex items-center justify-center flex-shrink-0">
                         <Sparkles className="w-2.5 h-2.5 text-primary" />

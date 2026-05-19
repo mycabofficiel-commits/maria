@@ -77,8 +77,8 @@ export const projectsRouter = router({
         colorPalette: input.colorPalette,
         framework: input.framework,
         status: "draft",
-      });
-      return { id: (result as any).insertId };
+      }).returning({ id: projects.id });
+      return { id: result.id };
     }),
 
   // Update project
@@ -228,8 +228,8 @@ Retourne UNIQUEMENT le code HTML complet, sans explication, sans markdown, sans 
           generationTimeMs: durationMs,
           model: modelToUse,
           status: "ready",
-        });
-        const versionId = (versionResult as any).insertId;
+        }).returning({ id: versions.id });
+        const versionId = versionResult.id;
 
         // Update project
         await db.update(projects).set({
@@ -408,8 +408,8 @@ RÈGLES IMPORTANTES:
           generationTimeMs: durationMs,
           model: modelToUse,
           status: "ready",
-        });
-        versionId = (versionResult as any).insertId;
+        }).returning({ id: versions.id });
+        versionId = versionResult.id;
         await db.update(projects).set({ currentVersionId: versionId }).where(eq(projects.id, input.projectId));
       }
 

@@ -125,20 +125,21 @@
 - [x] 12 tests Vitest passés · 0 erreur TypeScript
 
 ## Phase 16 — Agent IA Conversationnel avec Mémoire
-- [ ] Système prompt agent : Maria se présente, connaît le projet, ses versions et l'historique
-- [ ] Mémoire persistante : envoyer tout l'historique de chat à l'IA à chaque message
-- [ ] L'IA peut répondre sans modifier le site (questions, conseils, explications)
-- [ ] L'IA détecte si elle doit modifier le code ou juste répondre (intent detection)
-- [ ] Indicateur "Maria est en train d'écrire..." dans le chat
-- [ ] Bulles de chat distinctes (utilisateur vs Maria) avec avatar
-- [ ] Messages de l'IA en markdown rendu (Streamdown)
-- [ ] Stocker les messages IA sans version (réponses conversationnelles)
+- [x] Système prompt agent : Maria se présente, connaît le projet, ses versions et l'historique
+- [x] Mémoire persistante : envoyer tout l'historique de chat à l'IA à chaque message
+- [x] L'IA peut répondre sans modifier le site (questions, conseils, explications)
+- [x] L'IA détecte si elle doit modifier le code ou juste répondre (intent detection)
+- [x] Indicateur "Maria est en train d'écrire..." dans le chat
+- [x] Bulles de chat distinctes (utilisateur vs Maria) avec avatar
+- [x] Messages de l'IA en markdown rendu (Streamdown)
+- [x] Stocker les messages IA sans version (réponses conversationnelles)
+- [x] Streaming de la réponse de Maria en temps réel (extraction progressive du champ reply)
 
 ## Phase 17 — Nouveau Layout Éditeur (3 zones)
-- [ ] Builder visible uniquement avant la première génération
-- [ ] Après génération : layout 3 zones (code haut-gauche, chat bas-gauche, preview droite)
-- [ ] Onglets HTML/CSS/JS dans la zone code
-- [ ] Chat IA intégré dans la zone bas-gauche
-- [ ] Preview live à droite avec debounce 800ms
-- [ ] Clic sur élément dans la preview → surlignage dans le code
-- [ ] 0 erreur TypeScript
+- [x] Builder visible uniquement avant la première génération
+- [x] Après génération : layout 3 zones (code haut-gauche, chat bas-gauche, preview droite)
+- [x] Onglets HTML/CSS/JS dans la zone code
+- [x] Chat IA intégré dans la zone bas-gauche
+- [x] Preview live à droite avec debounce 800ms
+- [x] Clic sur élément dans la preview → surlignage dans le code
+- [x] 0 erreur TypeScript

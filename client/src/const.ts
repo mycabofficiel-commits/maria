@@ -1,5 +1,3 @@
-import { sdk } from "./_core/sdk";
-
 export const APP_NAME = "Maria";
 
 export function getLoginUrl(): string {
