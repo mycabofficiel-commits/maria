@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useRef } from "react";
 import AppLayout from "@/components/AppLayout";
 import { trpc } from "@/lib/trpc";
 import { useAuth } from "@/_core/hooks/useAuth";
@@ -6,10 +6,11 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Link, useLocation } from "wouter";
+import JSZip from "jszip";
 import {
   Sparkles, FolderOpen, Zap, Key, ArrowRight, Plus,
   Globe, Clock, CheckCircle2, AlertCircle, Loader2, LayoutTemplate,
-  Upload, ChevronDown
+  Upload, FileArchive
 } from "lucide-react";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription
@@ -17,7 +18,6 @@ import {
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue
 } from "@/components/ui/select";
-import ImportProjectPanel from "@/components/ImportProjectPanel";
 import { toast } from "sonner";
 import { formatDistanceToNow } from "date-fns";
 import { fr } from "date-fns/locale";
@@ -45,36 +45,82 @@ export default function Dashboard() {
   const { data: apiKey } = trpc.user.getApiKey.useQuery();
   const [, navigate] = useLocation();
   const [showImportDialog, setShowImportDialog] = useState(false);
-  const [importProjectName, setImportProjectName] = useState("");
-  const [importProjectId, setImportProjectId] = useState<number | null>(null);
-  const [useExistingProject, setUseExistingProject] = useState(false);
+  const [importProjectName, setImportProjectName] = useState("Projet importé");
   const [selectedExistingId, setSelectedExistingId] = useState<string>("");
+  const [isDragging, setIsDragging] = useState(false);
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [isImporting, setIsImporting] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const utils = trpc.useUtils();
 
-  // Plan limits
   const planLimits: Record<string, number> = { free: 1, creator: 5, pro: 20, agency: 9999 };
   const projectLimit = planLimits[(user as any)?.plan || "free"] || 1;
   const atLimit = useMemo(() => (projects?.length || 0) >= projectLimit, [projects, projectLimit]);
 
   const createProject = trpc.projects.create.useMutation({
-    onSuccess: (data) => {
-      setImportProjectId(data.id);
-      utils.projects.list.invalidate();
-    },
+    onError: (err) => toast.error(err.message),
+  });
+  const importCode = trpc.deploy.importCode.useMutation({
     onError: (err) => toast.error(err.message),
   });
 
-  const handleStartImport = () => {
-    if (useExistingProject || atLimit) {
-      // Import into existing project
-      const id = parseInt(selectedExistingId || String(projects?.[0]?.id || 0));
-      if (!id) return toast.error("Sélectionnez un projet");
-      setImportProjectId(id);
-    } else {
-      const name = importProjectName.trim() || "Projet importé";
-      createProject.mutate({ name, description: "Projet importé", siteType: "Site vitrine", style: "Moderne", colorPalette: "Bleu/Violet", framework: "html", language: "fr" });
+  const handleFileSelect = (file: File) => {
+    if (!file.name.endsWith(".zip")) { toast.error("Veuillez sélectionner un fichier .zip"); return; }
+    setSelectedFile(file);
+  };
+
+  const handleImport = async () => {
+    if (!selectedFile) { toast.error("Sélectionnez un fichier ZIP d'abord"); return; }
+    setIsImporting(true);
+    try {
+      // Parse ZIP
+      const zip = new JSZip();
+      const loaded = await zip.loadAsync(selectedFile);
+      let html = "", css = "", js = "";
+      for (const [name, zipFile] of Object.entries(loaded.files)) {
+        if ((zipFile as any).dir) continue;
+        const base = name.split("/").pop()?.toLowerCase() || "";
+        const content = await (zipFile as any).async("string");
+        if ((base.endsWith(".html") || base.endsWith(".htm")) && (!html || base === "index.html")) html = content;
+        else if (base.endsWith(".css") && !css) css = content;
+        else if (base.endsWith(".js") && !base.includes(".min.") && !js) js = content;
+      }
+      if (!html) { toast.error("Aucun fichier HTML trouvé dans le ZIP"); setIsImporting(false); return; }
+      // Merge CSS + JS into HTML
+      if (css) html = html.replace("</head>", `<style>\n${css}\n</style>\n</head>`);
+      if (js) html = html.replace("</body>", `<script>\n${js}\n</script>\n</body>`);
+
+      let projectId: number;
+      if (atLimit) {
+        projectId = parseInt(selectedExistingId || String(projects?.[0]?.id || 0));
+        if (!projectId) { toast.error("Sélectionnez un projet de destination"); setIsImporting(false); return; }
+      } else {
+        const created = await createProject.mutateAsync({
+          name: importProjectName.trim() || "Projet importé",
+          description: "Projet importé", siteType: "Site vitrine",
+          style: "Moderne", colorPalette: "Bleu/Violet", framework: "html", language: "fr",
+        });
+        projectId = created.id;
+        utils.projects.list.invalidate();
+      }
+
+      await importCode.mutateAsync({ projectId, htmlContent: html, label: `Import ${selectedFile.name}` });
+      toast.success("Projet importé avec succès !");
+      setShowImportDialog(false);
+      navigate(`/projects/${projectId}`);
+    } catch (e: any) {
+      toast.error(e.message || "Erreur lors de l'import");
+    } finally {
+      setIsImporting(false);
     }
+  };
+
+  const resetImportDialog = () => {
+    setSelectedFile(null);
+    setImportProjectName("Projet importé");
+    setSelectedExistingId("");
+    setIsDragging(false);
   };
 
   const recentProjects = projects?.slice(0, 4) || [];
@@ -252,7 +298,7 @@ export default function Dashboard() {
             {/* Import card — bouton dédié, pas un Link */}
             <div
               className="flex items-center gap-4 p-4 rounded-xl border border-border/60 bg-card card-hover cursor-pointer"
-              onClick={() => { setImportProjectName(""); setImportProjectId(null); setUseExistingProject(false); setSelectedExistingId(""); setShowImportDialog(true); }}
+              onClick={() => { resetImportDialog(); setShowImportDialog(true); }}
             >
               <div className="w-9 h-9 rounded-lg bg-emerald-400/10 flex items-center justify-center flex-shrink-0">
                 <Upload className="w-4.5 h-4.5 text-emerald-400" />
@@ -267,106 +313,96 @@ export default function Dashboard() {
       </div>
 
       {/* Import dialog */}
-      <Dialog open={showImportDialog} onOpenChange={(o) => { if (!o) { setShowImportDialog(false); setImportProjectId(null); } }}>
+      <Dialog open={showImportDialog} onOpenChange={(o) => { if (!o) { setShowImportDialog(false); resetImportDialog(); } }}>
         <DialogContent className="sm:max-w-md p-0 overflow-hidden">
           <DialogHeader className="px-5 pt-5 pb-3 border-b border-border/40">
             <DialogTitle className="flex items-center gap-2">
               <Upload className="w-4 h-4 text-emerald-400" />
-              Importer un projet
+              Importer un projet ZIP
             </DialogTitle>
             <DialogDescription>
-              Importez un site existant (ZIP, fichiers ou HTML).
+              Sélectionnez un fichier .zip contenant votre site (index.html, style.css, script.js).
             </DialogDescription>
           </DialogHeader>
 
-          {!importProjectId ? (
-            /* Step 1 — nommer le projet ou choisir un existant */
-            <div className="px-5 py-4 space-y-4">
-              {atLimit ? (
-                /* Limite atteinte → import dans un projet existant */
-                <div className="space-y-3">
-                  <div className="flex items-start gap-2 p-3 rounded-lg bg-amber-400/10 border border-amber-400/20 text-xs text-amber-400">
-                    <AlertCircle className="w-3.5 h-3.5 mt-0.5 flex-shrink-0" />
-                    Limite de projets atteinte (plan {plan}). L'import sera ajouté comme nouvelle version d'un projet existant.
-                  </div>
-                  <div>
-                    <label className="text-sm text-foreground font-medium mb-1.5 block">Importer dans</label>
-                    <Select value={selectedExistingId} onValueChange={setSelectedExistingId}>
-                      <SelectTrigger className="bg-input border-border/60">
-                        <SelectValue placeholder="Choisir un projet…" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {projects?.map((p: any) => (
-                          <SelectItem key={p.id} value={String(p.id)}>{p.name}</SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                </div>
+          <div className="px-5 py-4 space-y-4">
+            {/* Zone de sélection de fichier */}
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept=".zip"
+              className="hidden"
+              onChange={(e) => e.target.files?.[0] && handleFileSelect(e.target.files[0])}
+            />
+            <div
+              className={`border-2 border-dashed rounded-xl p-8 text-center cursor-pointer transition-all ${
+                isDragging ? "border-emerald-500 bg-emerald-500/5" :
+                selectedFile ? "border-emerald-500/50 bg-emerald-500/5" :
+                "border-border/60 hover:border-emerald-500/50 hover:bg-emerald-500/5"
+              }`}
+              onClick={() => fileInputRef.current?.click()}
+              onDragOver={(e) => { e.preventDefault(); setIsDragging(true); }}
+              onDragLeave={() => setIsDragging(false)}
+              onDrop={(e) => { e.preventDefault(); setIsDragging(false); const f = e.dataTransfer.files[0]; if (f) handleFileSelect(f); }}
+            >
+              {selectedFile ? (
+                <>
+                  <CheckCircle2 className="w-8 h-8 text-emerald-400 mx-auto mb-2" />
+                  <p className="text-sm font-medium text-emerald-400">{selectedFile.name}</p>
+                  <p className="text-xs text-muted-foreground mt-1">Cliquez pour changer</p>
+                </>
               ) : (
-                /* Peut créer un nouveau projet */
-                <div className="space-y-3">
-                  {!useExistingProject ? (
-                    <div>
-                      <label className="text-sm text-foreground font-medium mb-1.5 block">Nom du nouveau projet</label>
-                      <Input
-                        placeholder="Mon site importé"
-                        value={importProjectName}
-                        onChange={(e) => setImportProjectName(e.target.value)}
-                        onKeyDown={(e) => e.key === "Enter" && handleStartImport()}
-                        className="bg-input border-border/60"
-                        autoFocus
-                      />
-                      <button className="text-xs text-muted-foreground hover:text-foreground mt-2 underline underline-offset-2"
-                        onClick={() => setUseExistingProject(true)}>
-                        Ou importer dans un projet existant
-                      </button>
-                    </div>
-                  ) : (
-                    <div>
-                      <label className="text-sm text-foreground font-medium mb-1.5 block">Importer dans un projet existant</label>
-                      <Select value={selectedExistingId} onValueChange={setSelectedExistingId}>
-                        <SelectTrigger className="bg-input border-border/60">
-                          <SelectValue placeholder="Choisir un projet…" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {projects?.map((p: any) => (
-                            <SelectItem key={p.id} value={String(p.id)}>{p.name}</SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                      <button className="text-xs text-muted-foreground hover:text-foreground mt-2 underline underline-offset-2"
-                        onClick={() => setUseExistingProject(false)}>
-                        Créer un nouveau projet à la place
-                      </button>
-                    </div>
-                  )}
-                </div>
+                <>
+                  <FileArchive className="w-8 h-8 text-muted-foreground mx-auto mb-2" />
+                  <p className="text-sm font-medium text-foreground">Glissez votre ZIP ici</p>
+                  <p className="text-xs text-muted-foreground mt-1">ou cliquez pour parcourir</p>
+                </>
               )}
-              <div className="flex gap-2 justify-end">
-                <Button variant="outline" onClick={() => setShowImportDialog(false)}>Annuler</Button>
-                <Button
-                  className="bg-emerald-600 hover:bg-emerald-700 text-white"
-                  onClick={handleStartImport}
-                  disabled={createProject.isPending || ((useExistingProject || atLimit) && !selectedExistingId)}
-                >
-                  {createProject.isPending ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Upload className="w-4 h-4 mr-2" />}
-                  Continuer
-                </Button>
+            </div>
+
+            {/* Destination */}
+            {atLimit ? (
+              <div className="space-y-2">
+                <div className="flex items-start gap-2 p-3 rounded-lg bg-amber-400/10 border border-amber-400/20 text-xs text-amber-400">
+                  <AlertCircle className="w-3.5 h-3.5 mt-0.5 flex-shrink-0" />
+                  Limite plan {plan} atteinte — sera importé comme nouvelle version d'un projet existant.
+                </div>
+                <Select value={selectedExistingId || String(projects?.[0]?.id || "")} onValueChange={setSelectedExistingId}>
+                  <SelectTrigger className="bg-input border-border/60 text-sm">
+                    <SelectValue placeholder="Choisir un projet…" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {projects?.map((p: any) => (
+                      <SelectItem key={p.id} value={String(p.id)}>{p.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
+            ) : (
+              <div>
+                <label className="text-xs text-muted-foreground mb-1.5 block">Nom du projet</label>
+                <Input
+                  placeholder="Mon site importé"
+                  value={importProjectName}
+                  onChange={(e) => setImportProjectName(e.target.value)}
+                  className="bg-input border-border/60"
+                />
+              </div>
+            )}
+
+            {/* Actions */}
+            <div className="flex gap-2 justify-end pt-1">
+              <Button variant="outline" onClick={() => { setShowImportDialog(false); resetImportDialog(); }}>Annuler</Button>
+              <Button
+                className="bg-emerald-600 hover:bg-emerald-700 text-white"
+                onClick={handleImport}
+                disabled={!selectedFile || isImporting}
+              >
+                {isImporting ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Upload className="w-4 h-4 mr-2" />}
+                Importer
+              </Button>
             </div>
-          ) : (
-            /* Step 2 — importer le contenu */
-            <div className="max-h-[70vh] overflow-y-auto">
-              <ImportProjectPanel
-                projectId={importProjectId}
-                onImportSuccess={(versionId) => {
-                  setShowImportDialog(false);
-                  navigate(`/projects/${importProjectId}`);
-                }}
-              />
-            </div>
-          )}
+          </div>
         </DialogContent>
       </Dialog>
     </AppLayout>
