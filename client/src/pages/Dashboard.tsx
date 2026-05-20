@@ -1,13 +1,20 @@
+import { useState } from "react";
 import AppLayout from "@/components/AppLayout";
 import { trpc } from "@/lib/trpc";
 import { useAuth } from "@/_core/hooks/useAuth";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
 import { Link, useLocation } from "wouter";
 import {
   Sparkles, FolderOpen, Zap, Key, ArrowRight, Plus,
-  Globe, Clock, CheckCircle2, AlertCircle, Loader2, LayoutTemplate
+  Globe, Clock, CheckCircle2, AlertCircle, Loader2, LayoutTemplate,
+  Upload, X
 } from "lucide-react";
+import {
+  Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription
+} from "@/components/ui/dialog";
+import ImportProjectPanel from "@/components/ImportProjectPanel";
 import { formatDistanceToNow } from "date-fns";
 import { fr } from "date-fns/locale";
 
@@ -33,6 +40,22 @@ export default function Dashboard() {
   const { data: projects, isLoading: projectsLoading } = trpc.projects.list.useQuery();
   const { data: apiKey } = trpc.user.getApiKey.useQuery();
   const [, navigate] = useLocation();
+  const [showImportDialog, setShowImportDialog] = useState(false);
+  const [importProjectName, setImportProjectName] = useState("");
+  const [importProjectId, setImportProjectId] = useState<number | null>(null);
+
+  const utils = trpc.useUtils();
+  const createProject = trpc.projects.create.useMutation({
+    onSuccess: (data) => {
+      setImportProjectId(data.id);
+      utils.projects.list.invalidate();
+    },
+  });
+
+  const handleStartImport = () => {
+    const name = importProjectName.trim() || "Projet importé";
+    createProject.mutate({ name, description: "Projet importé", siteType: "Site vitrine", style: "Moderne", colorPalette: "Bleu/Violet", framework: "html", language: "fr" });
+  };
 
   const recentProjects = projects?.slice(0, 4) || [];
   const plan = (user as any)?.plan || "free";
@@ -206,9 +229,76 @@ export default function Dashboard() {
                 </div>
               </Link>
             ))}
+            {/* Import card — bouton dédié, pas un Link */}
+            <div
+              className="flex items-center gap-4 p-4 rounded-xl border border-border/60 bg-card card-hover cursor-pointer"
+              onClick={() => { setImportProjectName(""); setImportProjectId(null); setShowImportDialog(true); }}
+            >
+              <div className="w-9 h-9 rounded-lg bg-emerald-400/10 flex items-center justify-center flex-shrink-0">
+                <Upload className="w-4.5 h-4.5 text-emerald-400" />
+              </div>
+              <div>
+                <div className="text-sm font-medium text-foreground">Importer</div>
+                <div className="text-xs text-muted-foreground">ZIP, fichiers ou code HTML</div>
+              </div>
+            </div>
           </div>
         </div>
       </div>
+
+      {/* Import dialog */}
+      <Dialog open={showImportDialog} onOpenChange={(o) => { if (!o) { setShowImportDialog(false); setImportProjectId(null); } }}>
+        <DialogContent className="sm:max-w-md p-0 overflow-hidden">
+          <DialogHeader className="px-5 pt-5 pb-3 border-b border-border/40">
+            <DialogTitle className="flex items-center gap-2">
+              <Upload className="w-4 h-4 text-emerald-400" />
+              Importer un projet
+            </DialogTitle>
+            <DialogDescription>
+              Importez un site existant (ZIP, fichiers ou HTML).
+            </DialogDescription>
+          </DialogHeader>
+
+          {!importProjectId ? (
+            /* Step 1 — nommer le projet */
+            <div className="px-5 py-4 space-y-4">
+              <div>
+                <label className="text-sm text-foreground font-medium mb-1.5 block">Nom du projet</label>
+                <Input
+                  placeholder="Mon site importé"
+                  value={importProjectName}
+                  onChange={(e) => setImportProjectName(e.target.value)}
+                  onKeyDown={(e) => e.key === "Enter" && handleStartImport()}
+                  className="bg-input border-border/60"
+                  autoFocus
+                />
+              </div>
+              <div className="flex gap-2 justify-end">
+                <Button variant="outline" onClick={() => setShowImportDialog(false)}>Annuler</Button>
+                <Button
+                  className="bg-emerald-600 hover:bg-emerald-700 text-white"
+                  onClick={handleStartImport}
+                  disabled={createProject.isPending}
+                >
+                  {createProject.isPending ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Upload className="w-4 h-4 mr-2" />}
+                  Continuer
+                </Button>
+              </div>
+            </div>
+          ) : (
+            /* Step 2 — importer le contenu */
+            <div className="max-h-[70vh] overflow-y-auto">
+              <ImportProjectPanel
+                projectId={importProjectId}
+                onImportSuccess={(versionId) => {
+                  setShowImportDialog(false);
+                  navigate(`/projects/${importProjectId}`);
+                }}
+              />
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </AppLayout>
   );
 }
