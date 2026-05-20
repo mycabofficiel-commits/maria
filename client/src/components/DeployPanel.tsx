@@ -3,10 +3,11 @@ import { trpc } from "@/lib/trpc";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Textarea } from "@/components/ui/textarea";
+import { Input } from "@/components/ui/input";
 import { toast } from "sonner";
 import {
   Download, Upload, Globe, Loader2, CheckCircle2, Copy, ExternalLink,
-  FileCode2, FolderOpen, Rocket, RefreshCw, AlertCircle
+  FileCode2, FolderOpen, Rocket, RefreshCw, AlertCircle, Pencil, Check, X
 } from "lucide-react";
 import ImportProjectPanel from "@/components/ImportProjectPanel";
 import { formatDistanceToNow } from "date-fns";
@@ -26,6 +27,8 @@ export default function DeployPanel({ projectId, hasCode, onImportSuccess }: Dep
   const [pastedHtml, setPastedHtml] = useState("");
   const [importLabel, setImportLabel] = useState("");
   const [isDragging, setIsDragging] = useState(false);
+  const [editingSlug, setEditingSlug] = useState(false);
+  const [slugInput, setSlugInput] = useState("");
   const fileInputRef = useRef<HTMLInputElement>(null);
   const utils = trpc.useUtils();
 
@@ -62,7 +65,18 @@ export default function DeployPanel({ projectId, hasCode, onImportSuccess }: Dep
 
   const deploy = trpc.deploy.deploy.useMutation({
     onSuccess: (data) => {
-      toast.success("Site déployé en ligne !", { duration: 6000 });
+      toast.success("Site déployé en ligne !", { duration: 6000,
+        action: { label: "Voir le site", onClick: () => window.open(data.deployedUrl, "_blank") }
+      });
+      utils.deploy.getDeployInfo.invalidate({ projectId });
+    },
+    onError: (e) => toast.error(e.message),
+  });
+
+  const updateSlug = trpc.deploy.updateSlug.useMutation({
+    onSuccess: (data) => {
+      toast.success(`URL mise à jour : /p/${data.slug}`);
+      setEditingSlug(false);
       utils.deploy.getDeployInfo.invalidate({ projectId });
     },
     onError: (e) => toast.error(e.message),
@@ -177,6 +191,42 @@ export default function DeployPanel({ projectId, hasCode, onImportSuccess }: Dep
                   <AlertCircle className="w-3.5 h-3.5" />
                   Aucun déploiement actif
                 </div>
+              </div>
+            )}
+
+            {/* Custom slug editor */}
+            {deployInfo && (
+              <div className="space-y-1.5">
+                <div className="text-xs font-medium text-foreground">URL personnalisée</div>
+                {editingSlug ? (
+                  <div className="flex gap-1.5 items-center">
+                    <span className="text-xs text-muted-foreground whitespace-nowrap">/p/</span>
+                    <Input
+                      value={slugInput}
+                      onChange={e => setSlugInput(e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, ""))}
+                      className="h-7 text-xs bg-input border-border/60 font-mono"
+                      placeholder="mon-site"
+                      onKeyDown={e => { if (e.key === "Enter") updateSlug.mutate({ projectId, slug: slugInput }); if (e.key === "Escape") setEditingSlug(false); }}
+                    />
+                    <Button size="icon" className="h-7 w-7 bg-emerald-600 hover:bg-emerald-700 text-white flex-shrink-0"
+                      disabled={!slugInput || updateSlug.isPending}
+                      onClick={() => updateSlug.mutate({ projectId, slug: slugInput })}>
+                      {updateSlug.isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : <Check className="w-3 h-3" />}
+                    </Button>
+                    <Button size="icon" variant="ghost" className="h-7 w-7 flex-shrink-0"
+                      onClick={() => setEditingSlug(false)}>
+                      <X className="w-3 h-3" />
+                    </Button>
+                  </div>
+                ) : (
+                  <div className="flex items-center gap-2 bg-background/50 rounded px-2 py-1.5">
+                    <span className="text-xs text-muted-foreground font-mono truncate flex-1">/p/{deployInfo.slug}</span>
+                    <button onClick={() => { setSlugInput(deployInfo.slug || ""); setEditingSlug(true); }}
+                      className="text-muted-foreground hover:text-foreground transition-colors flex-shrink-0">
+                      <Pencil className="w-3 h-3" />
+                    </button>
+                  </div>
+                )}
               </div>
             )}
 

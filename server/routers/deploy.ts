@@ -11,6 +11,25 @@ function getAppBaseUrl(): string {
   return process.env.APP_BASE_URL || process.env.RENDER_EXTERNAL_URL || "http://localhost:3000";
 }
 
+function cleanSlug(name: string): string {
+  return name.toLowerCase()
+    .normalize("NFD").replace(/[̀-ͯ]/g, "") // remove accents
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-|-$/g, "")
+    .slice(0, 50) || "site";
+}
+
+async function ensureUniqueSlug(db: any, baseSlug: string, excludeProjectId?: number): Promise<string> {
+  let slug = baseSlug;
+  let i = 1;
+  while (true) {
+    const existing = await db.select({ id: projects.id }).from(projects)
+      .where(eq(projects.slug, slug)).limit(1);
+    if (!existing[0] || existing[0].id === excludeProjectId) return slug;
+    slug = `${baseSlug}-${i++}`;
+  }
+}
+
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
 function randomSuffix(): string {
@@ -137,6 +156,32 @@ export const deployRouter = router({
       return { versionId, versionNumber: nextVersionNumber };
     }),
 
+  // ── Update slug ───────────────────────────────────────────────────────────
+  updateSlug: protectedProcedure
+    .input(z.object({
+      projectId: z.number(),
+      slug: z.string().min(2).max(60).regex(/^[a-z0-9-]+$/, "Slug invalide : lettres, chiffres et tirets uniquement"),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      const db = await getDb();
+      if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "DB unavailable" });
+      const project = await db.select().from(projects)
+        .where(and(eq(projects.id, input.projectId), eq(projects.userId, ctx.user.id)))
+        .limit(1);
+      if (!project[0]) throw new TRPCError({ code: "NOT_FOUND", message: "Projet introuvable" });
+
+      const uniqueSlug = await ensureUniqueSlug(db, input.slug, input.projectId);
+      const baseUrl = getAppBaseUrl().replace(/\/$/, "");
+      const deployedUrl = project[0].isPublished ? `${baseUrl}/p/${uniqueSlug}` : project[0].deployedUrl;
+
+      await db.update(projects).set({
+        slug: uniqueSlug,
+        ...(project[0].isPublished ? { deployedUrl } : {}),
+      }).where(eq(projects.id, input.projectId));
+
+      return { slug: uniqueSlug, deployedUrl };
+    }),
+
   // ── Deploy (DB-hosted, served via /p/:slug) ───────────────────────────────
   deploy: protectedProcedure
     .input(z.object({
@@ -160,7 +205,16 @@ export const deployRouter = router({
         .where(eq(versions.id, versionId)).limit(1);
       if (!version[0]?.generatedCode) throw new TRPCError({ code: "NOT_FOUND", message: "Version introuvable" });
 
-      const slug = project[0].slug || `project-${input.projectId}`;
+      // Use clean slug (no random suffix)
+      const currentSlug = project[0].slug || "";
+      const hasRandomSuffix = /^.+-[a-z0-9]{4,6}$/.test(currentSlug);
+      let slug = currentSlug;
+      if (!slug || hasRandomSuffix) {
+        const base = cleanSlug(project[0].name || `project-${input.projectId}`);
+        slug = await ensureUniqueSlug(db, base, input.projectId);
+        await db.update(projects).set({ slug }).where(eq(projects.id, input.projectId));
+      }
+
       const baseUrl = getAppBaseUrl().replace(/\/$/, "");
       const deployedUrl = `${baseUrl}/p/${slug}`;
 
@@ -192,6 +246,7 @@ export const deployRouter = router({
         deployedVersionId: projects.deployedVersionId,
         isPublished: projects.isPublished,
         status: projects.status,
+        currentVersionId: projects.currentVersionId,
       }).from(projects)
         .where(and(eq(projects.id, input.projectId), eq(projects.userId, ctx.user.id)))
         .limit(1);
