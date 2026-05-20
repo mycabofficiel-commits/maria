@@ -74,22 +74,71 @@ export default function Dashboard() {
     if (!selectedFile) { toast.error("Sélectionnez un fichier ZIP d'abord"); return; }
     setIsImporting(true);
     try {
-      // Parse ZIP
+      // Parse ZIP — collect ALL css/js files and images
       const zip = new JSZip();
       const loaded = await zip.loadAsync(selectedFile);
-      let html = "", css = "", js = "";
+
+      let html = "";
+      const cssFiles: { name: string; content: string }[] = [];
+      const jsFiles: { name: string; content: string }[] = [];
+      const imageFiles: { name: string; b64: string; mime: string }[] = [];
+
       for (const [name, zipFile] of Object.entries(loaded.files)) {
         if ((zipFile as any).dir) continue;
         const base = name.split("/").pop()?.toLowerCase() || "";
-        const content = await (zipFile as any).async("string");
-        if ((base.endsWith(".html") || base.endsWith(".htm")) && (!html || base === "index.html")) html = content;
-        else if (base.endsWith(".css") && !css) css = content;
-        else if (base.endsWith(".js") && !base.includes(".min.") && !js) js = content;
+        if (base.endsWith(".html") || base.endsWith(".htm")) {
+          const content = await (zipFile as any).async("string");
+          if (!html || base === "index.html") html = content;
+        } else if (base.endsWith(".css")) {
+          cssFiles.push({ name, content: await (zipFile as any).async("string") });
+        } else if (base.endsWith(".js")) {
+          jsFiles.push({ name, content: await (zipFile as any).async("string") });
+        } else if (/\.(png|jpg|jpeg|gif|svg|webp|ico)$/i.test(base)) {
+          const b64 = await (zipFile as any).async("base64");
+          const mime = base.endsWith(".svg") ? "image/svg+xml"
+            : base.endsWith(".gif") ? "image/gif"
+            : base.endsWith(".webp") ? "image/webp"
+            : base.endsWith(".png") ? "image/png"
+            : "image/jpeg";
+          imageFiles.push({ name, b64, mime });
+        }
       }
+
       if (!html) { toast.error("Aucun fichier HTML trouvé dans le ZIP"); setIsImporting(false); return; }
-      // Merge CSS + JS into HTML
-      if (css) html = html.replace("</head>", `<style>\n${css}\n</style>\n</head>`);
-      if (js) html = html.replace("</body>", `<script>\n${js}\n</script>\n</body>`);
+
+      // Replace image src references with base64 data URIs
+      for (const img of imageFiles) {
+        const filename = img.name.split("/").pop() || img.name;
+        const dataUri = `data:${img.mime};base64,${img.b64}`;
+        html = html.split(filename).join(dataUri);
+      }
+
+      // Remove existing <link rel="stylesheet"> and <script src="..."> tags (we'll inline them)
+      html = html.replace(/<link[^>]+rel=["']stylesheet["'][^>]*>/gi, "");
+      html = html.replace(/<script[^>]+src=["'][^"']+["'][^>]*><\/script>/gi, "");
+
+      // Inline ALL CSS files
+      const allCss = cssFiles.map(f => f.content).join("\n");
+      if (allCss) {
+        if (/<\/head>/i.test(html)) {
+          html = html.replace(/<\/head>/i, `<style>\n${allCss}\n</style>\n</head>`);
+        } else {
+          html = `<style>\n${allCss}\n</style>\n` + html;
+        }
+      }
+
+      // Inline ALL JS files (skip service workers and minified vendor chunks)
+      const allJs = jsFiles
+        .filter(f => !f.name.includes("sw.js") && !f.name.includes("workbox"))
+        .map(f => f.content)
+        .join("\n");
+      if (allJs) {
+        if (/<\/body>/i.test(html)) {
+          html = html.replace(/<\/body>/i, `<script>\n${allJs}\n<\/script>\n</body>`);
+        } else {
+          html = html + `\n<script>\n${allJs}\n<\/script>`;
+        }
+      }
 
       let projectId: number;
       if (atLimit) {

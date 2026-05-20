@@ -150,9 +150,26 @@ export default function ProjectEditor() {
   const buildPreview = useCallback((h: string, c: string, j: string) => {
     if (prevUrlRef.current) URL.revokeObjectURL(prevUrlRef.current);
     const viewportMeta = '<meta name="viewport" content="width=device-width, initial-scale=1">';
-    const full = h
-      ? h.replace(/<head>/i, `<head>${viewportMeta}`).replace(/<\/head>/i, `<style>${c}</style></head>`).replace(/<\/body>/i, `<script>${j}<\/script></body>`)
-      : `<!DOCTYPE html><html><head>${viewportMeta}<meta charset="UTF-8"><style>${c}</style></head><body><script>${j}<\/script></body></html>`;
+    let full: string;
+    // If h is a complete HTML document (imported), use it as-is with minimal additions
+    const isFullDoc = /<!doctype|<html[\s>]/i.test(h);
+    if (isFullDoc) {
+      full = h;
+      // Only add viewport if missing
+      if (!h.includes('name="viewport"') && !h.includes("name='viewport'")) {
+        full = full.replace(/<head>/i, `<head>${viewportMeta}`);
+      }
+      // Only add extra CSS/JS if not already present in the document
+      if (c && !/<style/i.test(h)) full = full.replace(/<\/head>/i, `<style>${c}</style></head>`);
+      if (j && !/<script/i.test(h)) full = full.replace(/<\/body>/i, `<script>${j}<\/script></body>`);
+    } else if (h) {
+      full = h
+        .replace(/<head>/i, `<head>${viewportMeta}`)
+        .replace(/<\/head>/i, `<style>${c}</style></head>`)
+        .replace(/<\/body>/i, `<script>${j}<\/script></body>`);
+    } else {
+      full = `<!DOCTYPE html><html><head>${viewportMeta}<meta charset="UTF-8"><style>${c}</style></head><body><script>${j}<\/script></body></html>`;
+    }
     const blob = new Blob([full], { type: "text/html" });
     const url = URL.createObjectURL(blob);
     prevUrlRef.current = url;
