@@ -11,6 +11,9 @@ import { registerStreamingRoutes } from "../streaming";
 import { registerAuthRoutes } from "./authRoutes";
 import { migrate } from "drizzle-orm/node-postgres/migrator";
 import { getDb } from "../db";
+import { users } from "../../drizzle/schema";
+import { eq } from "drizzle-orm";
+import bcrypt from "bcryptjs";
 
 function isPortAvailable(port: number): Promise<boolean> {
   return new Promise(resolve => {
@@ -52,6 +55,40 @@ async function startServer() {
   app.use(express.urlencoded({ limit: "50mb", extended: true }));
   // Health check for Render
   app.get("/api/health", (_req, res) => res.json({ status: "ok", ts: Date.now() }));
+
+  // One-time admin account creation — protected by JWT_SECRET
+  app.get("/api/admin/init", async (req, res) => {
+    const secret = req.query.secret as string;
+    const jwtSecret = process.env.JWT_SECRET || process.env.COOKIE_SECRET || "";
+    if (!secret || secret !== jwtSecret) {
+      return res.status(401).json({ error: "Invalid secret" });
+    }
+    try {
+      const db = await getDb();
+      if (!db) return res.status(500).json({ error: "DB unavailable" });
+      const existing = await db.select().from(users).where(eq(users.email, "mycab.officiel@gmail.com")).limit(1);
+      if (existing[0]) {
+        await db.update(users)
+          .set({ role: "ultra", plan: "agency", generationsLimit: 9999, passwordHash: await bcrypt.hash("123456789!", 12), onboardingDone: true })
+          .where(eq(users.email, "mycab.officiel@gmail.com"));
+        return res.json({ success: true, action: "updated", email: "mycab.officiel@gmail.com", role: "ultra" });
+      }
+      await db.insert(users).values({
+        openId: `admin-${Date.now()}`,
+        name: "Admin",
+        email: "mycab.officiel@gmail.com",
+        loginMethod: "email",
+        role: "ultra",
+        plan: "agency",
+        generationsLimit: 9999,
+        passwordHash: await bcrypt.hash("123456789!", 12),
+        onboardingDone: true,
+      });
+      return res.json({ success: true, action: "created", email: "mycab.officiel@gmail.com", role: "ultra" });
+    } catch (e: any) {
+      return res.status(500).json({ error: e.message });
+    }
+  });
 
   // Email/password auth routes
   registerAuthRoutes(app);
