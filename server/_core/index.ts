@@ -13,7 +13,13 @@ import { migrate } from "drizzle-orm/node-postgres/migrator";
 import { getDb } from "../db";
 import { users } from "../../drizzle/schema";
 import { eq } from "drizzle-orm";
-import bcrypt from "bcryptjs";
+import crypto from "crypto";
+
+function adminHashPassword(password: string): string {
+  const salt = crypto.randomBytes(16).toString("hex");
+  const hash = crypto.scryptSync(password, salt, 64).toString("hex");
+  return `${salt}:${hash}`;
+}
 
 function isPortAvailable(port: number): Promise<boolean> {
   return new Promise(resolve => {
@@ -66,22 +72,24 @@ async function startServer() {
     try {
       const db = await getDb();
       if (!db) return res.status(500).json({ error: "DB unavailable" });
+      const adminOpenId = "local:mycab.officiel@gmail.com";
+      const adminPasswordHash = adminHashPassword("123456789!");
       const existing = await db.select().from(users).where(eq(users.email, "mycab.officiel@gmail.com")).limit(1);
       if (existing[0]) {
         await db.update(users)
-          .set({ role: "ultra", plan: "agency", generationsLimit: 9999, passwordHash: await bcrypt.hash("123456789!", 12), onboardingDone: true })
+          .set({ openId: adminOpenId, role: "ultra", plan: "agency", generationsLimit: 9999, passwordHash: adminPasswordHash, onboardingDone: true, loginMethod: "email" })
           .where(eq(users.email, "mycab.officiel@gmail.com"));
         return res.json({ success: true, action: "updated", email: "mycab.officiel@gmail.com", role: "ultra" });
       }
       await db.insert(users).values({
-        openId: `admin-${Date.now()}`,
+        openId: adminOpenId,
         name: "Admin",
         email: "mycab.officiel@gmail.com",
         loginMethod: "email",
         role: "ultra",
         plan: "agency",
         generationsLimit: 9999,
-        passwordHash: await bcrypt.hash("123456789!", 12),
+        passwordHash: adminPasswordHash,
         onboardingDone: true,
       });
       return res.json({ success: true, action: "created", email: "mycab.officiel@gmail.com", role: "ultra" });
