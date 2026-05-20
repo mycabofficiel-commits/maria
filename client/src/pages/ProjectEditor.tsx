@@ -270,11 +270,8 @@ export default function ProjectEditor() {
               const evt = JSON.parse(line.slice(6));
               if (evt.text !== undefined) {
                 accJson += evt.text;
-                // Extract reply field progressively (reply comes before code in JSON)
                 const m = accJson.match(/"reply"\s*:\s*"((?:[^"\\]|\\.)*)"/);
-                if (m) {
-                  setStreamingReply(m[1].replace(/\\n/g, "\n").replace(/\\"/g, '"').replace(/\\\\/g, "\\"));
-                }
+                if (m) setStreamingReply(m[1].replace(/\\n/g, "\n").replace(/\\"/g, '"').replace(/\\\\/g, "\\"));
               }
               if (evt.versionId) {
                 setSelectedVersionId(evt.versionId);
@@ -286,6 +283,7 @@ export default function ProjectEditor() {
                 utils.projects.getChatMessages.invalidate({ projectId });
                 utils.projects.getVersions.invalidate({ projectId });
                 utils.projects.get.invalidate({ id: projectId });
+                // If code was modified, update editor immediately
                 if (evt.generatedCode) {
                   setHtmlCode(extractHtml(evt.generatedCode));
                   setCssCode(extractCss(evt.generatedCode));
@@ -300,8 +298,8 @@ export default function ProjectEditor() {
     } catch (err: any) {
       toast.error(err.message);
     } finally {
-      setIsChatPending(false);
       setStreamingReply("");
+      setIsChatPending(false);
     }
   }, [projectId]);
 
@@ -742,7 +740,7 @@ ${jsCode}`;
                       );
                     })
                   )}
-                  {/* Streaming reply bubble — shown while Maria is generating her response */}
+                  {/* Streaming reply — shown while Maria is generating her response */}
                   {streamingReply && (
                     <div className="flex gap-1.5 items-start">
                       <div className="w-5 h-5 rounded-full bg-primary/20 flex items-center justify-center flex-shrink-0 mt-0.5">

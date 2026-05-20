@@ -94,6 +94,7 @@ export const userRouter = router({
     .input(z.object({
       key: z.string().min(10),
       model: z.string().default("claude-sonnet-4-5"),
+      provider: z.string().default("anthropic"),
     }))
     .mutation(async ({ ctx, input }) => {
       const db = await getDb();
@@ -103,7 +104,7 @@ export const userRouter = router({
       const existing = await db.select().from(apiKeys).where(eq(apiKeys.userId, ctx.user.id)).limit(1);
       if (existing[0]) {
         await db.update(apiKeys)
-          .set({ encryptedKey: encrypted, keyHint: hint, model: input.model, status: "untested" })
+          .set({ encryptedKey: encrypted, keyHint: hint, model: input.model, provider: input.provider, status: "untested" })
           .where(eq(apiKeys.userId, ctx.user.id));
       } else {
         await db.insert(apiKeys).values({
@@ -111,6 +112,7 @@ export const userRouter = router({
           encryptedKey: encrypted,
           keyHint: hint,
           model: input.model,
+          provider: input.provider,
           status: "untested",
         });
       }
@@ -138,28 +140,36 @@ export const userRouter = router({
       return { valid: false, status: "invalid", errorMessage: "Clé corrompue, veuillez la re-saisir." };
     }
 
-    // Always use the latest working model for testing
-    const testModel = "claude-sonnet-4-5";
+    const provider = keyRow[0].provider || "anthropic";
 
     try {
-      const response = await fetch("https://api.anthropic.com/v1/messages", {
-        method: "POST",
-        headers: {
-          "x-api-key": decryptedKey,
-          "anthropic-version": "2023-06-01",
-          "content-type": "application/json",
-        },
-        body: JSON.stringify({
-          model: testModel,
-          max_tokens: 10,
-          messages: [{ role: "user", content: "Hi" }],
-        }),
-      });
+      // Provider-specific test endpoints
+      let response: Response;
+      if (provider === "deepseek") {
+        response = await fetch("https://api.deepseek.com/v1/chat/completions", {
+          method: "POST",
+          headers: { "Authorization": `Bearer ${decryptedKey}`, "content-type": "application/json" },
+          body: JSON.stringify({ model: keyRow[0].model || "deepseek-chat", max_tokens: 10, messages: [{ role: "user", content: "Hi" }] }),
+        });
+      } else if (provider === "openai") {
+        response = await fetch("https://api.openai.com/v1/chat/completions", {
+          method: "POST",
+          headers: { "Authorization": `Bearer ${decryptedKey}`, "content-type": "application/json" },
+          body: JSON.stringify({ model: keyRow[0].model || "gpt-4o-mini", max_tokens: 10, messages: [{ role: "user", content: "Hi" }] }),
+        });
+      } else {
+        // Anthropic
+        response = await fetch("https://api.anthropic.com/v1/messages", {
+          method: "POST",
+          headers: { "x-api-key": decryptedKey, "anthropic-version": "2023-06-01", "content-type": "application/json" },
+          body: JSON.stringify({ model: "claude-sonnet-4-5", max_tokens: 10, messages: [{ role: "user", content: "Hi" }] }),
+        });
+      }
 
       if (response.ok) {
         // Also update model to current valid model if it was outdated
         await db.update(apiKeys)
-          .set({ status: "valid", lastTestedAt: new Date(), model: keyRow[0].model === "claude-3-5-sonnet-20241022" || keyRow[0].model === "claude-3-5-haiku-20241022" ? testModel : keyRow[0].model })
+          .set({ status: "valid", lastTestedAt: new Date(), model: keyRow[0].model === "claude-3-5-sonnet-20241022" || keyRow[0].model === "claude-3-5-haiku-20241022" ? "claude-sonnet-4-5" : keyRow[0].model })
           .where(eq(apiKeys.userId, ctx.user.id));
         return { valid: true, status: "valid", errorMessage: null };
       } else {

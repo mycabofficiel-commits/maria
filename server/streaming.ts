@@ -82,14 +82,15 @@ export function registerStreamingRoutes(app: Express) {
 
     // Get API key
     const keyRow = await db.select().from(apiKeys).where(eq(apiKeys.userId, user.id)).limit(1);
-    if (!keyRow[0]) { res.status(400).json({ error: "Aucune clé API Anthropic configurée." }); return; }
+    if (!keyRow[0]) { res.status(400).json({ error: "Aucune clé API configurée." }); return; }
     let apiKey: string;
     try { apiKey = decrypt(keyRow[0].encryptedKey); }
     catch { res.status(400).json({ error: "Clé API invalide." }); return; }
 
+    const provider = keyRow[0].provider || "anthropic";
     const modelToUse = ["claude-3-5-sonnet-20241022", "claude-3-5-haiku-20241022", "claude-3-opus-20240229", "claude-3-5-sonnet-latest", "claude-3-5-haiku-latest"].includes(keyRow[0].model)
       ? "claude-sonnet-4-5"
-      : keyRow[0].model;
+      : (keyRow[0].model || "claude-sonnet-4-5");
 
     const versionCount = await db.select({ count: count() }).from(versions).where(eq(versions.projectId, projectId));
     const versionNumber = (versionCount[0]?.count || 0) + 1;
@@ -140,65 +141,80 @@ Retourne UNIQUEMENT le code HTML complet, sans explication, sans markdown, sans 
     let outputTokens = 0;
 
     try {
-      const anthropicRes = await fetch("https://api.anthropic.com/v1/messages", {
-        method: "POST",
-        headers: {
-          "x-api-key": apiKey,
-          "anthropic-version": "2023-06-01",
-          "anthropic-beta": "prompt-caching-2024-07-31",
-          "content-type": "application/json",
-        },
-        body: JSON.stringify({
-          model: modelToUse,
-          max_tokens: 8000,
-          stream: true,
-          system: [
-            {
-              type: "text",
-              text: systemPrompt,
-              cache_control: { type: "ephemeral" }, // Prompt caching
-            },
-          ],
-          messages: [{ role: "user", content: userMessage }],
-        }),
-      });
-
-      if (!anthropicRes.ok || !anthropicRes.body) {
-        const err = await anthropicRes.text();
-        sseWrite(res, "error", { message: `Erreur API Anthropic: ${err}` });
-        res.end();
-        return;
-      }
-
-      const reader = anthropicRes.body.getReader();
-      const decoder = new TextDecoder();
-      let buffer = "";
-
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        buffer += decoder.decode(value, { stream: true });
-        const lines = buffer.split("\n");
-        buffer = lines.pop() || "";
-
-        for (const line of lines) {
-          if (line.startsWith("data: ")) {
-            const raw = line.slice(6).trim();
-            if (raw === "[DONE]") continue;
+      if (provider === "anthropic") {
+        const aiRes = await fetch("https://api.anthropic.com/v1/messages", {
+          method: "POST",
+          headers: {
+            "x-api-key": apiKey,
+            "anthropic-version": "2023-06-01",
+            "anthropic-beta": "prompt-caching-2024-07-31",
+            "content-type": "application/json",
+          },
+          body: JSON.stringify({
+            model: modelToUse,
+            max_tokens: 8000,
+            stream: true,
+            system: [{ type: "text", text: systemPrompt, cache_control: { type: "ephemeral" } }],
+            messages: [{ role: "user", content: userMessage }],
+          }),
+        });
+        if (!aiRes.ok || !aiRes.body) { sseWrite(res, "error", { message: `Erreur API: ${await aiRes.text()}` }); res.end(); return; }
+        const reader = aiRes.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = "";
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          buffer += decoder.decode(value, { stream: true });
+          const lines = buffer.split("\n"); buffer = lines.pop() || "";
+          for (const line of lines) {
+            if (!line.startsWith("data: ")) continue;
+            const raw = line.slice(6).trim(); if (raw === "[DONE]") continue;
             try {
               const evt = JSON.parse(raw);
-              if (evt.type === "content_block_delta" && evt.delta?.type === "text_delta") {
-                const chunk = evt.delta.text;
-                fullCode += chunk;
-                sseWrite(res, "chunk", { text: chunk });
-              }
-              if (evt.type === "message_delta" && evt.usage) {
-                outputTokens = evt.usage.output_tokens || 0;
-              }
-              if (evt.type === "message_start" && evt.message?.usage) {
-                inputTokens = evt.message.usage.input_tokens || 0;
-              }
-            } catch { /* skip malformed lines */ }
+              if (evt.type === "content_block_delta" && evt.delta?.type === "text_delta") { fullCode += evt.delta.text; sseWrite(res, "chunk", { text: evt.delta.text }); }
+              if (evt.type === "message_delta" && evt.usage) outputTokens = evt.usage.output_tokens || 0;
+              if (evt.type === "message_start" && evt.message?.usage) inputTokens = evt.message.usage.input_tokens || 0;
+            } catch { /* skip */ }
+          }
+        }
+      } else {
+        // OpenAI-compatible providers (DeepSeek, OpenAI, Mistral, Groq…)
+        const baseUrls: Record<string, string> = {
+          deepseek: "https://api.deepseek.com/v1",
+          openai: "https://api.openai.com/v1",
+          mistral: "https://api.mistral.ai/v1",
+          groq: "https://api.groq.com/openai/v1",
+        };
+        const baseUrl = baseUrls[provider] || "https://api.openai.com/v1";
+        const aiRes = await fetch(`${baseUrl}/chat/completions`, {
+          method: "POST",
+          headers: { "Authorization": `Bearer ${apiKey}`, "content-type": "application/json" },
+          body: JSON.stringify({
+            model: modelToUse,
+            max_tokens: 8000,
+            stream: true,
+            messages: [{ role: "system", content: systemPrompt }, { role: "user", content: userMessage }],
+          }),
+        });
+        if (!aiRes.ok || !aiRes.body) { sseWrite(res, "error", { message: `Erreur API ${provider}: ${await aiRes.text()}` }); res.end(); return; }
+        const reader = aiRes.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = "";
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          buffer += decoder.decode(value, { stream: true });
+          const lines = buffer.split("\n"); buffer = lines.pop() || "";
+          for (const line of lines) {
+            if (!line.startsWith("data: ")) continue;
+            const raw = line.slice(6).trim(); if (raw === "[DONE]") continue;
+            try {
+              const evt = JSON.parse(raw);
+              const chunk = evt.choices?.[0]?.delta?.content;
+              if (chunk) { fullCode += chunk; sseWrite(res, "chunk", { text: chunk }); }
+              if (evt.usage) { inputTokens = evt.usage.prompt_tokens || 0; outputTokens = evt.usage.completion_tokens || 0; }
+            } catch { /* skip */ }
           }
         }
       }
@@ -274,12 +290,13 @@ Retourne UNIQUEMENT le code HTML complet, sans explication, sans markdown, sans 
     if (!currentVersion[0]) { res.status(400).json({ error: "Aucune version générée" }); return; }
 
     const keyRow = await db.select().from(apiKeys).where(eq(apiKeys.userId, user.id)).limit(1);
-    if (!keyRow[0]) { res.status(400).json({ error: "Aucune clé API Anthropic configurée" }); return; }
+    if (!keyRow[0]) { res.status(400).json({ error: "Aucune clé API configurée" }); return; }
     const apiKey = decrypt(keyRow[0].encryptedKey);
+    const provider = keyRow[0].provider || "anthropic";
 
     const modelToUse = ["claude-3-5-sonnet-20241022", "claude-3-5-haiku-20241022", "claude-3-opus-20240229", "claude-3-5-sonnet-latest", "claude-3-5-haiku-latest"].includes(keyRow[0].model)
       ? "claude-sonnet-4-5"
-      : keyRow[0].model;
+      : (keyRow[0].model || "claude-sonnet-4-5");
 
     // Save user message
     await db.insert(chatMessages).values({
@@ -358,64 +375,75 @@ ${currentVersion[0].generatedCode || ""}`;
     let outputTokens = 0;
 
     try {
-      const anthropicRes = await fetch("https://api.anthropic.com/v1/messages", {
-        method: "POST",
-        headers: {
-          "x-api-key": apiKey,
-          "anthropic-version": "2023-06-01",
-          "anthropic-beta": "prompt-caching-2024-07-31",
-          "content-type": "application/json",
-        },
-        body: JSON.stringify({
-          model: modelToUse,
-          max_tokens: 16000,
-          stream: true,
-          system: [
-            {
-              type: "text",
-              text: systemPrompt,
-              cache_control: { type: "ephemeral" }, // Prompt caching
-            },
-          ],
-          messages: llmMessages,
-        }),
-      });
-
-      if (!anthropicRes.ok || !anthropicRes.body) {
-        const err = await anthropicRes.text();
-        sseWrite(res, "error", { message: `Erreur API: ${err}` });
-        res.end();
-        return;
-      }
-
-      const reader = anthropicRes.body.getReader();
-      const decoder = new TextDecoder();
-      let buffer = "";
-
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        buffer += decoder.decode(value, { stream: true });
-        const lines = buffer.split("\n");
-        buffer = lines.pop() || "";
-
-        for (const line of lines) {
-          if (line.startsWith("data: ")) {
-            const raw = line.slice(6).trim();
-            if (raw === "[DONE]") continue;
+      if (provider === "anthropic") {
+        const aiRes = await fetch("https://api.anthropic.com/v1/messages", {
+          method: "POST",
+          headers: {
+            "x-api-key": apiKey,
+            "anthropic-version": "2023-06-01",
+            "anthropic-beta": "prompt-caching-2024-07-31",
+            "content-type": "application/json",
+          },
+          body: JSON.stringify({
+            model: modelToUse,
+            max_tokens: 16000,
+            stream: true,
+            system: [{ type: "text", text: systemPrompt, cache_control: { type: "ephemeral" } }],
+            messages: llmMessages,
+          }),
+        });
+        if (!aiRes.ok || !aiRes.body) { sseWrite(res, "error", { message: `Erreur API: ${await aiRes.text()}` }); res.end(); return; }
+        const reader = aiRes.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = "";
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          buffer += decoder.decode(value, { stream: true });
+          const lines = buffer.split("\n"); buffer = lines.pop() || "";
+          for (const line of lines) {
+            if (!line.startsWith("data: ")) continue;
+            const raw = line.slice(6).trim(); if (raw === "[DONE]") continue;
             try {
               const evt = JSON.parse(raw);
-              if (evt.type === "content_block_delta" && evt.delta?.type === "text_delta") {
-                fullRaw += evt.delta.text;
-                // Stream the raw JSON text as it arrives
-                sseWrite(res, "chunk", { text: evt.delta.text });
-              }
-              if (evt.type === "message_delta" && evt.usage) {
-                outputTokens = evt.usage.output_tokens || 0;
-              }
-              if (evt.type === "message_start" && evt.message?.usage) {
-                inputTokens = evt.message.usage.input_tokens || 0;
-              }
+              if (evt.type === "content_block_delta" && evt.delta?.type === "text_delta") { fullRaw += evt.delta.text; sseWrite(res, "chunk", { text: evt.delta.text }); }
+              if (evt.type === "message_delta" && evt.usage) outputTokens = evt.usage.output_tokens || 0;
+              if (evt.type === "message_start" && evt.message?.usage) inputTokens = evt.message.usage.input_tokens || 0;
+            } catch { /* skip */ }
+          }
+        }
+      } else {
+        // OpenAI-compatible providers (DeepSeek, OpenAI, Mistral, Groq…)
+        const baseUrls: Record<string, string> = {
+          deepseek: "https://api.deepseek.com/v1",
+          openai: "https://api.openai.com/v1",
+          mistral: "https://api.mistral.ai/v1",
+          groq: "https://api.groq.com/openai/v1",
+        };
+        const baseUrl = baseUrls[provider] || "https://api.openai.com/v1";
+        const allMessages = [{ role: "system", content: systemPrompt }, ...llmMessages];
+        const aiRes = await fetch(`${baseUrl}/chat/completions`, {
+          method: "POST",
+          headers: { "Authorization": `Bearer ${apiKey}`, "content-type": "application/json" },
+          body: JSON.stringify({ model: modelToUse, max_tokens: 16000, stream: true, messages: allMessages }),
+        });
+        if (!aiRes.ok || !aiRes.body) { sseWrite(res, "error", { message: `Erreur API ${provider}: ${await aiRes.text()}` }); res.end(); return; }
+        const reader = aiRes.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = "";
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          buffer += decoder.decode(value, { stream: true });
+          const lines = buffer.split("\n"); buffer = lines.pop() || "";
+          for (const line of lines) {
+            if (!line.startsWith("data: ")) continue;
+            const raw = line.slice(6).trim(); if (raw === "[DONE]") continue;
+            try {
+              const evt = JSON.parse(raw);
+              const chunk = evt.choices?.[0]?.delta?.content;
+              if (chunk) { fullRaw += chunk; sseWrite(res, "chunk", { text: chunk }); }
+              if (evt.usage) { inputTokens = evt.usage.prompt_tokens || 0; outputTokens = evt.usage.completion_tokens || 0; }
             } catch { /* skip */ }
           }
         }
