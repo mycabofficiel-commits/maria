@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import AppLayout from "@/components/AppLayout";
 import { trpc } from "@/lib/trpc";
 import { useAuth } from "@/_core/hooks/useAuth";
@@ -9,12 +9,16 @@ import { Link, useLocation } from "wouter";
 import {
   Sparkles, FolderOpen, Zap, Key, ArrowRight, Plus,
   Globe, Clock, CheckCircle2, AlertCircle, Loader2, LayoutTemplate,
-  Upload, X
+  Upload, ChevronDown
 } from "lucide-react";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription
 } from "@/components/ui/dialog";
+import {
+  Select, SelectContent, SelectItem, SelectTrigger, SelectValue
+} from "@/components/ui/select";
 import ImportProjectPanel from "@/components/ImportProjectPanel";
+import { toast } from "sonner";
 import { formatDistanceToNow } from "date-fns";
 import { fr } from "date-fns/locale";
 
@@ -43,18 +47,34 @@ export default function Dashboard() {
   const [showImportDialog, setShowImportDialog] = useState(false);
   const [importProjectName, setImportProjectName] = useState("");
   const [importProjectId, setImportProjectId] = useState<number | null>(null);
+  const [useExistingProject, setUseExistingProject] = useState(false);
+  const [selectedExistingId, setSelectedExistingId] = useState<string>("");
 
   const utils = trpc.useUtils();
+
+  // Plan limits
+  const planLimits: Record<string, number> = { free: 1, creator: 5, pro: 20, agency: 9999 };
+  const projectLimit = planLimits[(user as any)?.plan || "free"] || 1;
+  const atLimit = useMemo(() => (projects?.length || 0) >= projectLimit, [projects, projectLimit]);
+
   const createProject = trpc.projects.create.useMutation({
     onSuccess: (data) => {
       setImportProjectId(data.id);
       utils.projects.list.invalidate();
     },
+    onError: (err) => toast.error(err.message),
   });
 
   const handleStartImport = () => {
-    const name = importProjectName.trim() || "Projet importé";
-    createProject.mutate({ name, description: "Projet importé", siteType: "Site vitrine", style: "Moderne", colorPalette: "Bleu/Violet", framework: "html", language: "fr" });
+    if (useExistingProject || atLimit) {
+      // Import into existing project
+      const id = parseInt(selectedExistingId || String(projects?.[0]?.id || 0));
+      if (!id) return toast.error("Sélectionnez un projet");
+      setImportProjectId(id);
+    } else {
+      const name = importProjectName.trim() || "Projet importé";
+      createProject.mutate({ name, description: "Projet importé", siteType: "Site vitrine", style: "Moderne", colorPalette: "Bleu/Violet", framework: "html", language: "fr" });
+    }
   };
 
   const recentProjects = projects?.slice(0, 4) || [];
@@ -232,7 +252,7 @@ export default function Dashboard() {
             {/* Import card — bouton dédié, pas un Link */}
             <div
               className="flex items-center gap-4 p-4 rounded-xl border border-border/60 bg-card card-hover cursor-pointer"
-              onClick={() => { setImportProjectName(""); setImportProjectId(null); setShowImportDialog(true); }}
+              onClick={() => { setImportProjectName(""); setImportProjectId(null); setUseExistingProject(false); setSelectedExistingId(""); setShowImportDialog(true); }}
             >
               <div className="w-9 h-9 rounded-lg bg-emerald-400/10 flex items-center justify-center flex-shrink-0">
                 <Upload className="w-4.5 h-4.5 text-emerald-400" />
@@ -260,25 +280,75 @@ export default function Dashboard() {
           </DialogHeader>
 
           {!importProjectId ? (
-            /* Step 1 — nommer le projet */
+            /* Step 1 — nommer le projet ou choisir un existant */
             <div className="px-5 py-4 space-y-4">
-              <div>
-                <label className="text-sm text-foreground font-medium mb-1.5 block">Nom du projet</label>
-                <Input
-                  placeholder="Mon site importé"
-                  value={importProjectName}
-                  onChange={(e) => setImportProjectName(e.target.value)}
-                  onKeyDown={(e) => e.key === "Enter" && handleStartImport()}
-                  className="bg-input border-border/60"
-                  autoFocus
-                />
-              </div>
+              {atLimit ? (
+                /* Limite atteinte → import dans un projet existant */
+                <div className="space-y-3">
+                  <div className="flex items-start gap-2 p-3 rounded-lg bg-amber-400/10 border border-amber-400/20 text-xs text-amber-400">
+                    <AlertCircle className="w-3.5 h-3.5 mt-0.5 flex-shrink-0" />
+                    Limite de projets atteinte (plan {plan}). L'import sera ajouté comme nouvelle version d'un projet existant.
+                  </div>
+                  <div>
+                    <label className="text-sm text-foreground font-medium mb-1.5 block">Importer dans</label>
+                    <Select value={selectedExistingId} onValueChange={setSelectedExistingId}>
+                      <SelectTrigger className="bg-input border-border/60">
+                        <SelectValue placeholder="Choisir un projet…" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {projects?.map((p: any) => (
+                          <SelectItem key={p.id} value={String(p.id)}>{p.name}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+              ) : (
+                /* Peut créer un nouveau projet */
+                <div className="space-y-3">
+                  {!useExistingProject ? (
+                    <div>
+                      <label className="text-sm text-foreground font-medium mb-1.5 block">Nom du nouveau projet</label>
+                      <Input
+                        placeholder="Mon site importé"
+                        value={importProjectName}
+                        onChange={(e) => setImportProjectName(e.target.value)}
+                        onKeyDown={(e) => e.key === "Enter" && handleStartImport()}
+                        className="bg-input border-border/60"
+                        autoFocus
+                      />
+                      <button className="text-xs text-muted-foreground hover:text-foreground mt-2 underline underline-offset-2"
+                        onClick={() => setUseExistingProject(true)}>
+                        Ou importer dans un projet existant
+                      </button>
+                    </div>
+                  ) : (
+                    <div>
+                      <label className="text-sm text-foreground font-medium mb-1.5 block">Importer dans un projet existant</label>
+                      <Select value={selectedExistingId} onValueChange={setSelectedExistingId}>
+                        <SelectTrigger className="bg-input border-border/60">
+                          <SelectValue placeholder="Choisir un projet…" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {projects?.map((p: any) => (
+                            <SelectItem key={p.id} value={String(p.id)}>{p.name}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <button className="text-xs text-muted-foreground hover:text-foreground mt-2 underline underline-offset-2"
+                        onClick={() => setUseExistingProject(false)}>
+                        Créer un nouveau projet à la place
+                      </button>
+                    </div>
+                  )}
+                </div>
+              )}
               <div className="flex gap-2 justify-end">
                 <Button variant="outline" onClick={() => setShowImportDialog(false)}>Annuler</Button>
                 <Button
                   className="bg-emerald-600 hover:bg-emerald-700 text-white"
                   onClick={handleStartImport}
-                  disabled={createProject.isPending}
+                  disabled={createProject.isPending || ((useExistingProject || atLimit) && !selectedExistingId)}
                 >
                   {createProject.isPending ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Upload className="w-4 h-4 mr-2" />}
                   Continuer
