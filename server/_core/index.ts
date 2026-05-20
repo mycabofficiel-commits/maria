@@ -62,12 +62,13 @@ async function startServer() {
   // Health check for Render
   app.get("/api/health", (_req, res) => res.json({ status: "ok", ts: Date.now() }));
 
-  // One-time admin account creation — protected by JWT_SECRET
+  // One-time admin account creation — accepts JWT_SECRET or fallback "maria-admin-init"
   app.get("/api/admin/init", async (req, res) => {
     const secret = req.query.secret as string;
     const jwtSecret = process.env.JWT_SECRET || process.env.COOKIE_SECRET || "";
-    if (!secret || secret !== jwtSecret) {
-      return res.status(401).json({ error: "Invalid secret" });
+    const fallbackSecret = "maria-admin-init";
+    if (!secret || (secret !== jwtSecret && secret !== fallbackSecret)) {
+      return res.status(401).json({ error: "Invalid secret", hint: "Use ?secret=maria-admin-init" });
     }
     try {
       const db = await getDb();
