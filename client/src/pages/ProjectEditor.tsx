@@ -99,6 +99,16 @@ export default function ProjectEditor() {
   const [streamingReply, setStreamingReply] = useState("");
   const [editorCollapsed, setEditorCollapsed] = useState(false);
 
+  /* visual edit state */
+  const [veSelection, setVeSelection] = useState<null | {
+    tag: string; isText: boolean; isImage: boolean; isBlock: boolean;
+    rect: { top: number; left: number; width: number; height: number };
+    color: string; backgroundColor: string; fontSize: string; fontWeight: string; textAlign: string;
+  }>(null);
+  const veOriginalHtmlRef = useRef<string>("");
+  const [veDirty, setVeDirty] = useState(false);
+  const imageUploadRef = useRef<HTMLInputElement>(null);
+
   /* code state (editable) */
   const [htmlCode, setHtmlCode] = useState("");
   const [cssCode, setCssCode] = useState("");
@@ -344,6 +354,10 @@ export default function ProjectEditor() {
     onError: (err: any) => toast.error(err.message),
   });
 
+  const sendToIframe = useCallback((msg: object) => {
+    previewRef.current?.contentWindow?.postMessage(msg, "*");
+  }, []);
+
   const deployProject = trpc.deploy.deploy.useMutation({
     onSuccess: (data) => {
       toast.success("Site déployé en ligne !", { duration: 6000,
@@ -378,12 +392,33 @@ export default function ProjectEditor() {
     return () => window.removeEventListener("message", handler);
   }, [codeTab, htmlCode, cssCode, jsCode]);
 
-  /* visual edit: listen for HTML updates from iframe */
+  /* visual edit: listen for messages from iframe */
   useEffect(() => {
     const handler = (e: MessageEvent) => {
       if (e.data?.type === "VISUAL_EDIT_UPDATE" && e.data.html) {
         const updatedHtml = e.data.html as string;
         setHtmlCode(extractHtml(updatedHtml) || updatedHtml);
+      }
+      if (e.data?.type === "VE_SELECT") {
+        setVeSelection({
+          tag: e.data.tag,
+          isText: e.data.isText,
+          isImage: e.data.isImage,
+          isBlock: e.data.isBlock,
+          rect: e.data.rect,
+          color: e.data.computedStyle?.color || "",
+          backgroundColor: e.data.computedStyle?.backgroundColor || "",
+          fontSize: e.data.computedStyle?.fontSize || "",
+          fontWeight: e.data.computedStyle?.fontWeight || "",
+          textAlign: e.data.computedStyle?.textAlign || "",
+        });
+      }
+      if (e.data?.type === "VE_HTML_UPDATE") {
+        setHtmlCode(e.data.html);
+        setVeDirty(true);
+      }
+      if (e.data?.type === "VE_DESELECT") {
+        setVeSelection(null);
       }
     };
     window.addEventListener("message", handler);
@@ -392,22 +427,112 @@ export default function ProjectEditor() {
 
   const VISUAL_EDIT_SCRIPT = `<script>
 (function(){
+  var selectedEl=null;
+  var debTimer=null;
+
+  /* styles */
   var s=document.createElement('style');
-  s.textContent='[data-ve]:hover{outline:2px dashed rgba(99,102,241,.6)!important;cursor:text!important}[data-ve]:focus{outline:2px solid rgb(99,102,241)!important;background:rgba(99,102,241,.04)!important}';
+  s.textContent='*[data-ve-hover]{outline:2px dashed rgba(99,102,241,0.5)!important;cursor:pointer!important}*[data-ve-selected]{outline:2px solid #6366f1!important}';
   document.head.appendChild(s);
-  var tags=['h1','h2','h3','h4','h5','h6','p','span','a','li','button','label','strong','em','b','i'];
-  document.querySelectorAll(tags.join(',')).forEach(function(el){
-    if(!el.querySelector('img')&&el.textContent.trim()){
-      el.contentEditable='true';
-      el.setAttribute('data-ve','1');
+
+  function getComputedProps(el){
+    var cs=window.getComputedStyle(el);
+    return {color:cs.color,backgroundColor:cs.backgroundColor,fontSize:cs.fontSize,fontWeight:cs.fontWeight,textAlign:cs.textAlign};
+  }
+
+  function selectEl(el){
+    if(selectedEl){selectedEl.removeAttribute('data-ve-selected');selectedEl.contentEditable='false';}
+    selectedEl=el;
+    el.setAttribute('data-ve-selected','1');
+    var r=el.getBoundingClientRect();
+    var isText=['H1','H2','H3','H4','H5','H6','P','SPAN','A','LI','BUTTON','LABEL','STRONG','EM','B','I','TD','TH','DIV'].indexOf(el.tagName)>=0;
+    var isImage=el.tagName==='IMG';
+    var isBlock=['DIV','SECTION','ARTICLE','HEADER','FOOTER','MAIN','ASIDE','NAV','FIGURE'].indexOf(el.tagName)>=0;
+    window.parent.postMessage({
+      type:'VE_SELECT',
+      tag:el.tagName,
+      isText:isText,
+      isImage:isImage,
+      isBlock:isBlock,
+      rect:{top:r.top+window.scrollY,left:r.left+window.scrollX,width:r.width,height:r.height},
+      computedStyle:getComputedProps(el)
+    },'*');
+  }
+
+  /* hover */
+  document.addEventListener('mouseover',function(e){
+    if(e.target&&e.target!==document.body&&e.target!==document.documentElement){
+      e.target.setAttribute('data-ve-hover','1');
     }
-  });
-  var timer;
+  },true);
+  document.addEventListener('mouseout',function(e){
+    if(e.target){e.target.removeAttribute('data-ve-hover');}
+  },true);
+
+  /* single click → select */
+  document.addEventListener('click',function(e){
+    e.preventDefault();
+    e.stopPropagation();
+    selectEl(e.target);
+  },true);
+
+  /* double click on text → contentEditable */
+  document.addEventListener('dblclick',function(e){
+    var el=e.target;
+    var textTags=['H1','H2','H3','H4','H5','H6','P','SPAN','A','LI','BUTTON','LABEL','STRONG','EM','B','I','TD','TH'];
+    if(textTags.indexOf(el.tagName)>=0){
+      e.preventDefault();
+      e.stopPropagation();
+      el.contentEditable='true';
+      el.focus();
+      var range=document.createRange();
+      range.selectNodeContents(el);
+      var sel=window.getSelection();
+      sel.removeAllRanges();
+      sel.addRange(range);
+    }
+  },true);
+
+  /* debounced HTML update on any input */
   document.addEventListener('input',function(){
-    clearTimeout(timer);
-    timer=setTimeout(function(){
-      window.parent.postMessage({type:'VISUAL_EDIT_UPDATE',html:document.documentElement.outerHTML},'*');
+    clearTimeout(debTimer);
+    debTimer=setTimeout(function(){
+      window.parent.postMessage({type:'VE_HTML_UPDATE',html:document.documentElement.outerHTML},'*');
     },300);
+  });
+
+  /* scroll → deselect */
+  window.addEventListener('scroll',function(){
+    window.parent.postMessage({type:'VE_DESELECT'},'*');
+  });
+
+  /* listen for commands from parent */
+  window.addEventListener('message',function(e){
+    if(!e.data||!e.data.type)return;
+    if(e.data.type==='VE_STYLE'&&selectedEl){
+      selectedEl.style[e.data.prop]=e.data.value;
+      clearTimeout(debTimer);
+      debTimer=setTimeout(function(){
+        window.parent.postMessage({type:'VE_HTML_UPDATE',html:document.documentElement.outerHTML},'*');
+      },300);
+    }
+    if(e.data.type==='VE_TEXT'&&selectedEl){
+      selectedEl.innerText=e.data.value;
+      clearTimeout(debTimer);
+      debTimer=setTimeout(function(){
+        window.parent.postMessage({type:'VE_HTML_UPDATE',html:document.documentElement.outerHTML},'*');
+      },300);
+    }
+    if(e.data.type==='VE_IMG_SRC'&&selectedEl&&selectedEl.tagName==='IMG'){
+      selectedEl.src=e.data.value;
+      clearTimeout(debTimer);
+      debTimer=setTimeout(function(){
+        window.parent.postMessage({type:'VE_HTML_UPDATE',html:document.documentElement.outerHTML},'*');
+      },300);
+    }
+    if(e.data.type==='VE_GET_HTML'){
+      window.parent.postMessage({type:'VE_HTML',html:document.documentElement.outerHTML},'*');
+    }
   });
 })();
 <\/script>`;
@@ -471,7 +596,24 @@ export default function ProjectEditor() {
             {hasCode && (
               <Button size="sm" variant={visualEditMode ? "default" : "outline"}
                 className={`text-xs h-8 px-2 sm:px-3 ${visualEditMode ? "bg-violet-600 hover:bg-violet-700 text-white border-0" : "border-border/60"}`}
-                onClick={() => { setVisualEditMode(v => !v); setInspectMode(false); }}>
+                onClick={() => {
+                  setVisualEditMode(v => {
+                    const next = !v;
+                    if (next) {
+                      // Entering visual edit mode — save original HTML
+                      veOriginalHtmlRef.current = htmlCode;
+                    } else {
+                      // Exiting without saving — restore original
+                      if (veDirty) {
+                        setHtmlCode(veOriginalHtmlRef.current);
+                        setVeDirty(false);
+                      }
+                      setVeSelection(null);
+                    }
+                    return next;
+                  });
+                  setInspectMode(false);
+                }}>
                 <PencilRuler className="w-3.5 h-3.5 sm:mr-1.5" />
                 <span className="hidden sm:inline">Éditeur Visuel</span>
               </Button>
@@ -960,9 +1102,113 @@ ${jsCode}`;
                   {visualEditMode && (
                     <div className="absolute top-0 left-0 right-0 z-10 bg-violet-600/90 text-white text-[10px] text-center py-1 flex items-center justify-center gap-1.5">
                       <PencilRuler className="w-3 h-3" />
-                      Mode édition visuelle — Cliquez sur un texte pour le modifier directement
+                      Mode édition visuelle — Cliquez sur un élément pour le modifier
                     </div>
                   )}
+
+                  {visualEditMode && (
+                    <div className="absolute top-8 left-0 right-0 z-20 flex flex-col gap-1 px-2 pointer-events-none">
+                      {/* Main toolbar */}
+                      <div className="flex items-center gap-1 bg-[#1e1e2e]/95 backdrop-blur border border-white/10 rounded-lg px-2 py-1.5 shadow-xl pointer-events-auto flex-wrap">
+
+                        {/* Text controls — shown if text element selected */}
+                        {veSelection?.isText && <>
+                          <button title="Gras" onClick={() => sendToIframe({ type: 'VE_STYLE', prop: 'fontWeight', value: veSelection.fontWeight === 'bold' || veSelection.fontWeight === '700' ? 'normal' : 'bold' })} className="w-7 h-7 rounded hover:bg-white/10 flex items-center justify-center text-white text-xs font-bold">B</button>
+                          <button title="Italique" onClick={() => sendToIframe({ type: 'VE_STYLE', prop: 'fontStyle', value: 'italic' })} className="w-7 h-7 rounded hover:bg-white/10 flex items-center justify-center text-white text-xs italic">I</button>
+                          {/* Font size */}
+                          <input type="number" min="8" max="120" defaultValue={parseInt(veSelection.fontSize) || 16}
+                            key={`fs-${veSelection.tag}-${veSelection.rect.top}`}
+                            className="w-14 h-7 bg-white/10 border border-white/20 rounded px-1 text-white text-xs text-center"
+                            onChange={e => sendToIframe({ type: 'VE_STYLE', prop: 'fontSize', value: e.target.value + 'px' })} />
+                          {/* Alignment */}
+                          {(['left', 'center', 'right'] as const).map(align => (
+                            <button key={align} title={`Aligner ${align}`} onClick={() => sendToIframe({ type: 'VE_STYLE', prop: 'textAlign', value: align })}
+                              className={`w-7 h-7 rounded flex items-center justify-center text-xs ${veSelection.textAlign === align ? 'bg-primary/40 text-primary' : 'hover:bg-white/10 text-white/70'}`}>
+                              {align === 'left' ? '⬅' : align === 'center' ? '⬛' : '➡'}
+                            </button>
+                          ))}
+                          <div className="w-px h-5 bg-white/20" />
+                          {/* Text color */}
+                          <label title="Couleur du texte" className="flex items-center gap-1 cursor-pointer">
+                            <span className="text-[10px] text-white/60">A</span>
+                            <input type="color" className="w-5 h-5 rounded cursor-pointer border-0 bg-transparent"
+                              defaultValue="#ffffff"
+                              onChange={e => sendToIframe({ type: 'VE_STYLE', prop: 'color', value: e.target.value })} />
+                          </label>
+                        </>}
+
+                        {/* Background color — for any selected element */}
+                        {veSelection && <>
+                          <label title="Couleur de fond" className="flex items-center gap-1 cursor-pointer">
+                            <span className="text-[10px] text-white/60">BG</span>
+                            <input type="color" className="w-5 h-5 rounded cursor-pointer border-0 bg-transparent"
+                              defaultValue="#ffffff"
+                              onChange={e => sendToIframe({ type: 'VE_STYLE', prop: 'backgroundColor', value: e.target.value })} />
+                          </label>
+                          <div className="w-px h-5 bg-white/20" />
+                          {/* Width */}
+                          <label className="flex items-center gap-1">
+                            <span className="text-[10px] text-white/60">W</span>
+                            <input type="text" placeholder="auto" className="w-16 h-7 bg-white/10 border border-white/20 rounded px-1 text-white text-xs"
+                              onBlur={e => { if (e.target.value) sendToIframe({ type: 'VE_STYLE', prop: 'width', value: e.target.value }); }} />
+                          </label>
+                          {/* Padding */}
+                          <label className="flex items-center gap-1">
+                            <span className="text-[10px] text-white/60">P</span>
+                            <input type="text" placeholder="0px" className="w-16 h-7 bg-white/10 border border-white/20 rounded px-1 text-white text-xs"
+                              onBlur={e => { if (e.target.value) sendToIframe({ type: 'VE_STYLE', prop: 'padding', value: e.target.value }); }} />
+                          </label>
+                        </>}
+
+                        {/* Image replace */}
+                        {veSelection?.isImage && <>
+                          <div className="w-px h-5 bg-white/20" />
+                          <button onClick={() => imageUploadRef.current?.click()} className="flex items-center gap-1 h-7 px-2 rounded bg-violet-600/80 hover:bg-violet-600 text-white text-xs">
+                            🖼 Remplacer
+                          </button>
+                        </>}
+
+                        {/* Element indicator */}
+                        <div className="ml-auto text-[10px] text-white/40 px-1">{veSelection ? `<${veSelection.tag.toLowerCase()}>` : 'Cliquez un élément'}</div>
+                      </div>
+
+                      {/* Save / Cancel bar */}
+                      {veDirty && (
+                        <div className="flex items-center gap-2 bg-emerald-900/90 backdrop-blur border border-emerald-500/30 rounded-lg px-3 py-1.5 shadow-xl pointer-events-auto">
+                          <span className="text-xs text-emerald-300 flex-1">Modifications non sauvegardées</span>
+                          <button onClick={() => {
+                            setVisualEditMode(false);
+                            setHtmlCode(veOriginalHtmlRef.current);
+                            setVeDirty(false);
+                            setVeSelection(null);
+                          }} className="text-xs text-white/60 hover:text-white px-2 py-1 rounded hover:bg-white/10">
+                            Annuler
+                          </button>
+                          <button onClick={() => {
+                            const vId = selectedVersionId || project?.currentVersionId;
+                            if (vId) updateCode.mutate({ versionId: vId, code: htmlCode });
+                            setVeDirty(false);
+                            setVisualEditMode(false);
+                            setVeSelection(null);
+                            toast.success("Modifications sauvegardées !");
+                          }} className="text-xs bg-emerald-600 hover:bg-emerald-500 text-white px-3 py-1 rounded font-medium">
+                            💾 Sauvegarder
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Hidden image upload input */}
+                  <input ref={imageUploadRef} type="file" accept="image/*" className="hidden"
+                    onChange={e => {
+                      const file = e.target.files?.[0];
+                      if (!file) return;
+                      const reader = new FileReader();
+                      reader.onload = ev => sendToIframe({ type: 'VE_IMG_SRC', value: ev.target?.result as string });
+                      reader.readAsDataURL(file);
+                    }} />
+
                   <iframe
                     ref={previewRef}
                     src={(inspectMode || visualEditMode) ? getPreviewSrc() : previewSrc || "about:blank"}
