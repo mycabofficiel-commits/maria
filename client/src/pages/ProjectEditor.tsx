@@ -16,7 +16,7 @@ import AppLayout from "@/components/AppLayout";
 import {
   Sparkles, Send, Eye, Code2, History, Smartphone, Tablet, Monitor,
   Loader2, ArrowLeft, Globe, RotateCcw, Save, CheckCircle2, MessageSquare,
-  Rocket, Share2, Tag, MousePointer2, Copy, Check
+  Rocket, Share2, Tag, MousePointer2, Copy, Check, PencilRuler, Upload
 } from "lucide-react";
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
@@ -27,6 +27,7 @@ import { formatDistanceToNow } from "date-fns";
 import { fr } from "date-fns/locale";
 import { Streamdown } from "streamdown";
 import DeployPanel from "@/components/DeployPanel";
+import ImportProjectPanel from "@/components/ImportProjectPanel";
 
 /* ── helpers ─────────────────────────────────────────────── */
 const SITE_TYPES = ["Landing page", "Site vitrine", "Portfolio", "Restaurant", "Artisan", "Agence", "SaaS", "E-commerce simple"];
@@ -85,6 +86,8 @@ export default function ProjectEditor() {
   const [codeTab, setCodeTab] = useState<CodeTab>("html");
   const [inspectMode, setInspectMode] = useState(false);
   const [highlightLine, setHighlightLine] = useState<number | null>(null);
+  const [visualEditMode, setVisualEditMode] = useState(false);
+  const [showImport, setShowImport] = useState(false);
   /* sidebar tab (mobile) */
   const [sideTab, setSideTab] = useState<"versions" | "deploy">("versions");
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -350,14 +353,53 @@ export default function ProjectEditor() {
     return () => window.removeEventListener("message", handler);
   }, [codeTab, htmlCode, cssCode, jsCode]);
 
-  /* inject inspect script into preview when inspect mode is on */
+  /* visual edit: listen for HTML updates from iframe */
+  useEffect(() => {
+    const handler = (e: MessageEvent) => {
+      if (e.data?.type === "VISUAL_EDIT_UPDATE" && e.data.html) {
+        const updatedHtml = e.data.html as string;
+        setHtmlCode(extractHtml(updatedHtml) || updatedHtml);
+      }
+    };
+    window.addEventListener("message", handler);
+    return () => window.removeEventListener("message", handler);
+  }, []);
+
+  const VISUAL_EDIT_SCRIPT = `<script>
+(function(){
+  var s=document.createElement('style');
+  s.textContent='[data-ve]:hover{outline:2px dashed rgba(99,102,241,.6)!important;cursor:text!important}[data-ve]:focus{outline:2px solid rgb(99,102,241)!important;background:rgba(99,102,241,.04)!important}';
+  document.head.appendChild(s);
+  var tags=['h1','h2','h3','h4','h5','h6','p','span','a','li','button','label','strong','em','b','i'];
+  document.querySelectorAll(tags.join(',')).forEach(function(el){
+    if(!el.querySelector('img')&&el.textContent.trim()){
+      el.contentEditable='true';
+      el.setAttribute('data-ve','1');
+    }
+  });
+  var timer;
+  document.addEventListener('input',function(){
+    clearTimeout(timer);
+    timer=setTimeout(function(){
+      window.parent.postMessage({type:'VISUAL_EDIT_UPDATE',html:document.documentElement.outerHTML},'*');
+    },300);
+  });
+})();
+<\/script>`;
+
+  /* inject inspect/visual-edit script into preview */
   const getPreviewSrc = () => {
-    if (!inspectMode) return previewSrc;
-    // inject a tiny script that posts clicked element tag to parent
-    const script = `<script>document.addEventListener('click',function(e){e.preventDefault();e.stopPropagation();window.parent.postMessage({type:'INSPECT_ELEMENT',tag:e.target.tagName,id:e.target.id,cls:e.target.className},'*');},true);<\/script>`;
+    if (!inspectMode && !visualEditMode) return previewSrc;
     const code = currentVersionData?.generatedCode || "";
     if (!code) return previewSrc;
-    const injected = code.replace(/<\/body>/i, `${script}</body>`);
+    let injected = code;
+    if (inspectMode) {
+      const script = `<script>document.addEventListener('click',function(e){e.preventDefault();e.stopPropagation();window.parent.postMessage({type:'INSPECT_ELEMENT',tag:e.target.tagName,id:e.target.id,cls:e.target.className},'*');},true);<\/script>`;
+      injected = injected.replace(/<\/body>/i, `${script}</body>`);
+    }
+    if (visualEditMode) {
+      injected = injected.replace(/<\/body>/i, `${VISUAL_EDIT_SCRIPT}</body>`);
+    }
     if (prevUrlRef.current) URL.revokeObjectURL(prevUrlRef.current);
     const blob = new Blob([injected], { type: "text/html" });
     const url = URL.createObjectURL(blob);
@@ -401,6 +443,14 @@ export default function ProjectEditor() {
             </div>
           </div>
           <div className="flex items-center gap-1.5 flex-shrink-0">
+            {hasCode && (
+              <Button size="sm" variant={visualEditMode ? "default" : "outline"}
+                className={`text-xs h-8 px-2 sm:px-3 ${visualEditMode ? "bg-violet-600 hover:bg-violet-700 text-white border-0" : "border-border/60"}`}
+                onClick={() => { setVisualEditMode(v => !v); setInspectMode(false); }}>
+                <PencilRuler className="w-3.5 h-3.5 sm:mr-1.5" />
+                <span className="hidden sm:inline">Éditeur Visuel</span>
+              </Button>
+            )}
             {hasCode && !project?.isPublished && (
               <Button size="sm" variant="outline" className="border-border/60 text-xs h-8 px-2 sm:px-3"
                 onClick={() => publishProject.mutate({ projectId })} disabled={publishProject.isPending}>
@@ -646,11 +696,39 @@ ${jsCode}`;
                       <Rocket className="w-3 h-3" />
                       Deploy
                     </Button>
+                    <Button
+                      variant={showImport ? "secondary" : "ghost"}
+                      size="sm"
+                      className="h-6 px-2 text-[10px] gap-1"
+                      onClick={() => setShowImport(v => !v)}
+                    >
+                      <Upload className="w-3 h-3" />
+                      Import
+                    </Button>
                     <Link href={`/projects/${projectId}/share`}>
                       <Button variant="ghost" size="icon" className="w-6 h-6"><Share2 className="w-3 h-3" /></Button>
                     </Link>
                   </div>
                 </div>
+
+                {/* Import panel */}
+                {showImport && (
+                  <div className="border-b border-border/40 bg-muted/20 overflow-y-auto" style={{ maxHeight: '50%' }}>
+                    <div className="flex items-center justify-between px-3 py-1.5 border-b border-border/30">
+                      <span className="text-[10px] font-medium text-muted-foreground">Importer un projet</span>
+                      <button onClick={() => setShowImport(false)} className="text-[10px] text-muted-foreground hover:text-foreground">✕</button>
+                    </div>
+                    <ImportProjectPanel
+                      projectId={projectId}
+                      onImportSuccess={(versionId) => {
+                        setSelectedVersionId(versionId);
+                        setShowImport(false);
+                        utils.projects.getVersions.invalidate({ projectId });
+                        utils.projects.get.invalidate({ id: projectId });
+                      }}
+                    />
+                  </div>
+                )}
 
                 {/* Deploy panel (inline, togglable) */}
                 {sidebarOpen && sideTab === "deploy" && (
@@ -820,11 +898,17 @@ ${jsCode}`;
               </div>
               {/* iframe preview — pleine hauteur */}
               <div className="flex-1 flex items-start justify-center p-3 bg-muted/20 overflow-hidden">
-                <div className="h-full overflow-hidden rounded-lg border border-border/60 shadow-xl transition-all duration-300 bg-white"
+                <div className="h-full overflow-hidden rounded-lg border border-border/60 shadow-xl transition-all duration-300 bg-white relative"
                   style={{ width: VIEW_SIZES[viewMode], maxWidth: "100%" }}>
+                  {visualEditMode && (
+                    <div className="absolute top-0 left-0 right-0 z-10 bg-violet-600/90 text-white text-[10px] text-center py-1 flex items-center justify-center gap-1.5">
+                      <PencilRuler className="w-3 h-3" />
+                      Mode édition visuelle — Cliquez sur un texte pour le modifier directement
+                    </div>
+                  )}
                   <iframe
                     ref={previewRef}
-                    src={inspectMode ? getPreviewSrc() : previewSrc || "about:blank"}
+                    src={(inspectMode || visualEditMode) ? getPreviewSrc() : previewSrc || "about:blank"}
                     className="w-full h-full border-0"
                     title="Preview"
                     sandbox="allow-scripts allow-same-origin"
