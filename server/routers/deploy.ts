@@ -4,9 +4,12 @@ import { protectedProcedure, router } from "../_core/trpc";
 import { getDb } from "../db";
 import { projects, versions } from "../../drizzle/schema";
 import { eq, and, desc } from "drizzle-orm";
-import { storagePut } from "../storage";
 import JSZip from "jszip";
 import crypto from "crypto";
+
+function getAppBaseUrl(): string {
+  return process.env.APP_BASE_URL || process.env.RENDER_EXTERNAL_URL || "http://localhost:3000";
+}
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -134,7 +137,7 @@ export const deployRouter = router({
       return { versionId, versionNumber: nextVersionNumber };
     }),
 
-  // ── Deploy to S3 (public URL) ─────────────────────────────────────────────
+  // ── Deploy (DB-hosted, served via /p/:slug) ───────────────────────────────
   deploy: protectedProcedure
     .input(z.object({
       projectId: z.number(),
@@ -158,29 +161,10 @@ export const deployRouter = router({
       if (!version[0]?.generatedCode) throw new TRPCError({ code: "NOT_FOUND", message: "Version introuvable" });
 
       const slug = project[0].slug || `project-${input.projectId}`;
+      const baseUrl = getAppBaseUrl().replace(/\/$/, "");
+      const deployedUrl = `${baseUrl}/p/${slug}`;
 
-      // Upload index.html to S3 with a stable key (overwrite on redeploy)
-      const htmlKey = `sites/${ctx.user.id}/${slug}/index.html`;
-      const { url: deployedUrl } = await storagePut(
-        htmlKey,
-        version[0].generatedCode,
-        "text/html; charset=utf-8"
-      );
-
-      // Also upload split files for reference
-      const files = splitHtmlIntoFiles(version[0].generatedCode);
-      await Promise.all(
-        Object.entries(files)
-          .filter(([name]) => name !== "index.html")
-          .map(([name, content]) => {
-            const mime = name.endsWith(".css") ? "text/css" :
-              name.endsWith(".js") ? "application/javascript" :
-              "text/plain";
-            return storagePut(`sites/${ctx.user.id}/${slug}/${name}`, content, mime);
-          })
-      );
-
-      // Update project with deployed URL
+      // Update project — HTML is served from DB via /p/:slug
       await db.update(projects).set({
         deployedUrl,
         deployedAt: new Date(),

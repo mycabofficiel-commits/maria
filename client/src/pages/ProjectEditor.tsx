@@ -344,8 +344,14 @@ export default function ProjectEditor() {
     onError: (err: any) => toast.error(err.message),
   });
 
-  const publishProject = trpc.projects.publish.useMutation({
-    onSuccess: () => { toast.success("Site publié !"); utils.projects.get.invalidate({ id: projectId }); },
+  const deployProject = trpc.deploy.deploy.useMutation({
+    onSuccess: (data) => {
+      toast.success("Site déployé en ligne !", { duration: 6000,
+        action: { label: "Voir le site", onClick: () => window.open(data.deployedUrl, "_blank") }
+      });
+      utils.projects.get.invalidate({ id: projectId });
+      utils.deploy.getDeployInfo.invalidate({ projectId });
+    },
     onError: (err: any) => toast.error(err.message),
   });
 
@@ -470,11 +476,15 @@ export default function ProjectEditor() {
                 <span className="hidden sm:inline">Éditeur Visuel</span>
               </Button>
             )}
-            {hasCode && !project?.isPublished && (
-              <Button size="sm" variant="outline" className="border-border/60 text-xs h-8 px-2 sm:px-3"
-                onClick={() => publishProject.mutate({ projectId })} disabled={publishProject.isPending}>
-                {publishProject.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin sm:mr-1.5" /> : <Globe className="w-3.5 h-3.5 sm:mr-1.5" />}
-                <span className="hidden sm:inline">Publier</span>
+            {hasCode && (
+              <Button size="sm"
+                className={`text-xs h-8 px-2 sm:px-3 ${project?.isPublished ? "bg-emerald-600 hover:bg-emerald-700 text-white border-0" : "bg-primary hover:bg-primary/90 text-primary-foreground border-0"}`}
+                onClick={() => deployProject.mutate({ projectId })}
+                disabled={deployProject.isPending}>
+                {deployProject.isPending
+                  ? <Loader2 className="w-3.5 h-3.5 animate-spin sm:mr-1.5" />
+                  : <Rocket className="w-3.5 h-3.5 sm:mr-1.5" />}
+                <span className="hidden sm:inline">{project?.isPublished ? "Redéployer" : "Déployer"}</span>
               </Button>
             )}
           </div>

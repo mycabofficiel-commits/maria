@@ -104,6 +104,29 @@ async function startServer() {
 
   // OAuth callback under /api/oauth/callback
   registerOAuthRoutes(app);
+
+  // ── Public site hosting: /p/:slug ──────────────────────────────────────────
+  app.get("/p/:slug", async (req, res) => {
+    try {
+      const db = await getDb();
+      if (!db) return res.status(503).send("Service unavailable");
+      const { projects, versions } = await import("../../drizzle/schema");
+      const { eq, and } = await import("drizzle-orm");
+      const project = await db.select().from(projects)
+        .where(and(eq(projects.slug, req.params.slug), eq(projects.isPublished, true)))
+        .limit(1);
+      if (!project[0]) return res.status(404).send("<!DOCTYPE html><html><body><h2>Site introuvable</h2><p>Ce site n'existe pas ou n'est pas publié.</p></body></html>");
+      const versionId = project[0].deployedVersionId || project[0].currentVersionId;
+      if (!versionId) return res.status(404).send("Aucune version déployée");
+      const version = await db.select().from(versions).where(eq(versions.id, versionId)).limit(1);
+      if (!version[0]?.generatedCode) return res.status(404).send("Version introuvable");
+      res.setHeader("Content-Type", "text/html; charset=utf-8");
+      res.setHeader("Cache-Control", "public, max-age=60");
+      return res.send(version[0].generatedCode);
+    } catch (e: any) {
+      return res.status(500).send("Erreur serveur");
+    }
+  });
   // Streaming SSE routes (Claude real-time)
   registerStreamingRoutes(app);
 
