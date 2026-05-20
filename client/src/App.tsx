@@ -11,6 +11,7 @@ import FAQ from "./pages/FAQ";
 import CGU from "./pages/CGU";
 import Privacy from "./pages/Privacy";
 import Dashboard from "./pages/Dashboard";
+import Templates from "./pages/Templates";
 import Onboarding from "./pages/Onboarding";
 import Projects from "./pages/Projects";
 import ProjectEditor from "./pages/ProjectEditor";
@@ -37,6 +38,7 @@ function Router() {
       <Route path="/documentation" component={Documentation} />
       <Route path="/blog" component={Blog} />
       <Route path="/support" component={Support} />
+      <Route path="/templates" component={Templates} />
       <Route path="/onboarding" component={Onboarding} />
       <Route path="/dashboard" component={Dashboard} />
       <Route path="/projects" component={Projects} />

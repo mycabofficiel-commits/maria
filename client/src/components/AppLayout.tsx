@@ -12,7 +12,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import {
   Sparkles, LayoutDashboard, FolderOpen, Key, CreditCard,
-  User, LogOut, Settings, ChevronRight, Menu, X, Shield, Crown, Zap
+  User, LogOut, Settings, ChevronRight, Menu, X, Shield, Crown, Zap, LayoutTemplate
 } from "lucide-react";
 import { useState } from "react";
 import { Loader2 } from "lucide-react";
@@ -20,6 +20,7 @@ import { Loader2 } from "lucide-react";
 const NAV_ITEMS = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
   { href: "/projects", label: "Projets", icon: FolderOpen },
+  { href: "/templates", label: "Templates", icon: LayoutTemplate },
   { href: "/api-keys", label: "Clés API", icon: Key },
   { href: "/billing", label: "Billing", icon: CreditCard },
 ];

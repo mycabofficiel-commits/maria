@@ -6,7 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { Link, useLocation } from "wouter";
 import {
   Sparkles, FolderOpen, Zap, Key, ArrowRight, Plus,
-  Globe, Clock, CheckCircle2, AlertCircle, Loader2
+  Globe, Clock, CheckCircle2, AlertCircle, Loader2, LayoutTemplate
 } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 import { fr } from "date-fns/locale";
@@ -187,9 +187,10 @@ export default function Dashboard() {
         {/* Quick actions */}
         <div>
           <h3 className="font-display font-semibold text-foreground mb-4">Actions rapides</h3>
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
             {[
               { href: "/projects", icon: Plus, label: "Nouveau projet", desc: "Créer un site avec l'IA", color: "text-primary", bg: "bg-primary/10" },
+              { href: "/templates", icon: LayoutTemplate, label: "Templates", desc: "Partir d'un template prêt", color: "text-violet-400", bg: "bg-violet-400/10" },
               { href: "/api-keys", icon: Key, label: "Clés API", desc: "Gérer votre clé Anthropic", color: "text-cyan-400", bg: "bg-cyan-400/10" },
               { href: "/billing", icon: Zap, label: "Billing", desc: "Gérer votre abonnement", color: "text-amber-400", bg: "bg-amber-400/10" },
             ].map((action) => (
