@@ -101,10 +101,10 @@ export const deployRouter = router({
 
       const zipBuffer = await zip.generateAsync({ type: "nodebuffer", compression: "DEFLATE" });
 
-      // Upload to S3
+      // Return as base64 data URL (no S3 needed)
       const slug = project[0].slug || `project-${input.projectId}`;
-      const key = `exports/${ctx.user.id}/${slug}-v${version[0].versionNumber}-${randomSuffix()}.zip`;
-      const { url } = await storagePut(key, zipBuffer, "application/zip");
+      const base64 = zipBuffer.toString("base64");
+      const url = `data:application/zip;base64,${base64}`;
 
       return { url, filename: `${slug}-v${version[0].versionNumber}.zip` };
     }),

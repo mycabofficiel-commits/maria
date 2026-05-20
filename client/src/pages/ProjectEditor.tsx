@@ -108,6 +108,8 @@ export default function ProjectEditor() {
   const veOriginalHtmlRef = useRef<string>("");
   const [veDirty, setVeDirty] = useState(false);
   const imageUploadRef = useRef<HTMLInputElement>(null);
+  const veUrlRef = useRef<string>("");
+  const [vePreviewSrc, setVePreviewSrc] = useState("");
 
   /* code state (editable) */
   const [htmlCode, setHtmlCode] = useState("");
@@ -425,114 +427,86 @@ export default function ProjectEditor() {
     return () => window.removeEventListener("message", handler);
   }, []);
 
-  const VISUAL_EDIT_SCRIPT = `<script>
+  const VISUAL_EDIT_SCRIPT = `<script id="__ve__">
 (function(){
-  var selectedEl=null;
-  var debTimer=null;
+  var sel=null,deb=null;
 
-  /* styles */
-  var s=document.createElement('style');
-  s.textContent='*[data-ve-hover]{outline:2px dashed rgba(99,102,241,0.5)!important;cursor:pointer!important}*[data-ve-selected]{outline:2px solid #6366f1!important}';
-  document.head.appendChild(s);
+  /* VE styles — marked with id for cleanup */
+  var vs=document.createElement('style');
+  vs.id='__ve_s__';
+  vs.textContent='[data-veh]{outline:2px dashed rgba(99,102,241,.5)!important;cursor:pointer!important}[data-ves]{outline:2px solid #6366f1!important}';
+  document.head.appendChild(vs);
 
-  function getComputedProps(el){
+  /* Returns outerHTML stripped of ALL VE artifacts */
+  function cleanHtml(){
+    var h=document.documentElement.outerHTML;
+    h=h.replace(/<script[^>]*id="__ve__"[^>]*>[\\s\\S]*?<\\/script>/i,'');
+    h=h.replace(/<style[^>]*id="__ve_s__"[^>]*>[\\s\\S]*?<\\/style>/i,'');
+    h=h.replace(/\\s*data-ve[hs]="[^"]*"/g,'');
+    h=h.replace(/\\s*contenteditable="[^"]*"/g,'');
+    return h;
+  }
+
+  function push(){
+    clearTimeout(deb);
+    deb=setTimeout(function(){
+      window.parent.postMessage({type:'VE_HTML_UPDATE',html:cleanHtml()},'*');
+    },300);
+  }
+
+  function computedProps(el){
     var cs=window.getComputedStyle(el);
     return {color:cs.color,backgroundColor:cs.backgroundColor,fontSize:cs.fontSize,fontWeight:cs.fontWeight,textAlign:cs.textAlign};
   }
 
   function selectEl(el){
-    if(selectedEl){selectedEl.removeAttribute('data-ve-selected');selectedEl.contentEditable='false';}
-    selectedEl=el;
-    el.setAttribute('data-ve-selected','1');
+    if(sel){sel.removeAttribute('data-ves');if(sel.contentEditable==='true')sel.contentEditable='false';}
+    if(!el||el===document.body||el===document.documentElement||!el.tagName){
+      sel=null;window.parent.postMessage({type:'VE_DESELECT'},'*');return;
+    }
+    sel=el;el.setAttribute('data-ves','1');
     var r=el.getBoundingClientRect();
-    var isText=['H1','H2','H3','H4','H5','H6','P','SPAN','A','LI','BUTTON','LABEL','STRONG','EM','B','I','TD','TH','DIV'].indexOf(el.tagName)>=0;
-    var isImage=el.tagName==='IMG';
-    var isBlock=['DIV','SECTION','ARTICLE','HEADER','FOOTER','MAIN','ASIDE','NAV','FIGURE'].indexOf(el.tagName)>=0;
+    var tag=el.tagName;
     window.parent.postMessage({
-      type:'VE_SELECT',
-      tag:el.tagName,
-      isText:isText,
-      isImage:isImage,
-      isBlock:isBlock,
+      type:'VE_SELECT',tag:tag,
+      isText:['H1','H2','H3','H4','H5','H6','P','SPAN','A','LI','BUTTON','LABEL','STRONG','EM','B','I','TD','TH','DIV'].indexOf(tag)>=0,
+      isImage:tag==='IMG',
+      isBlock:['DIV','SECTION','ARTICLE','HEADER','FOOTER','MAIN','ASIDE','NAV','FIGURE'].indexOf(tag)>=0,
       rect:{top:r.top+window.scrollY,left:r.left+window.scrollX,width:r.width,height:r.height},
-      computedStyle:getComputedProps(el)
+      computedStyle:computedProps(el)
     },'*');
   }
 
-  /* hover */
   document.addEventListener('mouseover',function(e){
-    if(e.target&&e.target!==document.body&&e.target!==document.documentElement){
-      e.target.setAttribute('data-ve-hover','1');
-    }
+    var t=e.target;if(t&&t.setAttribute&&t!==document.body&&t!==document.documentElement)t.setAttribute('data-veh','1');
   },true);
   document.addEventListener('mouseout',function(e){
-    if(e.target){e.target.removeAttribute('data-ve-hover');}
+    var t=e.target;if(t&&t.removeAttribute)t.removeAttribute('data-veh');
   },true);
 
-  /* single click → select */
   document.addEventListener('click',function(e){
-    e.preventDefault();
-    e.stopPropagation();
-    selectEl(e.target);
+    e.preventDefault();e.stopPropagation();
+    if(e.target&&e.target.tagName)selectEl(e.target);
   },true);
 
-  /* double click on text → contentEditable */
   document.addEventListener('dblclick',function(e){
     var el=e.target;
-    var textTags=['H1','H2','H3','H4','H5','H6','P','SPAN','A','LI','BUTTON','LABEL','STRONG','EM','B','I','TD','TH'];
-    if(textTags.indexOf(el.tagName)>=0){
-      e.preventDefault();
-      e.stopPropagation();
-      el.contentEditable='true';
-      el.focus();
-      var range=document.createRange();
-      range.selectNodeContents(el);
-      var sel=window.getSelection();
-      sel.removeAllRanges();
-      sel.addRange(range);
+    if(!el||!el.tagName)return;
+    if(['H1','H2','H3','H4','H5','H6','P','SPAN','A','LI','BUTTON','LABEL','STRONG','EM','B','I','TD','TH'].indexOf(el.tagName)>=0){
+      e.preventDefault();e.stopPropagation();
+      el.contentEditable='true';el.focus();
+      try{var rng=document.createRange();rng.selectNodeContents(el);var s=window.getSelection();s.removeAllRanges();s.addRange(rng);}catch(ex){}
     }
   },true);
 
-  /* debounced HTML update on any input */
-  document.addEventListener('input',function(){
-    clearTimeout(debTimer);
-    debTimer=setTimeout(function(){
-      window.parent.postMessage({type:'VE_HTML_UPDATE',html:document.documentElement.outerHTML},'*');
-    },300);
-  });
+  document.addEventListener('input',function(){push();});
+  window.addEventListener('scroll',function(){window.parent.postMessage({type:'VE_DESELECT'},'*');});
 
-  /* scroll → deselect */
-  window.addEventListener('scroll',function(){
-    window.parent.postMessage({type:'VE_DESELECT'},'*');
-  });
-
-  /* listen for commands from parent */
   window.addEventListener('message',function(e){
     if(!e.data||!e.data.type)return;
-    if(e.data.type==='VE_STYLE'&&selectedEl){
-      selectedEl.style[e.data.prop]=e.data.value;
-      clearTimeout(debTimer);
-      debTimer=setTimeout(function(){
-        window.parent.postMessage({type:'VE_HTML_UPDATE',html:document.documentElement.outerHTML},'*');
-      },300);
-    }
-    if(e.data.type==='VE_TEXT'&&selectedEl){
-      selectedEl.innerText=e.data.value;
-      clearTimeout(debTimer);
-      debTimer=setTimeout(function(){
-        window.parent.postMessage({type:'VE_HTML_UPDATE',html:document.documentElement.outerHTML},'*');
-      },300);
-    }
-    if(e.data.type==='VE_IMG_SRC'&&selectedEl&&selectedEl.tagName==='IMG'){
-      selectedEl.src=e.data.value;
-      clearTimeout(debTimer);
-      debTimer=setTimeout(function(){
-        window.parent.postMessage({type:'VE_HTML_UPDATE',html:document.documentElement.outerHTML},'*');
-      },300);
-    }
-    if(e.data.type==='VE_GET_HTML'){
-      window.parent.postMessage({type:'VE_HTML',html:document.documentElement.outerHTML},'*');
-    }
+    if(e.data.type==='VE_STYLE'&&sel){try{sel.style[e.data.prop]=e.data.value;}catch(ex){}push();}
+    if(e.data.type==='VE_TEXT'&&sel){sel.innerText=e.data.value;push();}
+    if(e.data.type==='VE_IMG_SRC'&&sel&&sel.tagName==='IMG'){sel.src=e.data.value;push();}
   });
 })();
 <\/script>`;
@@ -597,21 +571,30 @@ export default function ProjectEditor() {
               <Button size="sm" variant={visualEditMode ? "default" : "outline"}
                 className={`text-xs h-8 px-2 sm:px-3 ${visualEditMode ? "bg-violet-600 hover:bg-violet-700 text-white border-0" : "border-border/60"}`}
                 onClick={() => {
-                  setVisualEditMode(v => {
-                    const next = !v;
-                    if (next) {
-                      // Entering visual edit mode — save original HTML
-                      veOriginalHtmlRef.current = htmlCode;
-                    } else {
-                      // Exiting without saving — restore original
-                      if (veDirty) {
-                        setHtmlCode(veOriginalHtmlRef.current);
-                        setVeDirty(false);
-                      }
-                      setVeSelection(null);
+                  const next = !visualEditMode;
+                  if (next) {
+                    // Entering visual edit mode — save original and build blob URL ONCE
+                    veOriginalHtmlRef.current = htmlCode;
+                    const code = currentVersionData?.generatedCode || "";
+                    const base = code ||
+                      `<!DOCTYPE html><html><head><meta charset="UTF-8"><style>${cssCode}</style></head><body>${htmlCode}</body></html>`;
+                    const injected = base.replace(/<\/body>/i, `${VISUAL_EDIT_SCRIPT}</body>`);
+                    if (veUrlRef.current) URL.revokeObjectURL(veUrlRef.current);
+                    const blob = new Blob([injected], { type: "text/html" });
+                    const url = URL.createObjectURL(blob);
+                    veUrlRef.current = url;
+                    setVePreviewSrc(url);
+                  } else {
+                    // Exiting without saving — restore original and rebuild regular preview
+                    const restoreHtml = veDirty ? veOriginalHtmlRef.current : htmlCode;
+                    if (veDirty) {
+                      setHtmlCode(restoreHtml);
+                      setVeDirty(false);
                     }
-                    return next;
-                  });
+                    setVeSelection(null);
+                    buildPreview(restoreHtml, cssCode, jsCode);
+                  }
+                  setVisualEditMode(next);
                   setInspectMode(false);
                 }}>
                 <PencilRuler className="w-3.5 h-3.5 sm:mr-1.5" />
@@ -1177,10 +1160,11 @@ ${jsCode}`;
                         <div className="flex items-center gap-2 bg-emerald-900/90 backdrop-blur border border-emerald-500/30 rounded-lg px-3 py-1.5 shadow-xl pointer-events-auto">
                           <span className="text-xs text-emerald-300 flex-1">Modifications non sauvegardées</span>
                           <button onClick={() => {
-                            setVisualEditMode(false);
                             setHtmlCode(veOriginalHtmlRef.current);
                             setVeDirty(false);
                             setVeSelection(null);
+                            setVisualEditMode(false);
+                            buildPreview(veOriginalHtmlRef.current, cssCode, jsCode);
                           }} className="text-xs text-white/60 hover:text-white px-2 py-1 rounded hover:bg-white/10">
                             Annuler
                           </button>
@@ -1188,8 +1172,9 @@ ${jsCode}`;
                             const vId = selectedVersionId || project?.currentVersionId;
                             if (vId) updateCode.mutate({ versionId: vId, code: htmlCode });
                             setVeDirty(false);
-                            setVisualEditMode(false);
                             setVeSelection(null);
+                            setVisualEditMode(false);
+                            buildPreview(htmlCode, cssCode, jsCode);
                             toast.success("Modifications sauvegardées !");
                           }} className="text-xs bg-emerald-600 hover:bg-emerald-500 text-white px-3 py-1 rounded font-medium">
                             💾 Sauvegarder
@@ -1211,7 +1196,7 @@ ${jsCode}`;
 
                   <iframe
                     ref={previewRef}
-                    src={(inspectMode || visualEditMode) ? getPreviewSrc() : previewSrc || "about:blank"}
+                    src={visualEditMode ? (vePreviewSrc || "about:blank") : inspectMode ? getPreviewSrc() : (previewSrc || "about:blank")}
                     className="w-full h-full border-0"
                     title="Preview"
                     sandbox="allow-scripts allow-same-origin"
