@@ -16,7 +16,8 @@ import AppLayout from "@/components/AppLayout";
 import {
   Sparkles, Send, Eye, Code2, History, Smartphone, Tablet, Monitor,
   Loader2, ArrowLeft, Globe, RotateCcw, Save, CheckCircle2, MessageSquare,
-  Rocket, Share2, Tag, MousePointer2, Copy, Check, PencilRuler, Upload
+  Rocket, Share2, Tag, MousePointer2, Copy, Check, PencilRuler, Upload,
+  PanelLeftClose, PanelLeftOpen
 } from "lucide-react";
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
@@ -96,6 +97,7 @@ export default function ProjectEditor() {
   const [streamingChars, setStreamingChars] = useState(0);
   const [copiedTab, setCopiedTab] = useState<CodeTab | null>(null);
   const [streamingReply, setStreamingReply] = useState("");
+  const [editorCollapsed, setEditorCollapsed] = useState(false);
 
   /* code state (editable) */
   const [htmlCode, setHtmlCode] = useState("");
@@ -564,10 +566,26 @@ export default function ProjectEditor() {
           </div>
         ) : (
           /* ═══ EDITOR MODE (3-zone layout) ═══ */
-          <div className="flex-1 overflow-hidden grid" style={{ gridTemplateColumns: '45% 55%', gridTemplateRows: '60% 40%' }}>
+          <div
+            className="flex-1 overflow-hidden grid"
+            style={{
+              gridTemplateColumns: editorCollapsed ? '0px 1fr' : '45% 55%',
+              gridTemplateRows: '60% 40%',
+              transition: 'grid-template-columns 0.3s cubic-bezier(0.4,0,0.2,1)',
+            }}
+          >
 
             {/* ── LEFT PANEL : Code (top) + Chat (bottom) ── */}
-            <div className="flex flex-col border-r border-border/50 overflow-hidden" style={{ gridColumn: '1', gridRow: '1 / 3', display: 'flex', flexDirection: 'column' }}>
+            <div
+              className="flex flex-col border-r border-border/50 overflow-hidden"
+              style={{
+                gridColumn: '1', gridRow: '1 / 3',
+                display: 'flex', flexDirection: 'column',
+                opacity: editorCollapsed ? 0 : 1,
+                transition: 'opacity 0.2s ease',
+                pointerEvents: editorCollapsed ? 'none' : 'auto',
+              }}
+            >
 
               {/* ── Code zone (top-left, 60% height) ── */}
               <div className="flex flex-col border-b border-border/50" style={{ flex: '0 0 60%', minHeight: 0 }}>
@@ -895,6 +913,18 @@ ${jsCode}`;
               {/* Preview toolbar */}
               <div className="flex items-center justify-between px-3 py-1.5 border-b border-border/50 flex-shrink-0 bg-background/60">
                 <div className="flex items-center gap-1">
+                  {/* Collapse / expand left panel button */}
+                  <Button
+                    variant="ghost" size="icon"
+                    className="w-7 h-7 text-muted-foreground hover:text-foreground"
+                    onClick={() => setEditorCollapsed(v => !v)}
+                    title={editorCollapsed ? "Ouvrir l'éditeur" : "Réduire l'éditeur"}
+                  >
+                    {editorCollapsed
+                      ? <PanelLeftOpen className="w-3.5 h-3.5" />
+                      : <PanelLeftClose className="w-3.5 h-3.5" />
+                    }
+                  </Button>
                   <Eye className="w-3.5 h-3.5 text-muted-foreground" />
                   <span className="text-xs text-muted-foreground">Prévisualisation live</span>
                   <span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse ml-1" />
