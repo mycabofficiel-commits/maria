@@ -40,6 +40,7 @@ export const users = pgTable("users", {
   currentPeriodEnd: timestamp("currentPeriodEnd"),
   generationsUsed: integer("generationsUsed").default(0).notNull(),
   generationsLimit: integer("generationsLimit").default(3).notNull(),
+  passwordHash: text("passwordHash"),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().notNull(),
   lastSignedIn: timestamp("lastSignedIn").defaultNow().notNull(),

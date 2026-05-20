@@ -8,6 +8,7 @@ import { appRouter } from "../routers";
 import { createContext } from "./context";
 import { serveStatic, setupVite } from "./vite";
 import { registerStreamingRoutes } from "../streaming";
+import { registerAuthRoutes } from "./authRoutes";
 import { migrate } from "drizzle-orm/node-postgres/migrator";
 import { getDb } from "../db";
 
@@ -51,6 +52,9 @@ async function startServer() {
   app.use(express.urlencoded({ limit: "50mb", extended: true }));
   // Health check for Render
   app.get("/api/health", (_req, res) => res.json({ status: "ok", ts: Date.now() }));
+
+  // Email/password auth routes
+  registerAuthRoutes(app);
 
   // OAuth callback under /api/oauth/callback
   registerOAuthRoutes(app);

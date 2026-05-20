@@ -4,7 +4,7 @@ export function getLoginUrl(): string {
   const oauthUrl = import.meta.env.VITE_OAUTH_PORTAL_URL;
   const appId = import.meta.env.VITE_APP_ID;
   if (!oauthUrl || !appId || oauthUrl === 'undefined' || oauthUrl === '') {
-    return '/dashboard';
+    return '/login';
   }
   try {
     const redirectUri = window.location.origin + '/api/oauth/callback';
@@ -15,7 +15,7 @@ export function getLoginUrl(): string {
     url.searchParams.set('type', 'signIn');
     return url.toString();
   } catch {
-    return '/dashboard';
+    return '/login';
   }
 }
 
