@@ -1108,154 +1108,147 @@ ${jsCode}`;
                   })}
                 </div>
               </div>
-              {/* iframe preview — pleine hauteur */}
-              <div className="flex-1 flex items-start justify-center p-3 bg-muted/20 overflow-hidden">
-                <div className="h-full overflow-hidden rounded-lg border border-border/60 shadow-xl transition-all duration-300 bg-white relative"
-                  style={{ width: VIEW_SIZES[viewMode], maxWidth: "100%" }}>
-                  {visualEditMode && (
-                    <div className="absolute top-0 left-0 right-0 z-10 bg-violet-600/90 text-white text-[10px] text-center py-1 flex items-center justify-center gap-1.5">
-                      <PencilRuler className="w-3 h-3" />
-                      Mode édition visuelle — Cliquez sur un élément pour le modifier
+              {/* ── VE banner ── */}
+              {visualEditMode && (
+                <div className="bg-violet-600 text-white text-[10px] text-center py-1 flex items-center justify-center gap-1.5 flex-shrink-0">
+                  <PencilRuler className="w-3 h-3" />
+                  Mode édition visuelle — Cliquez sur un élément pour le modifier
+                </div>
+              )}
+
+              {/* ── VE toolbar strip (outside iframe — no click-through issues) ── */}
+              {visualEditMode && (
+                <div className="border-b border-border/50 bg-[#1e1e2e] flex-shrink-0 px-2 py-2 flex flex-col gap-2">
+
+                  {/* Row 1: style controls */}
+                  <div className="flex items-center gap-1 flex-wrap">
+                    {veSelection?.isText && <>
+                      <button title="Gras" onClick={() => sendToIframe({ type: 'VE_STYLE', prop: 'fontWeight', value: veSelection.fontWeight === 'bold' || veSelection.fontWeight === '700' ? 'normal' : 'bold' })}
+                        className={`w-7 h-7 rounded flex items-center justify-center text-xs font-bold ${veSelection.fontWeight === 'bold' || veSelection.fontWeight === '700' ? 'bg-white/20 text-white' : 'hover:bg-white/10 text-white/70'}`}>B</button>
+                      <button title="Italique" onClick={() => sendToIframe({ type: 'VE_STYLE', prop: 'fontStyle', value: 'italic' })}
+                        className="w-7 h-7 rounded hover:bg-white/10 flex items-center justify-center text-white/70 text-xs italic">I</button>
+                      <input type="number" min="8" max="120" defaultValue={parseInt(veSelection.fontSize) || 16}
+                        key={`fs-${veSelection.tag}-${veSelection.rect.top}`}
+                        className="w-14 h-7 bg-white/10 border border-white/20 rounded px-1 text-white text-xs text-center"
+                        onChange={e => sendToIframe({ type: 'VE_STYLE', prop: 'fontSize', value: e.target.value + 'px' })} />
+                      {(['left', 'center', 'right'] as const).map(align => (
+                        <button key={align} title={`Aligner ${align}`} onClick={() => sendToIframe({ type: 'VE_STYLE', prop: 'textAlign', value: align })}
+                          className={`w-7 h-7 rounded flex items-center justify-center text-[11px] ${veSelection.textAlign === align ? 'bg-primary/40 text-primary' : 'hover:bg-white/10 text-white/60'}`}>
+                          {align === 'left' ? '≡' : align === 'center' ? '☰' : '≡'}
+                        </button>
+                      ))}
+                      <div className="w-px h-5 bg-white/20" />
+                      <label title="Couleur texte" className="flex items-center gap-1 cursor-pointer">
+                        <span className="text-[10px] text-white/60">A</span>
+                        <input type="color" className="w-5 h-5 rounded cursor-pointer border-0 bg-transparent"
+                          defaultValue="#000000" onChange={e => sendToIframe({ type: 'VE_STYLE', prop: 'color', value: e.target.value })} />
+                      </label>
+                    </>}
+
+                    {veSelection && !veSelection.isImage && <>
+                      <label title="Couleur de fond" className="flex items-center gap-1 cursor-pointer">
+                        <span className="text-[10px] text-white/60">BG</span>
+                        <input type="color" className="w-5 h-5 rounded cursor-pointer border-0 bg-transparent"
+                          defaultValue="#ffffff" onChange={e => sendToIframe({ type: 'VE_STYLE', prop: 'backgroundColor', value: e.target.value })} />
+                      </label>
+                      <div className="w-px h-5 bg-white/20" />
+                      <label className="flex items-center gap-1">
+                        <span className="text-[10px] text-white/60">W</span>
+                        <input type="text" placeholder="auto" className="w-16 h-7 bg-white/10 border border-white/20 rounded px-1 text-white text-xs"
+                          onBlur={e => { if (e.target.value) sendToIframe({ type: 'VE_STYLE', prop: 'width', value: e.target.value }); }} />
+                      </label>
+                      <label className="flex items-center gap-1">
+                        <span className="text-[10px] text-white/60">P</span>
+                        <input type="text" placeholder="0px" className="w-16 h-7 bg-white/10 border border-white/20 rounded px-1 text-white text-xs"
+                          onBlur={e => { if (e.target.value) sendToIframe({ type: 'VE_STYLE', prop: 'padding', value: e.target.value }); }} />
+                      </label>
+                    </>}
+
+                    <div className="ml-auto text-[10px] text-white/40 px-1">{veSelection ? `<${veSelection.tag.toLowerCase()}>` : 'Cliquez un élément'}</div>
+                  </div>
+
+                  {/* Row 2: text input (texte sélectionné) */}
+                  {veSelection?.isText && (
+                    <div className="flex items-center gap-2">
+                      <span className="text-[10px] text-white/50 flex-shrink-0">Texte</span>
+                      <input
+                        type="text"
+                        value={veTextInput}
+                        onChange={e => {
+                          setVeTextInput(e.target.value);
+                          sendToIframe({ type: 'VE_TEXT', value: e.target.value });
+                        }}
+                        className="flex-1 h-7 bg-white/10 border border-white/20 rounded px-2 text-white text-xs placeholder:text-white/30 focus:outline-none focus:border-primary/60"
+                        placeholder="Contenu du texte…"
+                      />
                     </div>
                   )}
 
-                  {visualEditMode && (
-                    <div className="absolute top-8 left-0 right-0 z-20 flex flex-col gap-1 px-2 pointer-events-none">
-                      {/* Main toolbar */}
-                      {/* ── Row 1 : style controls ── */}
-                      <div className="flex items-center gap-1 bg-[#1e1e2e]/95 backdrop-blur border border-white/10 rounded-lg px-2 py-1.5 shadow-xl pointer-events-auto flex-wrap">
-
-                        {veSelection?.isText && <>
-                          <button title="Gras" onClick={() => sendToIframe({ type: 'VE_STYLE', prop: 'fontWeight', value: veSelection.fontWeight === 'bold' || veSelection.fontWeight === '700' ? 'normal' : 'bold' })}
-                            className={`w-7 h-7 rounded flex items-center justify-center text-xs font-bold ${veSelection.fontWeight === 'bold' || veSelection.fontWeight === '700' ? 'bg-white/20 text-white' : 'hover:bg-white/10 text-white/70'}`}>B</button>
-                          <button title="Italique" onClick={() => sendToIframe({ type: 'VE_STYLE', prop: 'fontStyle', value: 'italic' })}
-                            className="w-7 h-7 rounded hover:bg-white/10 flex items-center justify-center text-white/70 text-xs italic">I</button>
-                          <input type="number" min="8" max="120" defaultValue={parseInt(veSelection.fontSize) || 16}
-                            key={`fs-${veSelection.tag}-${veSelection.rect.top}`}
-                            className="w-14 h-7 bg-white/10 border border-white/20 rounded px-1 text-white text-xs text-center"
-                            onChange={e => sendToIframe({ type: 'VE_STYLE', prop: 'fontSize', value: e.target.value + 'px' })} />
-                          {(['left', 'center', 'right'] as const).map(align => (
-                            <button key={align} title={`Aligner ${align}`} onClick={() => sendToIframe({ type: 'VE_STYLE', prop: 'textAlign', value: align })}
-                              className={`w-7 h-7 rounded flex items-center justify-center text-[11px] ${veSelection.textAlign === align ? 'bg-primary/40 text-primary' : 'hover:bg-white/10 text-white/60'}`}>
-                              {align === 'left' ? '≡' : align === 'center' ? '☰' : '≡'}
-                            </button>
-                          ))}
-                          <div className="w-px h-5 bg-white/20" />
-                          <label title="Couleur texte" className="flex items-center gap-1 cursor-pointer">
-                            <span className="text-[10px] text-white/60">A</span>
-                            <input type="color" className="w-5 h-5 rounded cursor-pointer border-0 bg-transparent"
-                              defaultValue="#000000" onChange={e => sendToIframe({ type: 'VE_STYLE', prop: 'color', value: e.target.value })} />
-                          </label>
-                        </>}
-
-                        {veSelection && !veSelection.isImage && <>
-                          <label title="Couleur de fond" className="flex items-center gap-1 cursor-pointer">
-                            <span className="text-[10px] text-white/60">BG</span>
-                            <input type="color" className="w-5 h-5 rounded cursor-pointer border-0 bg-transparent"
-                              defaultValue="#ffffff" onChange={e => sendToIframe({ type: 'VE_STYLE', prop: 'backgroundColor', value: e.target.value })} />
-                          </label>
-                          <div className="w-px h-5 bg-white/20" />
-                          <label className="flex items-center gap-1">
-                            <span className="text-[10px] text-white/60">W</span>
-                            <input type="text" placeholder="auto" className="w-16 h-7 bg-white/10 border border-white/20 rounded px-1 text-white text-xs"
-                              onBlur={e => { if (e.target.value) sendToIframe({ type: 'VE_STYLE', prop: 'width', value: e.target.value }); }} />
-                          </label>
-                          <label className="flex items-center gap-1">
-                            <span className="text-[10px] text-white/60">P</span>
-                            <input type="text" placeholder="0px" className="w-16 h-7 bg-white/10 border border-white/20 rounded px-1 text-white text-xs"
-                              onBlur={e => { if (e.target.value) sendToIframe({ type: 'VE_STYLE', prop: 'padding', value: e.target.value }); }} />
-                          </label>
-                        </>}
-
-                        <div className="ml-auto text-[10px] text-white/40 px-1">{veSelection ? `<${veSelection.tag.toLowerCase()}>` : 'Cliquez un élément'}</div>
+                  {/* Row 2b: image zone (image sélectionnée) */}
+                  {veSelection?.isImage && (
+                    <div className="flex flex-col gap-1.5">
+                      <div className="flex items-center gap-3 flex-wrap">
+                        <span className="text-[10px] text-white/50">Image</span>
+                        {veSelection.imgW > 0 && (
+                          <span className="text-[10px] text-white/40">{veSelection.imgW}×{veSelection.imgH}px (naturel)</span>
+                        )}
+                        <label className="flex items-center gap-1">
+                          <span className="text-[10px] text-white/60">W</span>
+                          <input type="text" defaultValue={veSelection.imgOW || ''} placeholder="auto"
+                            key={`iw-${veSelection.rect.top}`}
+                            className="w-16 h-6 bg-white/10 border border-white/20 rounded px-1 text-white text-xs"
+                            onBlur={e => { if (e.target.value) sendToIframe({ type: 'VE_STYLE', prop: 'width', value: e.target.value + (isNaN(Number(e.target.value)) ? '' : 'px') }); }} />
+                        </label>
+                        <label className="flex items-center gap-1">
+                          <span className="text-[10px] text-white/60">H</span>
+                          <input type="text" defaultValue={veSelection.imgOH || ''} placeholder="auto"
+                            key={`ih-${veSelection.rect.top}`}
+                            className="w-16 h-6 bg-white/10 border border-white/20 rounded px-1 text-white text-xs"
+                            onBlur={e => { if (e.target.value) sendToIframe({ type: 'VE_STYLE', prop: 'height', value: e.target.value + (isNaN(Number(e.target.value)) ? '' : 'px') }); }} />
+                        </label>
+                        <label title="Couleur de fond" className="flex items-center gap-1 cursor-pointer">
+                          <span className="text-[10px] text-white/60">BG</span>
+                          <input type="color" className="w-5 h-5 rounded cursor-pointer border-0 bg-transparent"
+                            defaultValue="#ffffff" onChange={e => sendToIframe({ type: 'VE_STYLE', prop: 'backgroundColor', value: e.target.value })} />
+                        </label>
                       </div>
-
-                      {/* ── Row 2 : text input (texte sélectionné) ── */}
-                      {veSelection?.isText && (
-                        <div className="flex items-center gap-2 bg-[#1e1e2e]/95 backdrop-blur border border-white/10 rounded-lg px-2 py-1.5 shadow-xl pointer-events-auto">
-                          <span className="text-[10px] text-white/50 flex-shrink-0">Texte</span>
-                          <input
-                            type="text"
-                            value={veTextInput}
-                            onChange={e => {
-                              setVeTextInput(e.target.value);
-                              sendToIframe({ type: 'VE_TEXT', value: e.target.value });
-                            }}
-                            className="flex-1 h-7 bg-white/10 border border-white/20 rounded px-2 text-white text-xs placeholder:text-white/30 focus:outline-none focus:border-primary/60"
-                            placeholder="Contenu du texte…"
-                          />
+                      <div
+                        className="flex items-center gap-2 border border-dashed border-violet-500/50 rounded-lg px-3 py-2 cursor-pointer hover:bg-violet-500/10 transition-colors"
+                        onClick={() => imageUploadRef.current?.click()}
+                      >
+                        <Upload className="w-4 h-4 text-violet-400 flex-shrink-0" />
+                        <div className="flex-1 min-w-0">
+                          <div className="text-xs text-violet-300 font-medium">Remplacer l'image</div>
+                          <div className="text-[10px] text-white/40 truncate">Cliquez pour importer JPG, PNG, WebP, SVG…</div>
                         </div>
-                      )}
+                      </div>
+                    </div>
+                  )}
 
-                      {/* ── Row 2 : image zone (image sélectionnée) ── */}
-                      {veSelection?.isImage && (
-                        <div className="flex flex-col gap-1.5 bg-[#1e1e2e]/95 backdrop-blur border border-white/10 rounded-lg px-3 py-2 shadow-xl pointer-events-auto">
-                          {/* Dimensions */}
-                          <div className="flex items-center gap-3 flex-wrap">
-                            <span className="text-[10px] text-white/50">Image</span>
-                            {veSelection.imgW > 0 && (
-                              <span className="text-[10px] text-white/40">{veSelection.imgW}×{veSelection.imgH}px (naturel)</span>
-                            )}
-                            <label className="flex items-center gap-1">
-                              <span className="text-[10px] text-white/60">W</span>
-                              <input type="text" defaultValue={veSelection.imgOW || ''} placeholder="auto"
-                                key={`iw-${veSelection.rect.top}`}
-                                className="w-16 h-6 bg-white/10 border border-white/20 rounded px-1 text-white text-xs"
-                                onBlur={e => { if (e.target.value) sendToIframe({ type: 'VE_STYLE', prop: 'width', value: e.target.value + (isNaN(Number(e.target.value)) ? '' : 'px') }); }} />
-                            </label>
-                            <label className="flex items-center gap-1">
-                              <span className="text-[10px] text-white/60">H</span>
-                              <input type="text" defaultValue={veSelection.imgOH || ''} placeholder="auto"
-                                key={`ih-${veSelection.rect.top}`}
-                                className="w-16 h-6 bg-white/10 border border-white/20 rounded px-1 text-white text-xs"
-                                onBlur={e => { if (e.target.value) sendToIframe({ type: 'VE_STYLE', prop: 'height', value: e.target.value + (isNaN(Number(e.target.value)) ? '' : 'px') }); }} />
-                            </label>
-                            <label title="Couleur de fond" className="flex items-center gap-1 cursor-pointer">
-                              <span className="text-[10px] text-white/60">BG</span>
-                              <input type="color" className="w-5 h-5 rounded cursor-pointer border-0 bg-transparent"
-                                defaultValue="#ffffff" onChange={e => sendToIframe({ type: 'VE_STYLE', prop: 'backgroundColor', value: e.target.value })} />
-                            </label>
-                          </div>
-                          {/* Upload zone */}
-                          <div
-                            className="flex items-center gap-2 border border-dashed border-violet-500/50 rounded-lg px-3 py-2 cursor-pointer hover:bg-violet-500/10 transition-colors"
-                            onClick={() => imageUploadRef.current?.click()}
-                          >
-                            <Upload className="w-4 h-4 text-violet-400 flex-shrink-0" />
-                            <div className="flex-1 min-w-0">
-                              <div className="text-xs text-violet-300 font-medium">Remplacer l'image</div>
-                              <div className="text-[10px] text-white/40 truncate">Cliquez pour importer JPG, PNG, WebP, SVG…</div>
-                            </div>
-                          </div>
-                        </div>
-                      )}
-
-                      {/* Save / Cancel bar */}
-                      {veDirty && (
-                        <div className="flex items-center gap-2 bg-emerald-900/90 backdrop-blur border border-emerald-500/30 rounded-lg px-3 py-1.5 shadow-xl pointer-events-auto">
-                          <span className="text-xs text-emerald-300 flex-1">Modifications non sauvegardées</span>
-                          <button onClick={() => {
-                            setHtmlCode(veOriginalHtmlRef.current);
-                            setVeDirty(false);
-                            setVeSelection(null);
-                            setVisualEditMode(false);
-                            buildPreview(veOriginalHtmlRef.current, cssCode, jsCode);
-                          }} className="text-xs text-white/60 hover:text-white px-2 py-1 rounded hover:bg-white/10">
-                            Annuler
-                          </button>
-                          <button onClick={() => {
-                            const vId = selectedVersionId || project?.currentVersionId;
-                            if (vId) updateCode.mutate({ versionId: vId, code: htmlCode });
-                            setVeDirty(false);
-                            setVeSelection(null);
-                            setVisualEditMode(false);
-                            buildPreview(htmlCode, cssCode, jsCode);
-                            toast.success("Modifications sauvegardées !");
-                          }} className="text-xs bg-emerald-600 hover:bg-emerald-500 text-white px-3 py-1 rounded font-medium">
-                            💾 Sauvegarder
-                          </button>
-                        </div>
-                      )}
+                  {/* Save / Cancel bar */}
+                  {veDirty && (
+                    <div className="flex items-center gap-2 bg-emerald-900/50 border border-emerald-500/30 rounded-lg px-3 py-1.5">
+                      <span className="text-xs text-emerald-300 flex-1">Modifications non sauvegardées</span>
+                      <button onClick={() => {
+                        setHtmlCode(veOriginalHtmlRef.current);
+                        setVeDirty(false);
+                        setVeSelection(null);
+                        setVisualEditMode(false);
+                        buildPreview(veOriginalHtmlRef.current, cssCode, jsCode);
+                      }} className="text-xs text-white/60 hover:text-white px-2 py-1 rounded hover:bg-white/10">
+                        Annuler
+                      </button>
+                      <button onClick={() => {
+                        const vId = selectedVersionId || project?.currentVersionId;
+                        if (vId) updateCode.mutate({ versionId: vId, code: htmlCode });
+                        setVeDirty(false);
+                        setVeSelection(null);
+                        setVisualEditMode(false);
+                        buildPreview(htmlCode, cssCode, jsCode);
+                        toast.success("Modifications sauvegardées !");
+                      }} className="text-xs bg-emerald-600 hover:bg-emerald-500 text-white px-3 py-1 rounded font-medium">
+                        💾 Sauvegarder
+                      </button>
                     </div>
                   )}
 
@@ -1268,7 +1261,13 @@ ${jsCode}`;
                       reader.onload = ev => sendToIframe({ type: 'VE_IMG_SRC', value: ev.target?.result as string });
                       reader.readAsDataURL(file);
                     }} />
+                </div>
+              )}
 
+              {/* iframe preview — pleine hauteur */}
+              <div className="flex-1 flex items-start justify-center p-3 bg-muted/20 overflow-hidden">
+                <div className="h-full overflow-hidden rounded-lg border border-border/60 shadow-xl transition-all duration-300 bg-white"
+                  style={{ width: VIEW_SIZES[viewMode], maxWidth: "100%" }}>
                   <iframe
                     ref={previewRef}
                     src={visualEditMode ? (vePreviewSrc || "about:blank") : inspectMode ? getPreviewSrc() : (previewSrc || "about:blank")}
