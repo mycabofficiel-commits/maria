@@ -10,6 +10,13 @@ import {
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { toast } from "sonner";
+import { EditorView, basicSetup } from "codemirror";
+import { EditorState, StateEffect, StateField } from "@codemirror/state";
+import { Decoration, DecorationSet } from "@codemirror/view";
+import { html as cmHtml } from "@codemirror/lang-html";
+import { css as cmCss } from "@codemirror/lang-css";
+import { javascript as cmJs } from "@codemirror/lang-javascript";
+import { oneDark } from "@codemirror/theme-one-dark";
 import { useAuth } from "@/_core/hooks/useAuth";
 import { getLoginUrl } from "@/const";
 import AppLayout from "@/components/AppLayout";
@@ -65,6 +72,39 @@ const extractJs = (code: string): string => {
   const all = Array.from(code.matchAll(/<script(?![^>]*src)[^>]*>([\s\S]*?)<\/script>/gi));
   return all.map(x => x[1]).join("\n").trim();
 };
+
+// ── CodeMirror setup ──────────────────────────────────────────────────────────
+const cmHighlightEffect = StateEffect.define<number | null>();
+const cmHighlightField = StateField.define<DecorationSet>({
+  create: () => Decoration.none,
+  update(val, tr) {
+    for (const e of tr.effects) {
+      if (e.is(cmHighlightEffect)) {
+        if (e.value === null || e.value < 0) return Decoration.none;
+        try {
+          const line = tr.state.doc.line(e.value + 1);
+          return Decoration.set([Decoration.line({ class: "cm-hl" }).range(line.from)]);
+        } catch { return Decoration.none; }
+      }
+    }
+    return val.map(tr.changes);
+  },
+  provide: (f) => EditorView.decorations.from(f),
+});
+
+const cmTheme = EditorView.theme({
+  "&": { height: "100%", fontSize: "12px", fontFamily: "'JetBrains Mono','Fira Code','Cascadia Code',monospace" },
+  ".cm-scroller": { overflow: "auto", height: "100%" },
+  ".cm-content": { padding: "8px 0", minHeight: "100%" },
+  ".cm-line": { padding: "0 12px" },
+  ".cm-gutters": { backgroundColor: "#0d0d0d", borderRight: "1px solid #1a1a1a", color: "#4a4a4a", minWidth: "38px" },
+  ".cm-activeLineGutter": { backgroundColor: "#1a1a1a" },
+  ".cm-activeLine": { backgroundColor: "#1a1a1a80" },
+  ".cm-selectionBackground, .cm-focused .cm-selectionBackground": { backgroundColor: "#264f78 !important" },
+  ".cm-cursor": { borderLeftColor: "#6366f1", borderLeftWidth: "2px" },
+  "&.cm-focused": { outline: "none" },
+  ".cm-hl": { backgroundColor: "rgba(250,204,21,.15) !important", borderLeft: "2px solid #facc15" },
+});
 
 // ── Visual Editor script injected into iframe via contentDocument ──
 const VE_SCRIPT = `(function(){
@@ -301,7 +341,6 @@ export default function ProjectEditor() {
   const [restoreTarget, setRestoreTarget] = useState<{ versionId: number; label: string } | null>(null);
   const [codeTab, setCodeTab] = useState<CodeTab>("html");
   const [inspectMode, setInspectMode] = useState(false);
-  const [highlightLine, setHighlightLine] = useState<number | null>(null);
   const [visualEditMode, setVisualEditMode] = useState(false);
   const [showImport, setShowImport] = useState(false);
   /* sidebar tab (mobile) */
@@ -337,7 +376,8 @@ export default function ProjectEditor() {
   const [jsCode, setJsCode] = useState("");
 
   const chatEndRef = useRef<HTMLDivElement>(null);
-  const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const cmContainerRef = useRef<HTMLDivElement>(null);
+  const cmViewRef = useRef<EditorView | null>(null);
   const previewRef = useRef<HTMLIFrameElement>(null);
 
   /* queries */
@@ -423,6 +463,40 @@ export default function ProjectEditor() {
     const code = currentVersionData?.generatedCode;
     if (code && !visualEditMode) buildPreview(extractHtml(code), extractCss(code), extractJs(code));
   }, [currentVersionData?.generatedCode, visualEditMode]);
+
+  /* ── CodeMirror: create/destroy editor on tab or version change ── */
+  useEffect(() => {
+    if (!cmContainerRef.current) return;
+    cmViewRef.current?.destroy();
+    const lang = codeTab === "html" ? cmHtml() : codeTab === "css" ? cmCss() : cmJs();
+    const content = codeTab === "html" ? htmlCode : codeTab === "css" ? cssCode : jsCode;
+    const state = EditorState.create({
+      doc: content,
+      extensions: [
+        basicSetup, oneDark, cmTheme, cmHighlightField, lang,
+        EditorView.updateListener.of((upd) => {
+          if (!upd.docChanged) return;
+          const v = upd.state.doc.toString();
+          if (codeTab === "html") setHtmlCode(v);
+          else if (codeTab === "css") setCssCode(v);
+          else setJsCode(v);
+        }),
+      ],
+    });
+    cmViewRef.current = new EditorView({ state, parent: cmContainerRef.current });
+    return () => { cmViewRef.current?.destroy(); cmViewRef.current = null; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [codeTab, selectedVersionId]);
+
+  /* ── CodeMirror: sync external content changes (streaming, VE save) ── */
+  useEffect(() => {
+    if (!cmViewRef.current) return;
+    const content = codeTab === "html" ? htmlCode : codeTab === "css" ? cssCode : jsCode;
+    const current = cmViewRef.current.state.doc.toString();
+    if (current !== content) {
+      cmViewRef.current.dispatch({ changes: { from: 0, to: current.length, insert: content } });
+    }
+  }, [htmlCode, cssCode, jsCode, codeTab]);
 
   /* ── Streaming generate ── */
   const [streamingCode, setStreamingCode] = useState("");
@@ -615,13 +689,18 @@ export default function ProjectEditor() {
         const lines = fullCode.split("\n");
         const idx = lines.findIndex(l => l.toLowerCase().includes(`<${tag}`));
         if (idx >= 0) {
-          setHighlightLine(idx);
-          // scroll textarea to line
-          if (textareaRef.current) {
-            const lineH = 20;
-            textareaRef.current.scrollTop = Math.max(0, (idx - 3) * lineH);
+          if (cmViewRef.current) {
+            try {
+              const pos = cmViewRef.current.state.doc.line(idx + 1).from;
+              cmViewRef.current.dispatch({
+                effects: [
+                  EditorView.scrollIntoView(pos, { y: "start", yMargin: 60 }),
+                  cmHighlightEffect.of(idx),
+                ],
+              });
+              setTimeout(() => cmViewRef.current?.dispatch({ effects: cmHighlightEffect.of(null) }), 2000);
+            } catch {}
           }
-          setTimeout(() => setHighlightLine(null), 2000);
         }
       }
     };
@@ -940,48 +1019,54 @@ ${jsCode}`;
                   </div>
                 </div>
 
-                {/* Textarea editor */}
-                <div className="relative flex-1 overflow-hidden bg-[#1e1e1e]">
-                  <textarea
-                    ref={textareaRef}
-                    key={`${codeTab}-${selectedVersionId}`}
-                    value={codeTab === "html" ? htmlCode : codeTab === "css" ? cssCode : jsCode}
-                    onChange={(e) => {
-                      const v = e.target.value;
-                      if (codeTab === "html") setHtmlCode(v);
-                      else if (codeTab === "css") setCssCode(v);
-                      else setJsCode(v);
-                    }}
-                    spellCheck={false}
-                    autoCorrect="off"
-                    autoCapitalize="off"
-                    className="absolute inset-0 w-full h-full resize-none bg-transparent text-[#d4d4d4] font-mono text-xs leading-5 p-4 outline-none border-0 focus:ring-0"
-                    style={{ fontFamily: "'Fira Code','Cascadia Code','Consolas','Courier New',monospace", tabSize: 2 }}
-                    onKeyDown={(e) => {
-                      if (e.key === "Tab") {
-                        e.preventDefault();
-                        const s = e.currentTarget.selectionStart, end = e.currentTarget.selectionEnd;
-                        const v = e.currentTarget.value;
-                        const nv = v.substring(0, s) + "  " + v.substring(end);
-                        if (codeTab === "html") setHtmlCode(nv);
-                        else if (codeTab === "css") setCssCode(nv);
-                        else setJsCode(nv);
-                        requestAnimationFrame(() => { e.currentTarget.selectionStart = s + 2; e.currentTarget.selectionEnd = s + 2; });
-                      }
-                      if ((e.ctrlKey || e.metaKey) && e.key === "s") {
-                        e.preventDefault();
-                        if (selectedVersionId) {
-                          const combined = `<!-- HTML -->\n${htmlCode}\n<!-- CSS -->\n${cssCode}\n<!-- JS -->\n${jsCode}`;
-                          updateCode.mutate({ versionId: selectedVersionId, code: combined });
-                        }
-                      }
-                    }}
-                  />
-                  {/* Highlight overlay hint */}
-                  {highlightLine !== null && (
-                    <div className="absolute left-0 right-0 bg-yellow-400/20 border-l-2 border-yellow-400 pointer-events-none"
-                      style={{ top: `${highlightLine * 20 + 16}px`, height: "20px" }} />
-                  )}
+                {/* Editor area: file tree + CodeMirror */}
+                <div className="flex flex-1 overflow-hidden min-h-0">
+                  {/* File tree sidebar */}
+                  <div className="w-36 flex-shrink-0 bg-[#0d0d0d] border-r border-[#1a1a1a] overflow-y-auto hidden md:flex flex-col py-1 select-none">
+                    {/* src/ folder */}
+                    <div className="flex items-center gap-1 px-2 py-0.5 text-[10px] text-[#6b7280]">
+                      <svg className="w-3 h-3 opacity-60" viewBox="0 0 16 16" fill="currentColor"><path d="M1 3.5A1.5 1.5 0 012.5 2h3.764c.958 0 1.76.56 2.109 1.5H13.5A1.5 1.5 0 0115 5v7.5a1.5 1.5 0 01-1.5 1.5h-11A1.5 1.5 0 011 13V3.5z"/></svg>
+                      <span>src/</span>
+                    </div>
+                    {/* index.html */}
+                    <button
+                      onClick={() => setCodeTab("html")}
+                      className={`flex items-center gap-1.5 w-full text-left px-3 py-0.5 text-[11px] font-mono transition-colors ${
+                        codeTab === "html" ? "bg-[#1e1e2e] text-[#e2b8ff] border-l-2 border-[#6366f1]" : "text-[#9ca3af] hover:bg-[#1a1a1a] hover:text-white"
+                      }`}
+                    >
+                      <svg className="w-3 h-3 flex-shrink-0 text-[#e8894b]" viewBox="0 0 16 16" fill="currentColor"><path d="M4.5 1A.5.5 0 004 1.5v1h8v-1a.5.5 0 00-.5-.5h-7zm-1 3.5A.5.5 0 014 5v9a.5.5 0 00.5.5h7A.5.5 0 0012 14V5a.5.5 0 00-.5-.5h-7z"/></svg>
+                      index.html
+                    </button>
+                    {/* assets/ folder */}
+                    <div className="flex items-center gap-1 px-2 py-0.5 mt-0.5 text-[10px] text-[#6b7280]">
+                      <svg className="w-3 h-3 opacity-60" viewBox="0 0 16 16" fill="currentColor"><path d="M1 3.5A1.5 1.5 0 012.5 2h3.764c.958 0 1.76.56 2.109 1.5H13.5A1.5 1.5 0 0115 5v7.5a1.5 1.5 0 01-1.5 1.5h-11A1.5 1.5 0 011 13V3.5z"/></svg>
+                      <span>assets/</span>
+                    </div>
+                    {/* style.css */}
+                    <button
+                      onClick={() => setCodeTab("css")}
+                      className={`flex items-center gap-1.5 w-full text-left px-3 py-0.5 text-[11px] font-mono transition-colors ${
+                        codeTab === "css" ? "bg-[#1e1e2e] text-[#b8d7ff] border-l-2 border-[#6366f1]" : "text-[#9ca3af] hover:bg-[#1a1a1a] hover:text-white"
+                      }`}
+                    >
+                      <svg className="w-3 h-3 flex-shrink-0 text-[#519aba]" viewBox="0 0 16 16" fill="currentColor"><path d="M4.5 1A.5.5 0 004 1.5v1h8v-1a.5.5 0 00-.5-.5h-7zm-1 3.5A.5.5 0 014 5v9a.5.5 0 00.5.5h7A.5.5 0 0012 14V5a.5.5 0 00-.5-.5h-7z"/></svg>
+                      style.css
+                    </button>
+                    {/* script.js */}
+                    <button
+                      onClick={() => setCodeTab("js")}
+                      className={`flex items-center gap-1.5 w-full text-left px-3 py-0.5 text-[11px] font-mono transition-colors ${
+                        codeTab === "js" ? "bg-[#1e1e2e] text-[#ffffa8] border-l-2 border-[#6366f1]" : "text-[#9ca3af] hover:bg-[#1a1a1a] hover:text-white"
+                      }`}
+                    >
+                      <svg className="w-3 h-3 flex-shrink-0 text-[#f1e05a]" viewBox="0 0 16 16" fill="currentColor"><path d="M4.5 1A.5.5 0 004 1.5v1h8v-1a.5.5 0 00-.5-.5h-7zm-1 3.5A.5.5 0 014 5v9a.5.5 0 00.5.5h7A.5.5 0 0012 14V5a.5.5 0 00-.5-.5h-7z"/></svg>
+                      script.js
+                    </button>
+                  </div>
+
+                  {/* CodeMirror editor */}
+                  <div ref={cmContainerRef} className="flex-1 overflow-hidden bg-[#0d0d0d]" />
                 </div>
 
                 {/* Status bar */}
