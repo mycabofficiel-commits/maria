@@ -40,6 +40,7 @@ export const users = pgTable("users", {
   currentPeriodEnd: timestamp("currentPeriodEnd"),
   generationsUsed: integer("generationsUsed").default(0).notNull(),
   generationsLimit: integer("generationsLimit").default(3).notNull(),
+  monthlyTokensLimit: integer("monthlyTokensLimit"),
   passwordHash: text("passwordHash"),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().notNull(),
@@ -185,6 +186,21 @@ export const projectCollaborators = pgTable("project_collaborators", {
 
 export type ProjectCollaborator = typeof projectCollaborators.$inferSelect;
 export type InsertProjectCollaborator = typeof projectCollaborators.$inferInsert;
+
+// ─── Platform API Keys (admin-managed LLM keys) ───────────────────────────────
+export const platformApiKeys = pgTable("platform_api_keys", {
+  id: serial("id").primaryKey(),
+  provider: varchar("provider", { length: 32 }).notNull().unique(),
+  encryptedKey: text("encryptedKey").notNull(),
+  keyHint: varchar("keyHint", { length: 16 }),
+  label: varchar("label", { length: 64 }),
+  isActive: boolean("isActive").default(true).notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().notNull(),
+});
+
+export type PlatformApiKey = typeof platformApiKeys.$inferSelect;
+export type InsertPlatformApiKey = typeof platformApiKeys.$inferInsert;
 
 // ─── Plans ────────────────────────────────────────────────────────────────────
 export const plans = pgTable("plans", {

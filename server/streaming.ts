@@ -5,8 +5,8 @@
 import type { Express, Request, Response } from "express";
 import { sdk } from "./_core/sdk";
 import { getDb } from "./db";
-import { projects, versions, chatMessages, apiKeys, users, usageLogs } from "../drizzle/schema";
-import { eq, and, desc, count } from "drizzle-orm";
+import { projects, versions, chatMessages, apiKeys, users, usageLogs, platformApiKeys } from "../drizzle/schema";
+import { eq, and, desc, count, sum, gte } from "drizzle-orm";
 import crypto from "crypto";
 
 const ENCRYPTION_KEY =
@@ -51,15 +51,36 @@ async function authenticate(req: Request, res: Response) {
 
 // ── Platform API key helpers ───────────────────────────────────────────────
 
-/** Returns a platform-managed API key, or null if not configured */
-function getPlatformKey(provider: "anthropic" | "openai" | "deepseek" | "qwen"): string | null {
-  const keys: Record<string, string | undefined> = {
+/**
+ * Returns a platform-managed API key for the given provider.
+ * Priority: DB table (admin-managed) → env var fallback → null
+ */
+async function getPlatformKey(provider: "anthropic" | "openai" | "deepseek" | "qwen"): Promise<string | null> {
+  // 1. Try DB-stored key (admin can set/revoke via UltraDashboard)
+  try {
+    const db = await getDb();
+    if (db) {
+      const row = await db.select({ encryptedKey: platformApiKeys.encryptedKey })
+        .from(platformApiKeys)
+        .where(and(
+          eq(platformApiKeys.provider, provider),
+          eq(platformApiKeys.isActive, true)
+        ))
+        .limit(1);
+      if (row[0]) {
+        return decrypt(row[0].encryptedKey);
+      }
+    }
+  } catch { /* DB unavailable — fall through to env var */ }
+
+  // 2. Fall back to environment variable
+  const envKeys: Record<string, string | undefined> = {
     anthropic: process.env.ANTHROPIC_API_KEY,
     openai:    process.env.OPENAI_API_KEY,
     deepseek:  process.env.DEEPSEEK_API_KEY,
     qwen:      process.env.QWEN_API_KEY,
   };
-  return keys[provider] || null;
+  return envKeys[provider] || null;
 }
 
 /** Non-streaming AI call — returns generated text */
@@ -160,10 +181,12 @@ async function orchestrateGenerate(
     return null; // Both failed — step skipped silently
   }
 
-  // ── Keys ──────────────────────────────────────────────────────────────────
-  const claudeKey  = getPlatformKey("anthropic");
-  const openaiKey  = getPlatformKey("openai");
-  const qwenKey    = getPlatformKey("qwen");
+  // ── Keys (fetched concurrently from DB / env) ─────────────────────────────
+  const [claudeKey, openaiKey, qwenKey] = await Promise.all([
+    getPlatformKey("anthropic"),
+    getPlatformKey("openai"),
+    getPlatformKey("qwen"),
+  ]);
 
   // ── CREATOR ───────────────────────────────────────────────────────────────
   if (plan === "creator") {
@@ -267,9 +290,24 @@ export function registerStreamingRoutes(app: Express) {
       return;
     }
 
+    // Check monthly token limit (if set by admin)
+    if (u?.monthlyTokensLimit) {
+      const startOfMonth = new Date(new Date().getFullYear(), new Date().getMonth(), 1);
+      const monthStats = await db.select({ total: sum(usageLogs.tokensUsed) })
+        .from(usageLogs)
+        .where(and(eq(usageLogs.userId, user.id), gte(usageLogs.createdAt, startOfMonth)));
+      const monthTokensUsed = Number(monthStats[0]?.total || 0);
+      if (monthTokensUsed >= u.monthlyTokensLimit) {
+        res.status(403).json({
+          error: `Limite mensuelle de tokens atteinte (${u.monthlyTokensLimit.toLocaleString()} tokens). Contactez l'administrateur.`,
+        });
+        return;
+      }
+    }
+
     // ── Platform DeepSeek key (final executor) — fall back to user key ────────
     const userPlan = u?.plan || "free";
-    let deepseekKey = getPlatformKey("deepseek");
+    let deepseekKey = await getPlatformKey("deepseek");
     if (!deepseekKey) {
       // Backward compat: try the user's own stored API key
       const keyRow = await db.select().from(apiKeys).where(eq(apiKeys.userId, user.id)).limit(1);
@@ -471,7 +509,7 @@ Retourne UNIQUEMENT le code HTML complet, sans explication, sans markdown, sans 
     let apiKey: string;
     let provider = "deepseek";
     let modelToUse = "deepseek-chat";
-    const platformChatKey = getPlatformKey("deepseek");
+    const platformChatKey = await getPlatformKey("deepseek");
     if (platformChatKey) {
       apiKey = platformChatKey;
     } else {
@@ -740,7 +778,7 @@ ${currentVersion[0].generatedCode || ""}`;
     let apiKey: string;
     let provider = "anthropic";
     let modelToUse = "claude-haiku-4-5";
-    const platformDebugKey = getPlatformKey("anthropic");
+    const platformDebugKey = await getPlatformKey("anthropic");
     if (platformDebugKey) {
       apiKey = platformDebugKey;
     } else {
