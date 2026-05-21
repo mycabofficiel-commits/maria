@@ -281,7 +281,11 @@ Retourne UNIQUEMENT le code HTML complet, sans explication, sans markdown, sans 
     const user = await authenticate(req, res);
     if (!user) return;
 
-    const { projectId, message } = req.body as { projectId: number; message: string };
+    const { projectId, message, images } = req.body as {
+      projectId: number;
+      message: string;
+      images?: Array<{ base64: string; mimeType: string }>;
+    };
     if (!projectId || !message) {
       res.status(400).json({ error: "projectId et message requis" });
       return;
@@ -375,9 +379,24 @@ RÈGLES CODE (chaque modification doit les respecter):
 CODE ACTUEL DU SITE (version ${currentVersion[0].versionNumber || "?"}):
 ${currentVersion[0].generatedCode || ""}`;
 
-    const llmMessages = history
+    // Build conversation messages; inject images into last user turn if provided
+    const llmMessages: Array<{ role: "user" | "assistant"; content: any }> = history
       .filter(m => m.content && m.content.trim())
       .map(m => ({ role: m.role as "user" | "assistant", content: m.content || "" }));
+
+    // If images attached: build multimodal last message
+    if (images && images.length > 0) {
+      // Replace last user message (the current one) with multimodal content
+      const lastUserMsg = llmMessages.pop(); // remove the just-saved text message
+      const imageBlocks = images.map(img => ({
+        type: "image" as const,
+        source: { type: "base64" as const, media_type: img.mimeType as any, data: img.base64 },
+      }));
+      llmMessages.push({
+        role: "user",
+        content: [...imageBlocks, { type: "text", text: message }],
+      });
+    }
 
     // SSE headers
     res.setHeader("Content-Type", "text/event-stream");

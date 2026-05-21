@@ -24,7 +24,7 @@ import {
   Sparkles, Send, Eye, Code2, History, Smartphone, Tablet, Monitor,
   Loader2, ArrowLeft, Globe, RotateCcw, Save, CheckCircle2, MessageSquare,
   Rocket, Share2, Tag, MousePointer2, Copy, Check, PencilRuler, Upload,
-  PanelLeftClose, PanelLeftOpen, Bug
+  PanelLeftClose, PanelLeftOpen, Bug, Mic, MicOff, Paperclip, Camera, X as XIcon, Image as ImageIcon
 } from "lucide-react";
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
@@ -332,6 +332,15 @@ export default function ProjectEditor() {
   const [prompt, setPrompt] = useState("");
   const [chatMessage, setChatMessage] = useState("");
   const [viewMode, setViewMode] = useState<ViewMode>("desktop");
+
+  /* ── Dictation ── */
+  const [isRecording, setIsRecording] = useState(false);
+  const recognitionRef = useRef<any>(null);
+
+  /* ── Attachments ── */
+  type Attachment = { name: string; base64: string; mimeType: string; preview: string };
+  const [attachments, setAttachments] = useState<Attachment[]>([]);
+  const attachInputRef = useRef<HTMLInputElement>(null);
   const [isGenerating, setIsGenerating] = useState(false);
   const [selectedVersionId, setSelectedVersionId] = useState<number | null>(null);
   const [siteType, setSiteType] = useState("Landing page");
@@ -566,21 +575,29 @@ export default function ProjectEditor() {
 
   /* ── Streaming chat ── */
   const sendChatStream = useCallback(async (msg: string) => {
-    if (!msg.trim()) return;
+    if (!msg.trim() && attachments.length === 0) return;
     setIsChatPending(true);
     setStreamingReply("");
     setChatMessage("");
+    recognitionRef.current?.stop();
+    setIsRecording(false);
+    const sentAttachments = [...attachments];
+    setAttachments([]);
     // Optimistically add user message to local cache
     utils.projects.getChatMessages.setData({ projectId }, (old: any) => [
       ...(old || []),
-      { id: Date.now(), role: "user", content: msg, createdAt: new Date().toISOString(), projectId, userId: 0, versionId: null, tokensUsed: null },
+      { id: Date.now(), role: "user", content: msg || "📎 Image jointe", createdAt: new Date().toISOString(), projectId, userId: 0, versionId: null, tokensUsed: null },
     ]);
     try {
       const res = await fetch("/api/stream/chat", {
         method: "POST",
         headers: { "content-type": "application/json" },
         credentials: "include",
-        body: JSON.stringify({ projectId, message: msg }),
+        body: JSON.stringify({
+          projectId,
+          message: msg || "Voici une image de référence. Utilise-la pour améliorer ou modifier le site.",
+          images: sentAttachments.map((a) => ({ base64: a.base64, mimeType: a.mimeType })),
+        }),
       });
       if (!res.ok || !res.body) throw new Error(await res.text());
       const reader = res.body.getReader();
@@ -634,6 +651,47 @@ export default function ProjectEditor() {
 
   /* chatEdit kept for type compatibility */
   const chatEdit = { isPending: isChatPending, mutate: (args: any) => sendChatStream(args.message) };
+
+  /* ── Dictation ── */
+  const toggleDictation = useCallback(() => {
+    const SR = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    if (!SR) { toast.error("Dictée non supportée dans ce navigateur (Chrome/Edge recommandé)"); return; }
+    if (isRecording) {
+      recognitionRef.current?.stop();
+      setIsRecording(false);
+      return;
+    }
+    const recognition = new SR();
+    recognition.lang = "fr-FR";
+    recognition.continuous = true;
+    recognition.interimResults = true;
+    recognition.onresult = (e: any) => {
+      const transcript = Array.from(e.results as any[])
+        .map((r: any) => r[0].transcript).join("");
+      setChatMessage(transcript);
+    };
+    recognition.onerror = () => setIsRecording(false);
+    recognition.onend = () => setIsRecording(false);
+    recognitionRef.current = recognition;
+    recognition.start();
+    setIsRecording(true);
+  }, [isRecording]);
+
+  /* ── Attachments ── */
+  const handleAttachFiles = useCallback((files: FileList | null) => {
+    if (!files) return;
+    Array.from(files).forEach((file) => {
+      if (!file.type.startsWith("image/")) { toast.error(`${file.name}: seules les images sont supportées`); return; }
+      if (file.size > 5 * 1024 * 1024) { toast.error(`${file.name}: taille max 5 Mo`); return; }
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        const dataUrl = e.target?.result as string;
+        const base64 = dataUrl.split(",")[1];
+        setAttachments((prev) => [...prev, { name: file.name, base64, mimeType: file.type, preview: dataUrl }]);
+      };
+      reader.readAsDataURL(file);
+    });
+  }, []);
 
   const restoreVersion = trpc.projects.restoreVersion.useMutation({
     onSuccess: (_, vars) => {
@@ -1347,26 +1405,71 @@ ${jsCode}`;
                 </div>
 
                 {/* Chat input */}
-                <div className="p-2 border-t border-border/50 flex-shrink-0">
-                  <div className="flex gap-1.5">
-                    <Input
-                      placeholder="Parlez à Maria…"
+                <div className="px-2 pb-2 pt-1 border-t border-border/50 flex-shrink-0">
+                  {/* Attachment thumbnails */}
+                  {attachments.length > 0 && (
+                    <div className="flex gap-1.5 mb-1.5 flex-wrap">
+                      {attachments.map((att, i) => (
+                        <div key={i} className="relative group">
+                          <img src={att.preview} alt={att.name}
+                            className="h-14 w-14 object-cover rounded-lg border border-border/60" />
+                          <button
+                            onClick={() => setAttachments((prev) => prev.filter((_, idx) => idx !== i))}
+                            className="absolute -top-1.5 -right-1.5 w-4 h-4 rounded-full bg-destructive text-white flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                            <XIcon className="w-2.5 h-2.5" />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  {/* Input pill */}
+                  <div className="flex items-center gap-1 bg-[#1a1a2e] border border-[#2e2e4e] rounded-full px-2 py-1">
+                    {/* Camera — trigger image upload */}
+                    <button
+                      onClick={() => { if (attachInputRef.current) { attachInputRef.current.accept = "image/*"; attachInputRef.current.capture = "environment"; attachInputRef.current.click(); } }}
+                      className="p-1.5 rounded-full text-[#6b7280] hover:text-white hover:bg-white/10 transition-colors flex-shrink-0"
+                      title="Prendre une photo">
+                      <Camera className="w-3.5 h-3.5" />
+                    </button>
+                    {/* Mic — dictation */}
+                    <button
+                      onClick={toggleDictation}
+                      className={`p-1.5 rounded-full transition-colors flex-shrink-0 ${isRecording ? "text-red-400 bg-red-400/20 animate-pulse" : "text-[#6b7280] hover:text-white hover:bg-white/10"}`}
+                      title={isRecording ? "Arrêter la dictée" : "Dicter un message"}>
+                      {isRecording ? <MicOff className="w-3.5 h-3.5" /> : <Mic className="w-3.5 h-3.5" />}
+                    </button>
+                    {/* Paperclip — attach file */}
+                    <button
+                      onClick={() => { if (attachInputRef.current) { attachInputRef.current.removeAttribute("capture"); attachInputRef.current.accept = "image/*"; attachInputRef.current.click(); } }}
+                      className="p-1.5 rounded-full text-[#6b7280] hover:text-white hover:bg-white/10 transition-colors flex-shrink-0"
+                      title="Joindre une image">
+                      <Paperclip className="w-3.5 h-3.5" />
+                    </button>
+                    {/* Text input */}
+                    <input
+                      type="text"
+                      placeholder={isRecording ? "🎤 Dictée en cours…" : "Parlez à Maria…"}
                       value={chatMessage}
                       onChange={(e) => setChatMessage(e.target.value)}
                       onKeyDown={(e) => {
-                        if (e.key === "Enter" && !e.shiftKey && chatMessage.trim()) {
+                        if (e.key === "Enter" && !e.shiftKey && (chatMessage.trim() || attachments.length > 0)) {
                           e.preventDefault();
                           sendChatStream(chatMessage);
                         }
                       }}
-                      className="bg-input border-border/60 text-xs h-8"
+                      className="flex-1 bg-transparent text-xs text-white placeholder-[#6b7280] outline-none min-w-0 px-1"
                     />
-                    <Button size="icon" className="h-8 w-8 bg-primary hover:bg-primary/90 text-primary-foreground flex-shrink-0"
-                      onClick={() => { if (chatMessage.trim()) sendChatStream(chatMessage); }}
-                      disabled={chatEdit.isPending || !chatMessage.trim()}>
-                      {chatEdit.isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : <Send className="w-3 h-3" />}
-                    </Button>
+                    {/* Send */}
+                    <button
+                      onClick={() => { if (chatMessage.trim() || attachments.length > 0) sendChatStream(chatMessage); }}
+                      disabled={chatEdit.isPending || (!chatMessage.trim() && attachments.length === 0)}
+                      className="w-7 h-7 rounded-full bg-primary flex items-center justify-center flex-shrink-0 disabled:opacity-40 hover:bg-primary/90 transition-colors">
+                      {chatEdit.isPending ? <Loader2 className="w-3 h-3 animate-spin text-white" /> : <Send className="w-3 h-3 text-white" />}
+                    </button>
                   </div>
+                  {/* Hidden file input */}
+                  <input ref={attachInputRef} type="file" accept="image/*" multiple className="hidden"
+                    onChange={(e) => handleAttachFiles(e.target.files)} />
                 </div>
               </div>
             </div>
