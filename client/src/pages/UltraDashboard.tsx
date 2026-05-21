@@ -351,6 +351,62 @@ export default function UltraDashboard() {
               <p className="text-xs text-muted-foreground">Seul le compte Ultra peut modifier ces clés. Elles sont chiffrées en base de données.</p>
             </div>
 
+            {/* ── Tableau récapitulatif ── */}
+            {!keysLoading && (
+              <div className="rounded-xl border border-border/40 bg-card/60 overflow-hidden">
+                <div className="px-4 py-3 border-b border-border/30 flex items-center justify-between">
+                  <span className="text-sm font-semibold text-foreground flex items-center gap-2">
+                    <Key className="w-4 h-4 text-amber-400" />
+                    Récapitulatif des clés
+                  </span>
+                  <span className="text-xs font-semibold px-2.5 py-1 rounded-full bg-primary/10 text-primary">
+                    {platformKeys?.filter(k => k.isActive).length || 0} / {PROVIDERS.length} actives
+                  </span>
+                </div>
+                <table className="w-full text-sm">
+                  <thead className="bg-muted/10 border-b border-border/30">
+                    <tr>
+                      <th className="text-left px-4 py-2.5 text-xs font-medium text-muted-foreground">LLM</th>
+                      <th className="text-left px-4 py-2.5 text-xs font-medium text-muted-foreground">Rôle dans la chaîne</th>
+                      <th className="text-left px-4 py-2.5 text-xs font-medium text-muted-foreground">Statut</th>
+                      <th className="text-left px-4 py-2.5 text-xs font-medium text-muted-foreground">Hint clé</th>
+                      <th className="text-left px-4 py-2.5 text-xs font-medium text-muted-foreground">Mis à jour</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {PROVIDERS.map((prov) => {
+                      const k = platformKeys?.find(p => p.provider === prov.id);
+                      return (
+                        <tr key={prov.id} className="border-b border-border/20 hover:bg-muted/10">
+                          <td className="px-4 py-3">
+                            <span className={`font-semibold ${prov.color}`}>{prov.label}</span>
+                          </td>
+                          <td className="px-4 py-3 text-xs text-muted-foreground">{prov.role}</td>
+                          <td className="px-4 py-3">
+                            {k ? (
+                              <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium ${k.isActive ? "bg-emerald-500/10 text-emerald-400" : "bg-muted/30 text-muted-foreground"}`}>
+                                {k.isActive ? "✓ Active" : "Désactivée"}
+                              </span>
+                            ) : (
+                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-rose-500/10 text-rose-400">
+                                ✗ Manquante
+                              </span>
+                            )}
+                          </td>
+                          <td className="px-4 py-3 font-mono text-xs text-muted-foreground">
+                            {k?.keyHint || "—"}
+                          </td>
+                          <td className="px-4 py-3 text-xs text-muted-foreground">
+                            {k?.updatedAt ? formatDistanceToNow(new Date(k.updatedAt), { addSuffix: true, locale: fr }) : "—"}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
+
             {keysLoading ? (
               <div className="space-y-3">{Array.from({ length: 4 }).map((_, i) => <div key={i} className="h-20 rounded-xl bg-muted/20 animate-pulse" />)}</div>
             ) : (
