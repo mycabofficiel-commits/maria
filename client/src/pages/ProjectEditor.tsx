@@ -24,7 +24,7 @@ import {
   Sparkles, Send, Eye, Code2, History, Smartphone, Tablet, Monitor,
   Loader2, ArrowLeft, Globe, RotateCcw, Save, CheckCircle2, MessageSquare,
   Rocket, Share2, Tag, MousePointer2, Copy, Check, PencilRuler, Upload,
-  PanelLeftClose, PanelLeftOpen
+  PanelLeftClose, PanelLeftOpen, Bug
 } from "lucide-react";
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
@@ -680,6 +680,18 @@ export default function ProjectEditor() {
     onError: (err: any) => toast.error(err.message),
   });
 
+  const [debugReport, setDebugReport] = useState<string | null>(null);
+
+  const debugCode = trpc.projects.debugCode.useMutation({
+    onSuccess: (data) => {
+      setDebugReport(data.report);
+      utils.projects.getVersions.invalidate({ projectId });
+      utils.projects.get.invalidate({ id: projectId });
+      toast.success("Débogage terminé — nouvelle version créée", { duration: 5000 });
+    },
+    onError: (err: any) => toast.error(err.message),
+  });
+
   /* inspect: listen to messages from iframe */
   useEffect(() => {
     const handler = (e: MessageEvent) => {
@@ -837,6 +849,18 @@ export default function ProjectEditor() {
                 }}>
                 <PencilRuler className="w-3.5 h-3.5 sm:mr-1.5" />
                 <span className="hidden sm:inline">Éditeur Visuel</span>
+              </Button>
+            )}
+            {hasCode && (
+              <Button size="sm" variant="outline"
+                className="text-xs h-8 px-2 sm:px-3 border-amber-500/40 text-amber-400 hover:bg-amber-500/10 hover:text-amber-300"
+                onClick={() => debugCode.mutate({ projectId })}
+                disabled={debugCode.isPending}
+                title="Analyser et corriger automatiquement les bugs, liens cassés et erreurs">
+                {debugCode.isPending
+                  ? <Loader2 className="w-3.5 h-3.5 animate-spin sm:mr-1.5" />
+                  : <Bug className="w-3.5 h-3.5 sm:mr-1.5" />}
+                <span className="hidden sm:inline">{debugCode.isPending ? "Débogage…" : "Débugger"}</span>
               </Button>
             )}
             {hasCode && (
@@ -1231,6 +1255,33 @@ ${jsCode}`;
                         </div>
                       );
                     })
+                  )}
+                  {/* Debug report — shown after debugCode completes */}
+                  {debugReport && (
+                    <div className="flex gap-1.5 items-start">
+                      <div className="w-5 h-5 rounded-full bg-amber-500/20 flex items-center justify-center flex-shrink-0 mt-0.5">
+                        <Bug className="w-2.5 h-2.5 text-amber-400" />
+                      </div>
+                      <div className="bg-card border border-amber-500/30 rounded-xl rounded-tl-sm px-2.5 py-1.5 max-w-[90%]">
+                        <p className="text-[10px] font-semibold text-amber-400 mb-1">Rapport de débogage</p>
+                        <p className="text-xs text-foreground/80 whitespace-pre-wrap leading-relaxed">{debugReport}</p>
+                        <button onClick={() => setDebugReport(null)} className="mt-1.5 text-[10px] text-muted-foreground hover:text-foreground">Fermer</button>
+                      </div>
+                    </div>
+                  )}
+                  {/* Debbugging typing indicator */}
+                  {debugCode.isPending && (
+                    <div className="flex gap-1.5 items-start">
+                      <div className="w-5 h-5 rounded-full bg-amber-500/20 flex items-center justify-center flex-shrink-0">
+                        <Bug className="w-2.5 h-2.5 text-amber-400" />
+                      </div>
+                      <div className="bg-card border border-amber-500/30 rounded-xl rounded-tl-sm px-2.5 py-1.5">
+                        <div className="flex items-center gap-1.5">
+                          <Loader2 className="w-3 h-3 animate-spin text-amber-400" />
+                          <span className="text-xs text-muted-foreground">Analyse et correction du code…</span>
+                        </div>
+                      </div>
+                    </div>
                   )}
                   {/* Streaming reply — shown while Maria is generating her response */}
                   {streamingReply && (

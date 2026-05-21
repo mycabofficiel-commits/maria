@@ -171,6 +171,18 @@ RÈGLES IMPORTANTES:
 - N'utilise PAS de frameworks externes (pas de React, Vue, etc.)
 - Le code doit être complet et fonctionnel immédiatement
 
+NAVIGATION MULTI-PAGES (CRITIQUE):
+- N'utilise JAMAIS de liens vers des fichiers .html séparés (ex: href="contact.html")
+- Toutes les "pages" doivent être des sections dans le même fichier HTML
+- Pour la navigation multi-pages, utilise du JavaScript pour afficher/masquer des sections:
+  * Chaque page = une <section id="page-accueil">, <section id="page-contact"> etc.
+  * La navigation JS montre/masque les sections avec classList.toggle('hidden')
+  * Les liens de nav utilisent href="#" avec onclick="showPage('contact')"
+- Toutes les images utilisent des URLs valides (https://images.unsplash.com ou SVG inline)
+- Aucun lien cassé : chaque href pointe vers une ancre existante (#section) ou appelle une fonction JS
+- Tous les formulaires ont un handler JS qui affiche un message de confirmation
+- Tous les boutons d'action ont un comportement défini
+
 TYPE DE SITE: ${input.siteType || "landing page"}
 STYLE: ${input.style || "moderne"}
 LANGUE: ${input.language}
@@ -342,7 +354,14 @@ RÈGLES IMPORTANTES:
 - Tu es chaleureuse, professionnelle et proactive
 - Pour les modifications, le code doit être complet et fonctionnel
 - Réponds TOUJOURS en JSON valide, rien d'autre
-- Réponds dans la langue de l'utilisateur`;
+- Réponds dans la langue de l'utilisateur
+
+RÈGLES CODE (à respecter pour chaque modification):
+- N'utilise JAMAIS de liens vers des fichiers .html séparés (ex: href="contact.html")
+- Toutes les pages/sections sont dans le même fichier HTML avec navigation JavaScript
+- Toutes les images utilisent des URLs valides (https://images.unsplash.com ou SVG inline)
+- Aucun lien href="#" sans ancre ou handler JS défini
+- Tous les boutons et formulaires ont un comportement JS fonctionnel`;
 
       // Build conversation history for the LLM
       const llmMessages = history
@@ -491,5 +510,144 @@ RÈGLES IMPORTANTES:
         .set({ isPublished: true, status: "published", publishedAt: new Date() })
         .where(and(eq(projects.id, input.projectId), eq(projects.userId, ctx.user.id)));
       return { success: true };
+    }),
+
+  // Debug & fix code
+  debugCode: protectedProcedure
+    .input(z.object({ projectId: z.number() }))
+    .mutation(async ({ ctx, input }) => {
+      const db = await getDb();
+      if (!db) throw new Error("DB unavailable");
+
+      const project = await db.select().from(projects)
+        .where(and(eq(projects.id, input.projectId), eq(projects.userId, ctx.user.id)))
+        .limit(1);
+      if (!project[0]) throw new Error("Projet introuvable");
+
+      const currentVersion = await db.select().from(versions)
+        .where(eq(versions.id, project[0].currentVersionId!))
+        .limit(1);
+      if (!currentVersion[0]?.generatedCode) throw new Error("Aucune version à débugger");
+
+      const keyRow = await db.select().from(apiKeys).where(eq(apiKeys.userId, ctx.user.id)).limit(1);
+      if (!keyRow[0]) throw new Error("Aucune clé API configurée");
+      const apiKey = decrypt(keyRow[0].encryptedKey);
+
+      const modelToUse = ["claude-3-5-sonnet-20241022", "claude-3-5-haiku-20241022", "claude-3-opus-20240229", "claude-3-5-sonnet-latest", "claude-3-5-haiku-latest"].includes(keyRow[0].model)
+        ? "claude-sonnet-4-5"
+        : keyRow[0].model;
+
+      const startTime = Date.now();
+
+      const systemPrompt = `Tu es un expert en qualité web et débogage. Tu analyses du code HTML/CSS/JS et tu le corriges intégralement.
+
+ANALYSE ET CORRECTIONS À EFFECTUER:
+
+1. LIENS CASSÉS:
+   - Remplace TOUS les liens href="page.html", href="/page", href="./page" par de la navigation JavaScript
+   - Crée les sections manquantes avec du contenu logique et professionnel
+   - Structure: chaque page = <section id="page-xxx" class="page-section"> avec JS pour afficher/masquer
+   - Les liens de navigation utilisent onclick="showPage('xxx'); return false;"
+   - Ajoute la fonction showPage() en JS si elle n'existe pas
+
+2. IMAGES CASSÉES:
+   - Remplace src="" , src="#", src="image.jpg" (chemins locaux) par des images Unsplash valides thématiques
+   - Format: https://images.unsplash.com/photo-XXXXX?w=800&q=80
+
+3. ERREURS JAVASCRIPT:
+   - Corrige toutes les références à des variables/fonctions inexistantes
+   - Assure que tous les event listeners ciblent des éléments qui existent
+   - Tous les formulaires doivent avoir un handler qui affiche un message de succès
+
+4. BOUTONS/CTA SANS ACTION:
+   - Chaque bouton doit avoir un comportement défini (scroll, showPage, form submit, etc.)
+
+5. CONTENU MANQUANT:
+   - Remplis les placeholder "Lorem ipsum" avec du vrai contenu logique
+   - Complète les sections avec contenu, prix, équipe, FAQ selon le type de site
+
+Réponds UNIQUEMENT avec ce JSON (code HTML complet corrigé):
+{"fixed_code":"<DOCTYPE html>...code complet...</html>","report":"• Problème 1 corrigé\\n• Problème 2 corrigé\\n..."}`;
+
+      const response = await fetch("https://api.anthropic.com/v1/messages", {
+        method: "POST",
+        headers: {
+          "x-api-key": apiKey,
+          "anthropic-version": "2023-06-01",
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({
+          model: modelToUse,
+          max_tokens: 12000,
+          system: systemPrompt,
+          messages: [{
+            role: "user",
+            content: `Analyse et corrige ce code:\n\n${currentVersion[0].generatedCode}`,
+          }],
+        }),
+      });
+
+      if (!response.ok) {
+        const err = await response.text();
+        throw new Error(`Erreur API: ${err}`);
+      }
+
+      const data = await response.json() as any;
+      const rawReply = data.content?.[0]?.text || "{}";
+      const tokensUsed = (data.usage?.input_tokens || 0) + (data.usage?.output_tokens || 0);
+      const durationMs = Date.now() - startTime;
+
+      let fixedCode: string;
+      let report: string;
+      try {
+        const jsonMatch = rawReply.match(/\{[\s\S]*\}/);
+        const parsed = JSON.parse(jsonMatch ? jsonMatch[0] : rawReply);
+        fixedCode = parsed.fixed_code || parsed.code || "";
+        report = parsed.report || "Analyse terminée.";
+      } catch {
+        // If JSON parse fails, treat the whole response as HTML if it starts with <!DOCTYPE
+        if (rawReply.trim().startsWith("<!DOCTYPE") || rawReply.trim().startsWith("<html")) {
+          fixedCode = rawReply.trim();
+          report = "Code corrigé.";
+        } else {
+          throw new Error("Réponse inattendue du modèle");
+        }
+      }
+
+      if (!fixedCode) throw new Error("Le modèle n'a pas retourné de code corrigé");
+
+      // Save as new version
+      const versionCount = await db.select({ count: count() }).from(versions)
+        .where(eq(versions.projectId, input.projectId));
+      const nextVersionNumber = (versionCount[0]?.count || 0) + 1;
+
+      const [versionResult] = await db.insert(versions).values({
+        projectId: input.projectId,
+        userId: ctx.user.id,
+        versionNumber: nextVersionNumber,
+        label: `Debug v${nextVersionNumber}`,
+        prompt: "Débogage automatique",
+        generatedCode: fixedCode,
+        tokensUsed,
+        generationTimeMs: durationMs,
+        model: modelToUse,
+        status: "ready",
+      }).returning({ id: versions.id });
+
+      await db.update(projects).set({
+        currentVersionId: versionResult.id,
+        status: "ready",
+      }).where(eq(projects.id, input.projectId));
+
+      // Log
+      await db.insert(usageLogs).values({
+        userId: ctx.user.id,
+        projectId: input.projectId,
+        tokensUsed,
+        model: modelToUse,
+        action: "debug",
+      }).catch(() => {});
+
+      return { versionId: versionResult.id, report, tokensUsed };
     }),
 });
