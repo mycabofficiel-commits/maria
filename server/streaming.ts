@@ -117,6 +117,15 @@ RÈGLES IMPORTANTES:
 - N'utilise PAS de frameworks externes (pas de React, Vue, etc.)
 - Le code doit être complet et fonctionnel immédiatement
 
+NAVIGATION MULTI-PAGES (CRITIQUE — ZÉRO LIEN CASSÉ):
+- N'utilise JAMAIS href="page.html" ou href="/page" — ces liens cassent le site
+- Toutes les "pages" sont des <section id="page-xxx"> dans le même fichier HTML
+- Navigation JS: onclick="showPage('xxx'); return false;" + fonction showPage() en JS
+- Toutes les images: URLs Unsplash valides (https://images.unsplash.com/photo-ID?w=800&q=80)
+- Tous les formulaires: handler JS affichant un message de confirmation
+- Tous les boutons CTA: comportement JS défini (scroll, showPage, modal, etc.)
+- href="#" uniquement si ancre ou handler JS associé
+
 TYPE DE SITE: ${siteType || "landing page"}
 STYLE: ${style || "moderne"}
 LANGUE: ${language || "fr"}
@@ -355,6 +364,13 @@ INTERDIT:
 - Répondre sans modifier le code si une action est demandée
 - Halluciner des erreurs ou états non confirmés
 - Mettre "reply" après "code" dans le JSON
+- Utiliser href="page.html" ou liens vers des fichiers .html séparés
+- Laisser des images cassées (src="#", src="", chemins locaux)
+
+RÈGLES CODE (chaque modification doit les respecter):
+- Navigation multi-pages = JS pur avec sections <section id="page-xxx"> + fonction showPage()
+- Images = URLs Unsplash valides ou SVG inline
+- Boutons/formulaires = handlers JS définis
 
 CODE ACTUEL DU SITE (version ${currentVersion[0].versionNumber || "?"}):
 ${currentVersion[0].generatedCode || ""}`;
@@ -498,6 +514,208 @@ ${currentVersion[0].generatedCode || ""}`;
         action: agentResponse.action,
         generatedCode: agentResponse.code || null,
       });
+    } catch (err: any) {
+      sseWrite(res, "error", { message: err.message });
+    }
+
+    res.end();
+  });
+
+  // ── POST /api/stream/debug ────────────────────────────────────────────────
+  app.post("/api/stream/debug", async (req: Request, res: Response) => {
+    const user = await authenticate(req, res);
+    if (!user) return;
+
+    const { projectId } = req.body as { projectId: number };
+    if (!projectId) { res.status(400).json({ error: "projectId requis" }); return; }
+
+    const db = await getDb();
+    if (!db) { res.status(500).json({ error: "DB unavailable" }); return; }
+
+    const project = await db.select().from(projects)
+      .where(and(eq(projects.id, projectId), eq(projects.userId, user.id))).limit(1);
+    if (!project[0]) { res.status(404).json({ error: "Projet introuvable" }); return; }
+
+    const currentVersion = await db.select().from(versions)
+      .where(eq(versions.id, project[0].currentVersionId!)).limit(1);
+    if (!currentVersion[0]?.generatedCode) { res.status(400).json({ error: "Aucune version à débugger" }); return; }
+
+    const keyRow = await db.select().from(apiKeys).where(eq(apiKeys.userId, user.id)).limit(1);
+    if (!keyRow[0]) { res.status(400).json({ error: "Aucune clé API configurée" }); return; }
+    let apiKey: string;
+    try { apiKey = decrypt(keyRow[0].encryptedKey); }
+    catch { res.status(400).json({ error: "Clé API invalide" }); return; }
+
+    const provider = keyRow[0].provider || "anthropic";
+    const modelToUse = ["claude-3-5-sonnet-20241022", "claude-3-5-haiku-20241022", "claude-3-opus-20240229", "claude-3-5-sonnet-latest", "claude-3-5-haiku-latest"].includes(keyRow[0].model)
+      ? "claude-sonnet-4-5"
+      : (keyRow[0].model || "claude-sonnet-4-5");
+
+    const versionCount = await db.select({ count: count() }).from(versions).where(eq(versions.projectId, projectId));
+    const nextVersionNumber = (versionCount[0]?.count || 0) + 1;
+
+    const systemPrompt = `Tu es un expert en qualité web et débogage. Analyse le code HTML/CSS/JS fourni et corrige TOUS les problèmes.
+
+CORRECTIONS OBLIGATOIRES:
+1. LIENS CASSÉS: href="page.html", href="/page" → navigation JS avec sections <section id="page-xxx"> et fonction showPage()
+2. IMAGES CASSÉES: src="", src="#", chemins locaux → https://images.unsplash.com/photo-ID?w=800&q=80 (thématiques)
+3. ERREURS JS: variables/fonctions inexistantes, event listeners sans cible, console.error visibles
+4. BOUTONS SANS ACTION: chaque bouton/CTA doit avoir un onclick ou data-action défini
+5. FORMULAIRES: chaque form doit avoir un onsubmit JS affichant un message de succès
+6. CONTENU: remplace Lorem ipsum et placeholders par du vrai contenu logique et professionnel
+
+Retourne UNIQUEMENT ce JSON (rien d'autre, pas de markdown):
+{"fixed_code":"<!DOCTYPE html>...code HTML complet corrigé...","report":"• Bug 1 corrigé\\n• Bug 2 corrigé"}`;
+
+    const userMessage = `Analyse et corrige ce code:\n\n${currentVersion[0].generatedCode}`;
+
+    // SSE headers
+    res.setHeader("Content-Type", "text/event-stream");
+    res.setHeader("Cache-Control", "no-cache");
+    res.setHeader("Connection", "keep-alive");
+    res.flushHeaders();
+
+    const startTime = Date.now();
+    let fullRaw = "";
+    let inputTokens = 0;
+    let outputTokens = 0;
+
+    try {
+      if (provider === "anthropic") {
+        const aiRes = await fetch("https://api.anthropic.com/v1/messages", {
+          method: "POST",
+          headers: {
+            "x-api-key": apiKey,
+            "anthropic-version": "2023-06-01",
+            "content-type": "application/json",
+          },
+          body: JSON.stringify({
+            model: modelToUse,
+            max_tokens: 8000,
+            stream: true,
+            system: systemPrompt,
+            messages: [{ role: "user", content: userMessage }],
+          }),
+        });
+        if (!aiRes.ok || !aiRes.body) {
+          const errText = await aiRes.text();
+          const errData = JSON.parse(errText).catch?.(() => ({})) || {};
+          sseWrite(res, "error", { message: `Erreur API: ${(errData as any)?.error?.message || errText}` });
+          res.end(); return;
+        }
+        const reader = aiRes.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = "";
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          buffer += decoder.decode(value, { stream: true });
+          const lines = buffer.split("\n"); buffer = lines.pop() || "";
+          for (const line of lines) {
+            if (!line.startsWith("data: ")) continue;
+            const raw = line.slice(6).trim(); if (raw === "[DONE]") continue;
+            try {
+              const evt = JSON.parse(raw);
+              if (evt.type === "content_block_delta" && evt.delta?.type === "text_delta") { fullRaw += evt.delta.text; }
+              if (evt.type === "message_delta" && evt.usage) outputTokens = evt.usage.output_tokens || 0;
+              if (evt.type === "message_start" && evt.message?.usage) inputTokens = evt.message.usage.input_tokens || 0;
+              if (evt.type === "error") { sseWrite(res, "error", { message: evt.error?.message || "Erreur API" }); res.end(); return; }
+            } catch { /* skip */ }
+          }
+        }
+      } else {
+        const baseUrls: Record<string, string> = {
+          deepseek: "https://api.deepseek.com/v1",
+          openai: "https://api.openai.com/v1",
+          mistral: "https://api.mistral.ai/v1",
+          groq: "https://api.groq.com/openai/v1",
+        };
+        const baseUrl = baseUrls[provider] || "https://api.openai.com/v1";
+        const aiRes = await fetch(`${baseUrl}/chat/completions`, {
+          method: "POST",
+          headers: { "Authorization": `Bearer ${apiKey}`, "content-type": "application/json" },
+          body: JSON.stringify({
+            model: modelToUse,
+            max_tokens: 8000,
+            stream: true,
+            messages: [{ role: "system", content: systemPrompt }, { role: "user", content: userMessage }],
+          }),
+        });
+        if (!aiRes.ok || !aiRes.body) { sseWrite(res, "error", { message: `Erreur API ${provider}: ${await aiRes.text()}` }); res.end(); return; }
+        const reader = aiRes.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = "";
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          buffer += decoder.decode(value, { stream: true });
+          const lines = buffer.split("\n"); buffer = lines.pop() || "";
+          for (const line of lines) {
+            if (!line.startsWith("data: ")) continue;
+            const raw = line.slice(6).trim(); if (raw === "[DONE]") continue;
+            try {
+              const evt = JSON.parse(raw);
+              const chunk = evt.choices?.[0]?.delta?.content;
+              if (chunk) fullRaw += chunk;
+              if (evt.usage) { inputTokens = evt.usage.prompt_tokens || 0; outputTokens = evt.usage.completion_tokens || 0; }
+            } catch { /* skip */ }
+          }
+        }
+      }
+
+      const tokensUsed = inputTokens + outputTokens;
+      const durationMs = Date.now() - startTime;
+
+      // Parse result
+      let fixedCode = "";
+      let report = "Analyse terminée.";
+      try {
+        const jsonMatch = fullRaw.match(/\{[\s\S]*\}/);
+        const parsed = JSON.parse(jsonMatch ? jsonMatch[0] : fullRaw);
+        fixedCode = parsed.fixed_code || parsed.code || "";
+        report = parsed.report || "Code corrigé.";
+      } catch {
+        if (fullRaw.trim().startsWith("<!DOCTYPE") || fullRaw.trim().startsWith("<html")) {
+          fixedCode = fullRaw.trim();
+          report = "Code corrigé.";
+        } else {
+          sseWrite(res, "error", { message: "Le modèle n'a pas retourné de code valide" });
+          res.end(); return;
+        }
+      }
+
+      if (!fixedCode) { sseWrite(res, "error", { message: "Aucun code corrigé reçu" }); res.end(); return; }
+
+      // Save new version
+      const [versionResult] = await db.insert(versions).values({
+        projectId,
+        userId: user.id,
+        versionNumber: nextVersionNumber,
+        label: `Debug v${nextVersionNumber}`,
+        prompt: "Débogage automatique",
+        generatedCode: fixedCode,
+        tokensUsed,
+        generationTimeMs: durationMs,
+        model: modelToUse,
+        status: "ready",
+      }).returning({ id: versions.id });
+
+      await db.update(projects).set({
+        currentVersionId: versionResult.id,
+        status: "ready",
+      }).where(eq(projects.id, projectId));
+
+      await db.insert(usageLogs).values({
+        userId: user.id,
+        projectId,
+        action: "debug",
+        model: modelToUse,
+        tokensUsed,
+        durationMs,
+        status: "success",
+      }).catch(() => {});
+
+      sseWrite(res, "done", { versionId: versionResult.id, report, tokensUsed });
     } catch (err: any) {
       sseWrite(res, "error", { message: err.message });
     }

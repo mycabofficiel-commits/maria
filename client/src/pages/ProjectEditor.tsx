@@ -681,16 +681,49 @@ export default function ProjectEditor() {
   });
 
   const [debugReport, setDebugReport] = useState<string | null>(null);
+  const [isDebugging, setIsDebugging] = useState(false);
 
-  const debugCode = trpc.projects.debugCode.useMutation({
-    onSuccess: (data) => {
-      setDebugReport(data.report);
-      utils.projects.getVersions.invalidate({ projectId });
-      utils.projects.get.invalidate({ id: projectId });
-      toast.success("Débogage terminé — nouvelle version créée", { duration: 5000 });
-    },
-    onError: (err: any) => toast.error(err.message),
-  });
+  const runDebug = useCallback(async () => {
+    setIsDebugging(true);
+    setDebugReport(null);
+    try {
+      const res = await fetch("/api/stream/debug", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ projectId }),
+      });
+      if (!res.ok || !res.body) throw new Error(await res.text());
+      const reader = res.body.getReader();
+      const dec = new TextDecoder();
+      let buf = "";
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buf += dec.decode(value, { stream: true });
+        const lines = buf.split("\n"); buf = lines.pop() || "";
+        for (const line of lines) {
+          if (!line.startsWith("data: ")) continue;
+          try {
+            const evt = JSON.parse(line.slice(6));
+            if (evt.versionId) {
+              setDebugReport(evt.report || "Code corrigé.");
+              utils.projects.getVersions.invalidate({ projectId });
+              utils.projects.get.invalidate({ id: projectId });
+              toast.success("Débogage terminé — nouvelle version créée", { duration: 5000 });
+            }
+            if (evt.message) throw new Error(evt.message);
+          } catch (e: any) {
+            if (e.message) toast.error(e.message);
+          }
+        }
+      }
+    } catch (err: any) {
+      toast.error(err.message);
+    } finally {
+      setIsDebugging(false);
+    }
+  }, [projectId]);
 
   /* inspect: listen to messages from iframe */
   useEffect(() => {
@@ -854,13 +887,13 @@ export default function ProjectEditor() {
             {hasCode && (
               <Button size="sm" variant="outline"
                 className="text-xs h-8 px-2 sm:px-3 border-amber-500/40 text-amber-400 hover:bg-amber-500/10 hover:text-amber-300"
-                onClick={() => debugCode.mutate({ projectId })}
-                disabled={debugCode.isPending}
+                onClick={runDebug}
+                disabled={isDebugging}
                 title="Analyser et corriger automatiquement les bugs, liens cassés et erreurs">
-                {debugCode.isPending
+                {isDebugging
                   ? <Loader2 className="w-3.5 h-3.5 animate-spin sm:mr-1.5" />
                   : <Bug className="w-3.5 h-3.5 sm:mr-1.5" />}
-                <span className="hidden sm:inline">{debugCode.isPending ? "Débogage…" : "Débugger"}</span>
+                <span className="hidden sm:inline">{isDebugging ? "Débogage…" : "Débugger"}</span>
               </Button>
             )}
             {hasCode && (
@@ -1269,8 +1302,8 @@ ${jsCode}`;
                       </div>
                     </div>
                   )}
-                  {/* Debbugging typing indicator */}
-                  {debugCode.isPending && (
+                  {/* Debugging indicator */}
+                  {isDebugging && (
                     <div className="flex gap-1.5 items-start">
                       <div className="w-5 h-5 rounded-full bg-amber-500/20 flex items-center justify-center flex-shrink-0">
                         <Bug className="w-2.5 h-2.5 text-amber-400" />
