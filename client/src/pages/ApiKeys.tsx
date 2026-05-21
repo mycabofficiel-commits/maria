@@ -1,309 +1,265 @@
 import { useState } from "react";
+import { useLocation } from "wouter";
 import AppLayout from "@/components/AppLayout";
 import { trpc } from "@/lib/trpc";
+import { useAuth } from "@/_core/hooks/useAuth";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
-import {
-  Select, SelectContent, SelectItem, SelectTrigger, SelectValue
-} from "@/components/ui/select";
 import { toast } from "sonner";
 import {
-  Key, Shield, CheckCircle2, XCircle, AlertTriangle, Loader2,
-  Eye, EyeOff, Trash2, TestTube, Info
+  Key, Shield, CheckCircle2, Loader2,
+  Eye, EyeOff, Trash2, Power, PowerOff, Plus,
+  ExternalLink, Sparkles, Lock,
 } from "lucide-react";
+import { formatDistanceToNow } from "date-fns";
+import { fr } from "date-fns/locale";
 
-const STATUS_CONFIG: Record<string, { label: string; color: string; icon: any; bg: string }> = {
-  valid: { label: "Valide", color: "text-emerald-400", icon: CheckCircle2, bg: "bg-emerald-400/10" },
-  invalid: { label: "Invalide", color: "text-destructive", icon: XCircle, bg: "bg-destructive/10" },
-  expired: { label: "Expirée", color: "text-amber-400", icon: AlertTriangle, bg: "bg-amber-400/10" },
-  quota_exceeded: { label: "Quota dépassé", color: "text-amber-400", icon: AlertTriangle, bg: "bg-amber-400/10" },
-  untested: { label: "Non testée", color: "text-muted-foreground", icon: Key, bg: "bg-muted" },
-};
-
-const PROVIDERS = [
-  { value: "anthropic", label: "Anthropic (Claude)", color: "text-amber-400" },
-  { value: "deepseek", label: "DeepSeek", color: "text-blue-400" },
-  { value: "openai", label: "OpenAI (GPT)", color: "text-emerald-400" },
+// Provider display info (same order as pipeline)
+const PROVIDERS: { id: "deepseek" | "qwen" | "anthropic" | "openai"; label: string; role: string; color: string; plans: string }[] = [
+  { id: "deepseek",  label: "DeepSeek",       role: "Exécuteur final HTML",         color: "text-blue-400",    plans: "Tous les plans" },
+  { id: "qwen",      label: "Qwen",            role: "Coordinator de contenu",       color: "text-orange-400",  plans: "Creator · Pro · Agency" },
+  { id: "anthropic", label: "Claude",          role: "Architecte + Debug",           color: "text-violet-400",  plans: "Pro · Agency" },
+  { id: "openai",    label: "GPT-4o",          role: "Stratège business",            color: "text-emerald-400", plans: "Agency uniquement" },
 ];
 
-const MODELS_BY_PROVIDER: Record<string, Array<{ value: string; label: string; desc: string }>> = {
-  anthropic: [
-    { value: "claude-sonnet-4-5", label: "Claude Sonnet 4.5", desc: "Recommandé — Meilleur équilibre qualité/coût" },
-    { value: "claude-opus-4-5", label: "Claude Opus 4.5", desc: "Meilleure qualité, plus coûteux" },
-    { value: "claude-haiku-3-5", label: "Claude Haiku 3.5", desc: "Rapide et économique" },
-  ],
-  deepseek: [
-    { value: "deepseek-chat", label: "DeepSeek V3", desc: "Recommandé — Très économique, excellent en code" },
-    { value: "deepseek-reasoner", label: "DeepSeek R1", desc: "Raisonnement avancé, mathématiques" },
-  ],
-  openai: [
-    { value: "gpt-4o", label: "GPT-4o", desc: "Multimodal, très polyvalent" },
-    { value: "gpt-4o-mini", label: "GPT-4o Mini", desc: "Rapide et économique" },
-  ],
-};
-
-const COST_BY_PROVIDER: Record<string, Array<{ model: string; cost: string }>> = {
-  anthropic: [
-    { model: "Claude Sonnet 4.5", cost: "~0.003$ / génération" },
-    { model: "Claude Opus 4.5", cost: "~0.015$ / génération" },
-    { model: "Claude Haiku 3.5", cost: "~0.0008$ / génération" },
-  ],
-  deepseek: [
-    { model: "DeepSeek V3", cost: "~0.0003$ / génération" },
-    { model: "DeepSeek R1", cost: "~0.0005$ / génération" },
-  ],
-  openai: [
-    { model: "GPT-4o", cost: "~0.005$ / génération" },
-    { model: "GPT-4o Mini", cost: "~0.00015$ / génération" },
-  ],
-};
-
-const KEY_PREFIXES: Record<string, string> = {
-  anthropic: "sk-ant-",
-  deepseek: "sk-",
-  openai: "sk-",
-};
-
-export default function ApiKeys() {
-  const [newKey, setNewKey] = useState("");
-  const [showKey, setShowKey] = useState(false);
-  const [selectedProvider, setSelectedProvider] = useState("anthropic");
-  const [selectedModel, setSelectedModel] = useState("claude-sonnet-4-5");
-
+// ── Admin view ─────────────────────────────────────────────────────────────────
+function AdminApiKeys() {
+  const [, navigate] = useLocation();
   const utils = trpc.useUtils();
-  const { data: apiKey, isLoading } = trpc.user.getApiKey.useQuery();
+  const { data: platformKeys, isLoading } = trpc.admin.getPlatformKeys.useQuery();
 
-  const saveKey = trpc.user.saveApiKey.useMutation({
-    onSuccess: () => {
-      toast.success("Clé API sauvegardée avec succès");
-      setNewKey("");
-      utils.user.getApiKey.invalidate();
-    },
-    onError: (err: any) => toast.error(err.message),
-  });
+  const setPlatformKey    = trpc.admin.setPlatformKey.useMutation({ onSuccess: () => { toast.success("Clé enregistrée"); utils.admin.getPlatformKeys.invalidate(); setAddingFor(null); setNewKey(""); setNewLabel(""); }, onError: e => toast.error(e.message) });
+  const togglePlatformKey = trpc.admin.togglePlatformKey.useMutation({ onSuccess: () => { toast.success("Statut mis à jour"); utils.admin.getPlatformKeys.invalidate(); }, onError: e => toast.error(e.message) });
+  const deletePlatformKey = trpc.admin.deletePlatformKey.useMutation({ onSuccess: () => { toast.success("Clé supprimée"); utils.admin.getPlatformKeys.invalidate(); }, onError: e => toast.error(e.message) });
 
-  const deleteKey = trpc.user.deleteApiKey.useMutation({
-    onSuccess: () => {
-      toast.success("Clé API supprimée");
-      utils.user.getApiKey.invalidate();
-    },
-    onError: (err: any) => toast.error(err.message),
-  });
+  const [addingFor, setAddingFor] = useState<string | null>(null);
+  const [newKey, setNewKey]       = useState("");
+  const [newLabel, setNewLabel]   = useState("");
+  const [showKey, setShowKey]     = useState(false);
 
-  const testKey = trpc.user.testApiKey.useMutation({
-    onSuccess: (data) => {
-      if (data.valid) {
-        toast.success("✅ Clé API valide et fonctionnelle !");
-      } else {
-        const msg = data.errorMessage || data.status;
-        toast.error(`❌ ${msg}`, { duration: 6000 });
-      }
-      utils.user.getApiKey.invalidate();
-    },
-    onError: (err: any) => toast.error(err.message),
-  });
+  const activeCount = platformKeys?.filter(k => k.isActive).length || 0;
 
-  const handleProviderChange = (p: string) => {
-    setSelectedProvider(p);
-    setSelectedModel(MODELS_BY_PROVIDER[p]?.[0]?.value || "");
-  };
+  return (
+    <div className="max-w-2xl space-y-6">
+      <div>
+        <h2 className="text-2xl font-display font-bold text-foreground mb-1">Clés API LLM</h2>
+        <p className="text-muted-foreground text-sm">Vous êtes administrateur — vous gérez les clés utilisées par toute la plateforme.</p>
+      </div>
 
-  const handleSave = () => {
-    if (!newKey.trim()) return toast.error("Entrez une clé API");
-    const prefix = KEY_PREFIXES[selectedProvider] || "sk-";
-    if (selectedProvider === "anthropic" && !newKey.startsWith("sk-ant-")) {
-      return toast.error("La clé Anthropic doit commencer par sk-ant-");
-    }
-    saveKey.mutate({ key: newKey.trim(), model: selectedModel, provider: selectedProvider });
-  };
+      {/* Security notice */}
+      <div className="flex items-start gap-3 p-4 rounded-xl border border-emerald-400/20 bg-emerald-400/5">
+        <Shield className="w-5 h-5 text-emerald-400 flex-shrink-0 mt-0.5" />
+        <div className="text-sm">
+          <div className="font-medium text-foreground mb-0.5">Chiffrement AES-256</div>
+          <div className="text-muted-foreground">Les clés sont chiffrées avant stockage. Seuls les 4 derniers caractères sont visibles.</div>
+        </div>
+      </div>
 
-  const currentProvider = (apiKey as any)?.provider || "anthropic";
-  const providerLabel = PROVIDERS.find(p => p.value === currentProvider)?.label || currentProvider;
+      {/* Summary table */}
+      {isLoading ? (
+        <div className="space-y-2">{Array.from({ length: 4 }).map((_, i) => <div key={i} className="h-14 rounded-xl bg-muted/20 animate-pulse" />)}</div>
+      ) : (
+        <div className="rounded-xl border border-border/40 bg-card/60 overflow-hidden">
+          <div className="px-4 py-3 border-b border-border/30 flex items-center justify-between">
+            <span className="font-semibold text-foreground flex items-center gap-2 text-sm">
+              <Key className="w-4 h-4 text-amber-400" /> Récapitulatif
+            </span>
+            <span className={`text-xs font-semibold px-2.5 py-1 rounded-full ${
+              activeCount === PROVIDERS.length ? "bg-emerald-500/10 text-emerald-400" :
+              activeCount > 0               ? "bg-amber-500/10 text-amber-400" :
+                                              "bg-rose-500/10 text-rose-400"
+            }`}>
+              {activeCount} / {PROVIDERS.length} actives
+            </span>
+          </div>
+          <table className="w-full text-sm">
+            <thead className="bg-muted/10 border-b border-border/30">
+              <tr>
+                <th className="text-left px-4 py-2.5 text-xs font-medium text-muted-foreground">LLM</th>
+                <th className="text-left px-4 py-2.5 text-xs font-medium text-muted-foreground">Plans concernés</th>
+                <th className="text-left px-4 py-2.5 text-xs font-medium text-muted-foreground">Statut</th>
+                <th className="text-left px-4 py-2.5 text-xs font-medium text-muted-foreground">Clé</th>
+                <th className="text-right px-4 py-2.5 text-xs font-medium text-muted-foreground">Action</th>
+              </tr>
+            </thead>
+            <tbody>
+              {PROVIDERS.map((prov) => {
+                const k = platformKeys?.find(p => p.provider === prov.id);
+                const isAdding = addingFor === prov.id;
+                return (
+                  <>
+                    <tr key={prov.id} className="border-b border-border/20 hover:bg-muted/10">
+                      <td className="px-4 py-3">
+                        <div className={`font-semibold ${prov.color}`}>{prov.label}</div>
+                        <div className="text-xs text-muted-foreground">{prov.role}</div>
+                      </td>
+                      <td className="px-4 py-3 text-xs text-muted-foreground">{prov.plans}</td>
+                      <td className="px-4 py-3">
+                        {k ? (
+                          <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium ${k.isActive ? "bg-emerald-500/10 text-emerald-400" : "bg-muted/30 text-muted-foreground"}`}>
+                            <CheckCircle2 className="w-3 h-3" />
+                            {k.isActive ? "Active" : "Désactivée"}
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-rose-500/10 text-rose-400">
+                            ✗ Manquante
+                          </span>
+                        )}
+                      </td>
+                      <td className="px-4 py-3 font-mono text-xs text-muted-foreground">
+                        {k ? (
+                          <div>
+                            <div>{k.keyHint}</div>
+                            {k.updatedAt && <div className="text-muted-foreground/50">{formatDistanceToNow(new Date(k.updatedAt), { addSuffix: true, locale: fr })}</div>}
+                          </div>
+                        ) : "—"}
+                      </td>
+                      <td className="px-4 py-3">
+                        <div className="flex items-center justify-end gap-1">
+                          {k && (
+                            <>
+                              <Button size="sm" variant="ghost" className="h-7 px-2 text-muted-foreground hover:text-amber-400"
+                                onClick={() => togglePlatformKey.mutate({ provider: prov.id, isActive: !k.isActive })}
+                                title={k.isActive ? "Désactiver" : "Activer"}>
+                                {k.isActive ? <PowerOff className="w-3.5 h-3.5" /> : <Power className="w-3.5 h-3.5" />}
+                              </Button>
+                              <Button size="sm" variant="ghost" className="h-7 px-2 text-muted-foreground hover:text-rose-400"
+                                onClick={() => { if (confirm(`Supprimer la clé ${prov.label} ?`)) deletePlatformKey.mutate({ provider: prov.id }); }}
+                                title="Supprimer">
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </Button>
+                            </>
+                          )}
+                          <Button size="sm" variant={k ? "outline" : "default"}
+                            className={`h-7 px-2.5 text-xs gap-1 ${!k ? "bg-primary hover:bg-primary/90" : "border-border/50"}`}
+                            onClick={() => { setAddingFor(isAdding ? null : prov.id); setNewKey(""); setNewLabel(""); }}>
+                            <Plus className="w-3 h-3" />
+                            {k ? "Modifier" : "Ajouter"}
+                          </Button>
+                        </div>
+                      </td>
+                    </tr>
+
+                    {/* Inline form */}
+                    {isAdding && (
+                      <tr key={`${prov.id}-form`} className="border-b border-border/20 bg-muted/5">
+                        <td colSpan={5} className="px-4 py-4">
+                          <div className="grid sm:grid-cols-2 gap-3 mb-3">
+                            <div className="space-y-1">
+                              <label className="text-xs text-muted-foreground font-medium">Clé API {prov.label} *</label>
+                              <div className="relative">
+                                <Input
+                                  type={showKey ? "text" : "password"}
+                                  placeholder="Colle la clé ici…"
+                                  value={newKey}
+                                  onChange={e => setNewKey(e.target.value)}
+                                  className="h-9 text-sm pr-9 bg-muted/20 border-border/50 font-mono"
+                                  autoFocus
+                                />
+                                <button onClick={() => setShowKey(!showKey)} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground">
+                                  {showKey ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                                </button>
+                              </div>
+                            </div>
+                            <div className="space-y-1">
+                              <label className="text-xs text-muted-foreground font-medium">Label (optionnel)</label>
+                              <Input placeholder="ex: Production, Test…" value={newLabel} onChange={e => setNewLabel(e.target.value)} className="h-9 text-sm bg-muted/20 border-border/50" />
+                            </div>
+                          </div>
+                          <div className="flex gap-2 justify-end">
+                            <Button size="sm" variant="ghost" className="h-8 text-xs" onClick={() => { setAddingFor(null); setNewKey(""); setNewLabel(""); }}>Annuler</Button>
+                            <Button size="sm" className="h-8 text-xs bg-primary hover:bg-primary/90"
+                              disabled={!newKey.trim() || setPlatformKey.isPending}
+                              onClick={() => setPlatformKey.mutate({ provider: prov.id, rawKey: newKey.trim(), label: newLabel.trim() || undefined })}>
+                              {setPlatformKey.isPending ? "Enregistrement…" : "Enregistrer"}
+                            </Button>
+                          </div>
+                        </td>
+                      </tr>
+                    )}
+                  </>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {/* Info */}
+      <div className="rounded-xl border border-border/40 bg-card/60 p-4 text-xs text-muted-foreground space-y-1.5">
+        <p className="font-medium text-foreground">ℹ️ Logique de priorité</p>
+        <p>1. Clé DB active (configurée ici) — priorité absolue</p>
+        <p>2. Variable d'environnement (DEEPSEEK_API_KEY, etc.) — fallback</p>
+        <p>3. Aucune → erreur "Service IA indisponible"</p>
+        <p className="pt-1">Les utilisateurs <strong>n'ont plus besoin</strong> de configurer leur propre clé API.</p>
+      </div>
+    </div>
+  );
+}
+
+// ── User view ──────────────────────────────────────────────────────────────────
+function UserApiKeys() {
+  return (
+    <div className="max-w-2xl space-y-6">
+      <div>
+        <h2 className="text-2xl font-display font-bold text-foreground mb-1">Intelligence Artificielle</h2>
+        <p className="text-muted-foreground text-sm">L'IA est entièrement gérée par la plateforme.</p>
+      </div>
+
+      {/* Platform managed banner */}
+      <div className="flex items-start gap-4 p-5 rounded-xl border border-primary/20 bg-primary/5">
+        <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center flex-shrink-0">
+          <Sparkles className="w-5 h-5 text-primary" />
+        </div>
+        <div>
+          <div className="font-semibold text-foreground mb-1">Aucune clé API requise</div>
+          <div className="text-sm text-muted-foreground">
+            Mar-ia gère toutes les connexions IA pour vous. Vous n'avez pas besoin de créer ou configurer de clé API personnelle.
+          </div>
+        </div>
+      </div>
+
+      {/* Pipeline by plan */}
+      <div className="rounded-xl border border-border/40 bg-card/60 overflow-hidden">
+        <div className="px-4 py-3 border-b border-border/30">
+          <span className="font-semibold text-foreground text-sm flex items-center gap-2">
+            <Lock className="w-4 h-4 text-muted-foreground" /> IA utilisée selon votre plan
+          </span>
+        </div>
+        <div className="divide-y divide-border/20">
+          {[
+            { plan: "Free",    color: "text-muted-foreground",  agents: "DeepSeek",                           badge: "bg-muted/30 text-muted-foreground" },
+            { plan: "Creator", color: "text-violet-400",         agents: "Qwen → DeepSeek",                    badge: "bg-violet-500/10 text-violet-400" },
+            { plan: "Pro",     color: "text-blue-400",           agents: "Claude → Qwen → DeepSeek",           badge: "bg-blue-500/10 text-blue-400" },
+            { plan: "Agency",  color: "text-emerald-400",        agents: "GPT-4o → Claude → Qwen → DeepSeek", badge: "bg-emerald-500/10 text-emerald-400" },
+          ].map(({ plan, color, agents, badge }) => (
+            <div key={plan} className="flex items-center justify-between px-4 py-3">
+              <span className={`text-sm font-semibold ${color}`}>{plan}</span>
+              <span className={`text-xs px-2.5 py-1 rounded-full font-mono ${badge}`}>{agents}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <p className="text-xs text-muted-foreground text-center">
+        Pour changer de plan, rendez-vous sur la page{" "}
+        <a href="/billing" className="text-primary hover:underline inline-flex items-center gap-0.5">
+          Facturation <ExternalLink className="w-3 h-3" />
+        </a>
+      </p>
+    </div>
+  );
+}
+
+// ── Main ───────────────────────────────────────────────────────────────────────
+export default function ApiKeys() {
+  const { user } = useAuth();
+  const isAdmin = user?.role === "ultra" || user?.role === "admin";
 
   return (
     <AppLayout title="Clés API">
-      <div className="max-w-2xl space-y-6">
-        <div>
-          <h2 className="text-2xl font-display font-bold text-foreground mb-1">Clés API</h2>
-          <p className="text-muted-foreground">Connectez votre clé API pour générer des sites web avec l'IA de votre choix.</p>
-        </div>
-
-        {/* Security notice */}
-        <div className="flex items-start gap-3 p-4 rounded-xl border border-emerald-400/20 bg-emerald-400/5">
-          <Shield className="w-5 h-5 text-emerald-400 flex-shrink-0 mt-0.5" />
-          <div className="text-sm">
-            <div className="font-medium text-foreground mb-1">Sécurité maximale</div>
-            <div className="text-muted-foreground">
-              Votre clé est chiffrée avec AES-256 avant stockage. Elle n'est jamais exposée côté client.
-            </div>
-          </div>
-        </div>
-
-        {/* Current key */}
-        {isLoading ? (
-          <div className="flex items-center justify-center py-8">
-            <Loader2 className="w-5 h-5 text-primary animate-spin" />
-          </div>
-        ) : apiKey ? (
-          <div className="p-5 rounded-xl border border-border/60 bg-card">
-            <div className="flex items-center justify-between mb-4">
-              <div>
-                <h3 className="font-semibold text-foreground">Clé API active</h3>
-                <p className="text-xs text-muted-foreground mt-0.5">{providerLabel}</p>
-              </div>
-              {(() => {
-                const conf = STATUS_CONFIG[apiKey.status] || STATUS_CONFIG.untested;
-                return (
-                  <Badge variant="outline" className={`${conf.color} border-current/20 ${conf.bg}`}>
-                    <conf.icon className="w-3 h-3 mr-1.5" />
-                    {conf.label}
-                  </Badge>
-                );
-              })()}
-            </div>
-            <div className="flex items-center gap-2 p-3 rounded-lg bg-muted/50 font-mono text-sm text-muted-foreground mb-4">
-              <Key className="w-4 h-4" />
-              …{apiKey.keyHint}
-            </div>
-            <div className="text-xs text-muted-foreground mb-4">
-              Modèle : <span className="text-foreground">{apiKey.model}</span>
-            </div>
-            <div className="flex gap-2">
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => testKey.mutate()}
-                disabled={testKey.isPending}
-                className="border-border/60"
-              >
-                {testKey.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin mr-1.5" /> : <TestTube className="w-3.5 h-3.5 mr-1.5" />}
-                Tester
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => deleteKey.mutate()}
-                disabled={deleteKey.isPending}
-                className="border-destructive/30 text-destructive hover:bg-destructive/10"
-              >
-                {deleteKey.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin mr-1.5" /> : <Trash2 className="w-3.5 h-3.5 mr-1.5" />}
-                Supprimer
-              </Button>
-            </div>
-          </div>
-        ) : null}
-
-        {/* Add / Update key */}
-        <div className="p-5 rounded-xl border border-border/60 bg-card">
-          <h3 className="font-semibold text-foreground mb-4">
-            {apiKey ? "Mettre à jour la clé" : "Ajouter une clé API"}
-          </h3>
-
-          <div className="space-y-4">
-            <div>
-              <Label className="text-sm text-foreground mb-1.5 block">Fournisseur IA</Label>
-              <Select value={selectedProvider} onValueChange={handleProviderChange}>
-                <SelectTrigger className="bg-input border-border/60">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {PROVIDERS.map((p) => (
-                    <SelectItem key={p.value} value={p.value}>
-                      <span className={p.color}>{p.label}</span>
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-
-            <div>
-              <Label className="text-sm text-foreground mb-1.5 block">Clé API</Label>
-              <div className="relative">
-                <Input
-                  type={showKey ? "text" : "password"}
-                  placeholder={`${KEY_PREFIXES[selectedProvider] || "sk-"}...`}
-                  value={newKey}
-                  onChange={(e) => setNewKey(e.target.value)}
-                  className="pr-10 font-mono bg-input border-border/60"
-                />
-                <button
-                  type="button"
-                  onClick={() => setShowKey(!showKey)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
-                >
-                  {showKey ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                </button>
-              </div>
-              <p className="text-xs text-muted-foreground mt-1.5 flex items-center gap-1">
-                <Info className="w-3 h-3" />
-                {selectedProvider === "anthropic" && <><span>Obtenez votre clé sur </span><a href="https://console.anthropic.com" target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">console.anthropic.com</a></>}
-                {selectedProvider === "deepseek" && <><span>Obtenez votre clé sur </span><a href="https://platform.deepseek.com" target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">platform.deepseek.com</a></>}
-                {selectedProvider === "openai" && <><span>Obtenez votre clé sur </span><a href="https://platform.openai.com" target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">platform.openai.com</a></>}
-              </p>
-            </div>
-
-            <div>
-              <Label className="text-sm text-foreground mb-1.5 block">Modèle</Label>
-              <Select value={selectedModel} onValueChange={setSelectedModel}>
-                <SelectTrigger className="bg-input border-border/60">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {(MODELS_BY_PROVIDER[selectedProvider] || []).map((m) => (
-                    <SelectItem key={m.value} value={m.value}>
-                      <div>
-                        <div className="font-medium">{m.label}</div>
-                        <div className="text-xs text-muted-foreground">{m.desc}</div>
-                      </div>
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-
-            <Button
-              className="w-full bg-primary hover:bg-primary/90 text-primary-foreground"
-              onClick={handleSave}
-              disabled={saveKey.isPending || !newKey.trim()}
-            >
-              {saveKey.isPending ? (
-                <Loader2 className="w-4 h-4 animate-spin mr-2" />
-              ) : (
-                <Key className="w-4 h-4 mr-2" />
-              )}
-              {apiKey ? "Mettre à jour" : "Sauvegarder la clé"}
-            </Button>
-          </div>
-        </div>
-
-        {/* Cost info */}
-        <div className="p-4 rounded-xl border border-border/60 bg-card">
-          <h4 className="font-semibold text-foreground mb-3 flex items-center gap-2">
-            <Info className="w-4 h-4 text-muted-foreground" />
-            Estimation des coûts
-          </h4>
-          {Object.entries(COST_BY_PROVIDER).map(([prov, costs]) => (
-            <div key={prov} className="mb-3 last:mb-0">
-              <p className="text-xs text-muted-foreground font-medium mb-1.5 uppercase tracking-wide">
-                {PROVIDERS.find(p => p.value === prov)?.label}
-              </p>
-              <div className="space-y-1">
-                {costs.map((item) => (
-                  <div key={item.model} className="flex items-center justify-between text-sm">
-                    <span className="text-muted-foreground">{item.model}</span>
-                    <span className="text-foreground font-mono">{item.cost}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-          ))}
-          <p className="text-xs text-muted-foreground mt-3 border-t border-border/40 pt-3">
-            Les coûts sont débités sur votre compte chez le fournisseur. Mar-ia n'ajoute aucune marge.
-          </p>
-        </div>
-      </div>
+      {isAdmin ? <AdminApiKeys /> : <UserApiKeys />}
     </AppLayout>
   );
 }
