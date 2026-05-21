@@ -66,6 +66,174 @@ const extractJs = (code: string): string => {
   return all.map(x => x[1]).join("\n").trim();
 };
 
+// ── Visual Editor script injected into iframe via contentDocument ──
+const VE_SCRIPT = `(function(){
+  var sel=null,deb=null,dragEl=null,overlay=null,resizing=null;
+
+  var vs=document.createElement('style');
+  vs.id='__ve_s__';
+  vs.textContent='[data-veh]{outline:2px dashed rgba(99,102,241,.5)!important;cursor:pointer!important}[data-vedrag]{opacity:0.5!important}';
+  document.head.appendChild(vs);
+
+  function cleanHtml(){
+    var clone=document.documentElement.cloneNode(true);
+    ['#__ve__','#__ve_s__','#__ve_ov__'].forEach(function(id){
+      var el=clone.querySelector(id);if(el&&el.parentNode)el.parentNode.removeChild(el);
+    });
+    Array.from(clone.querySelectorAll('[data-veh],[data-ves],[data-vedrag],[draggable],[contenteditable]')).forEach(function(el){
+      ['data-veh','data-ves','data-vedrag','draggable','contenteditable'].forEach(function(a){el.removeAttribute(a);});
+    });
+    return '<!DOCTYPE html>\\n'+clone.outerHTML;
+  }
+
+  function push(){
+    clearTimeout(deb);
+    deb=setTimeout(function(){window.parent.postMessage({type:'VE_HTML_UPDATE',html:cleanHtml()},'*');},300);
+  }
+
+  function computedProps(el){
+    var cs=window.getComputedStyle(el);
+    return {color:cs.color,backgroundColor:cs.backgroundColor,fontSize:cs.fontSize,fontWeight:cs.fontWeight,textAlign:cs.textAlign};
+  }
+
+  function createOverlay(el){
+    removeOverlay();
+    var r=el.getBoundingClientRect();
+    overlay=document.createElement('div');
+    overlay.id='__ve_ov__';
+    overlay.style.cssText='position:fixed;pointer-events:none;z-index:99998;box-sizing:border-box;left:'+r.left+'px;top:'+r.top+'px;width:'+r.width+'px;height:'+r.height+'px;';
+    var handles=[
+      {t:'-4px',l:'-4px',c:'nw'},{t:'-4px',l:'calc(50% - 4px)',c:'n'},{t:'-4px',r:'-4px',c:'ne'},
+      {t:'calc(50% - 4px)',l:'-4px',c:'w'},{t:'calc(50% - 4px)',r:'-4px',c:'e'},
+      {b:'-4px',l:'-4px',c:'sw'},{b:'-4px',l:'calc(50% - 4px)',c:'s'},{b:'-4px',r:'-4px',c:'se'}
+    ];
+    handles.forEach(function(p){
+      var h=document.createElement('div');
+      h.setAttribute('data-vehandle',p.c);
+      h.style.cssText='position:absolute;width:8px;height:8px;background:#6366f1;border:2px solid #fff;border-radius:2px;cursor:'+p.c+'-resize;pointer-events:auto;z-index:99999;';
+      if(p.t)h.style.top=p.t;if(p.b)h.style.bottom=p.b;
+      if(p.l)h.style.left=p.l;if(p.r)h.style.right=p.r;
+      overlay.appendChild(h);
+    });
+    document.body.appendChild(overlay);
+  }
+
+  function updateOverlay(){
+    if(!overlay||!sel)return;
+    var r=sel.getBoundingClientRect();
+    overlay.style.left=r.left+'px';overlay.style.top=r.top+'px';
+    overlay.style.width=r.width+'px';overlay.style.height=r.height+'px';
+  }
+
+  function removeOverlay(){
+    if(overlay&&overlay.parentNode)overlay.parentNode.removeChild(overlay);
+    overlay=null;resizing=null;
+  }
+
+  function selectEl(el){
+    if(sel){sel.removeAttribute('data-ves');sel.removeAttribute('draggable');if(sel.contentEditable==='true')sel.contentEditable='false';}
+    removeOverlay();
+    if(!el||el===document.body||el===document.documentElement||!el.tagName||(el.getAttribute&&el.getAttribute('data-vehandle'))){
+      sel=null;window.parent.postMessage({type:'VE_DESELECT'},'*');return;
+    }
+    sel=el;el.setAttribute('draggable','true');
+    createOverlay(el);
+    var r=el.getBoundingClientRect(),tag=el.tagName,isImg=tag==='IMG';
+    window.parent.postMessage({
+      type:'VE_SELECT',tag:tag,
+      isText:['H1','H2','H3','H4','H5','H6','P','SPAN','A','LI','BUTTON','LABEL','STRONG','EM','B','I','TD','TH','DIV'].indexOf(tag)>=0,
+      isImage:isImg,
+      isBlock:['DIV','SECTION','ARTICLE','HEADER','FOOTER','MAIN','ASIDE','NAV','FIGURE'].indexOf(tag)>=0,
+      canMove:!!(el.parentElement&&el.parentElement.children.length>1),
+      rect:{top:r.top+window.scrollY,left:r.left+window.scrollX,width:r.width,height:r.height},
+      computedStyle:computedProps(el),
+      textContent:el.innerText||el.textContent||'',
+      imgW:isImg?el.naturalWidth:0,imgH:isImg?el.naturalHeight:0,
+      imgOW:isImg?el.offsetWidth:0,imgOH:isImg?el.offsetHeight:0
+    },'*');
+  }
+
+  document.addEventListener('mouseover',function(e){
+    var t=e.target;
+    if(t&&t.setAttribute&&t!==document.body&&t!==document.documentElement&&t!==sel&&!(t.getAttribute&&t.getAttribute('data-vehandle')))
+      t.setAttribute('data-veh','1');
+  },true);
+  document.addEventListener('mouseout',function(e){var t=e.target;if(t&&t.removeAttribute)t.removeAttribute('data-veh');},true);
+
+  document.addEventListener('click',function(e){
+    if(e.target&&e.target.getAttribute&&e.target.getAttribute('data-vehandle'))return;
+    e.preventDefault();e.stopPropagation();
+    if(e.target&&e.target.tagName)selectEl(e.target);
+  },true);
+
+  document.addEventListener('dblclick',function(e){
+    var el=e.target;
+    if(!el||!el.tagName||(el.getAttribute&&el.getAttribute('data-vehandle')))return;
+    if(['H1','H2','H3','H4','H5','H6','P','SPAN','A','LI','BUTTON','LABEL','STRONG','EM','B','I','TD','TH'].indexOf(el.tagName)>=0){
+      e.preventDefault();e.stopPropagation();
+      el.contentEditable='true';el.focus();
+      try{var rng=document.createRange();rng.selectNodeContents(el);var s=window.getSelection();s.removeAllRanges();s.addRange(rng);}catch(x){}
+    }
+  },true);
+
+  document.addEventListener('mousedown',function(e){
+    var h=e.target.getAttribute&&e.target.getAttribute('data-vehandle');
+    if(!h||!sel)return;
+    e.preventDefault();e.stopPropagation();
+    var r=sel.getBoundingClientRect();
+    resizing={h:h,sx:e.clientX,sy:e.clientY,sw:r.width,sh:r.height};
+  },true);
+  document.addEventListener('mousemove',function(e){
+    if(!resizing||!sel)return;
+    e.preventDefault();
+    var dx=e.clientX-resizing.sx,dy=e.clientY-resizing.sy,h=resizing.h;
+    if(h.indexOf('e')>=0)sel.style.width=Math.max(20,resizing.sw+dx)+'px';
+    if(h.indexOf('s')>=0)sel.style.height=Math.max(20,resizing.sh+dy)+'px';
+    if(h.indexOf('w')>=0)sel.style.width=Math.max(20,resizing.sw-dx)+'px';
+    if(h.indexOf('n')>=0)sel.style.height=Math.max(20,resizing.sh-dy)+'px';
+    updateOverlay();
+  },true);
+  document.addEventListener('mouseup',function(){if(resizing){resizing=null;push();}},true);
+  document.addEventListener('scroll',updateOverlay,true);
+
+  document.addEventListener('dragstart',function(e){if(e.target===sel){dragEl=sel;e.target.setAttribute('data-vedrag','1');e.dataTransfer.effectAllowed='move';}},true);
+  document.addEventListener('dragover',function(e){if(dragEl){e.preventDefault();e.dataTransfer.dropEffect='move';}},true);
+  document.addEventListener('drop',function(e){
+    if(!dragEl)return;
+    e.preventDefault();e.stopPropagation();
+    var t=e.target;
+    while(t&&t!==document.body){if(t.parentElement===dragEl.parentElement&&t!==dragEl)break;t=t.parentElement;}
+    if(t&&t!==dragEl&&t.parentElement===dragEl.parentElement){
+      var siblings=Array.from(dragEl.parentElement.children);
+      if(siblings.indexOf(dragEl)<siblings.indexOf(t))dragEl.parentElement.insertBefore(dragEl,t.nextSibling);
+      else dragEl.parentElement.insertBefore(dragEl,t);
+      push();
+    }
+    dragEl.removeAttribute('data-vedrag');dragEl=null;updateOverlay();
+  },true);
+  document.addEventListener('dragend',function(){if(dragEl)dragEl.removeAttribute('data-vedrag');dragEl=null;},true);
+
+  document.addEventListener('input',function(){
+    push();
+    if(sel&&sel.contentEditable==='true')window.parent.postMessage({type:'VE_TEXT_SYNC',text:sel.innerText||''},'*');
+  });
+  document.addEventListener('keydown',function(e){if(e.key==='Escape')selectEl(null);});
+
+  window.addEventListener('message',function(e){
+    if(!e.data||!e.data.type)return;
+    if(e.data.type==='VE_STYLE'&&sel){try{sel.style[e.data.prop]=e.data.value;}catch(x){}updateOverlay();push();}
+    if(e.data.type==='VE_TEXT'&&sel){sel.innerText=e.data.value;push();}
+    if(e.data.type==='VE_IMG_SRC'&&sel&&sel.tagName==='IMG'){sel.src=e.data.value;push();}
+    if(e.data.type==='VE_MOVE_UP'&&sel&&sel.previousElementSibling){sel.parentElement.insertBefore(sel,sel.previousElementSibling);updateOverlay();push();}
+    if(e.data.type==='VE_MOVE_DOWN'&&sel&&sel.nextElementSibling){sel.parentElement.insertBefore(sel.nextElementSibling,sel);updateOverlay();push();}
+    if(e.data.type==='VE_INSERT_IMG'){
+      var img=document.createElement('img');img.src=e.data.src;img.style.maxWidth='100%';
+      if(sel)sel.appendChild(img);else document.body.appendChild(img);
+      selectEl(img);push();
+    }
+  });
+})();`;
+
 /* ── component ───────────────────────────────────────────── */
 export default function ProjectEditor() {
   const params = useParams<{ id: string }>();
@@ -112,8 +280,7 @@ export default function ProjectEditor() {
   const [veDirty, setVeDirty] = useState(false);
   const imageUploadRef = useRef<HTMLInputElement>(null);
   const imageInsertRef = useRef<HTMLInputElement>(null);
-  const veUrlRef = useRef<string>("");
-  const [vePreviewSrc, setVePreviewSrc] = useState("");
+  const veCurrentHtmlRef = useRef<string>("");
 
   /* code state (editable) */
   const [htmlCode, setHtmlCode] = useState("");
@@ -196,16 +363,17 @@ export default function ProjectEditor() {
 
   useEffect(() => {
     if (!htmlCode && !cssCode && !jsCode) return;
+    if (visualEditMode) return;
     if (debounceRef.current) clearTimeout(debounceRef.current);
     debounceRef.current = setTimeout(() => buildPreview(htmlCode, cssCode, jsCode), 800);
     return () => { if (debounceRef.current) clearTimeout(debounceRef.current); };
-  }, [htmlCode, cssCode, jsCode, buildPreview]);
+  }, [htmlCode, cssCode, jsCode, buildPreview, visualEditMode]);
 
   /* also update preview when version data arrives (from server) */
   useEffect(() => {
     const code = currentVersionData?.generatedCode;
-    if (code) buildPreview(extractHtml(code), extractCss(code), extractJs(code));
-  }, [currentVersionData?.generatedCode]);
+    if (code && !visualEditMode) buildPreview(extractHtml(code), extractCss(code), extractJs(code));
+  }, [currentVersionData?.generatedCode, visualEditMode]);
 
   /* ── Streaming generate ── */
   const [streamingCode, setStreamingCode] = useState("");
@@ -364,6 +532,20 @@ export default function ProjectEditor() {
     previewRef.current?.contentWindow?.postMessage(msg, "*");
   }, []);
 
+  const injectVeScript = useCallback(() => {
+    try {
+      const iframeDoc = previewRef.current?.contentDocument;
+      if (!iframeDoc?.body) { setTimeout(() => injectVeScript(), 150); return; }
+      iframeDoc.getElementById('__ve__')?.remove();
+      iframeDoc.getElementById('__ve_s__')?.remove();
+      iframeDoc.getElementById('__ve_ov__')?.remove();
+      const s = iframeDoc.createElement('script');
+      s.id = '__ve__';
+      s.textContent = VE_SCRIPT;
+      iframeDoc.body.appendChild(s);
+    } catch (err) { console.error('[VE] inject failed', err); }
+  }, []);
+
   const deployProject = trpc.deploy.deploy.useMutation({
     onSuccess: (data) => {
       toast.success("Site déployé en ligne !", { duration: 6000,
@@ -431,7 +613,7 @@ export default function ProjectEditor() {
         setVeTextInput(e.data.text || "");
       }
       if (e.data?.type === "VE_HTML_UPDATE") {
-        setHtmlCode(e.data.html);
+        veCurrentHtmlRef.current = e.data.html;
         setVeDirty(true);
       }
       if (e.data?.type === "VE_DESELECT") {
@@ -442,151 +624,6 @@ export default function ProjectEditor() {
     return () => window.removeEventListener("message", handler);
   }, []);
 
-  const VISUAL_EDIT_SCRIPT = `<script id="__ve__">
-(function(){
-  var sel=null,deb=null,dragEl=null;
-
-  var vs=document.createElement('style');
-  vs.id='__ve_s__';
-  vs.textContent='[data-veh]{outline:2px dashed rgba(99,102,241,.5)!important;cursor:pointer!important}[data-ves]{outline:2px solid #6366f1!important}[data-vedrag]{opacity:0.4!important;outline:2px dashed #f59e0b!important}';
-  document.head.appendChild(vs);
-
-  function cleanHtml(){
-    var h=document.documentElement.outerHTML;
-    h=h.replace(/<script[^>]*id="__ve__"[^>]*>[\\s\\S]*?<\\/script>/i,'');
-    h=h.replace(/<style[^>]*id="__ve_s__"[^>]*>[\\s\\S]*?<\\/style>/i,'');
-    h=h.replace(/\\s*data-ve[hsd][a-z]*="[^"]*"/g,'');
-    h=h.replace(/\\s*draggable="[^"]*"/g,'');
-    h=h.replace(/\\s*contenteditable="[^"]*"/g,'');
-    return h;
-  }
-
-  function push(){
-    clearTimeout(deb);
-    deb=setTimeout(function(){
-      window.parent.postMessage({type:'VE_HTML_UPDATE',html:cleanHtml()},'*');
-    },300);
-  }
-
-  function computedProps(el){
-    var cs=window.getComputedStyle(el);
-    return {color:cs.color,backgroundColor:cs.backgroundColor,fontSize:cs.fontSize,fontWeight:cs.fontWeight,textAlign:cs.textAlign};
-  }
-
-  function selectEl(el){
-    if(sel){
-      sel.removeAttribute('data-ves');
-      sel.removeAttribute('draggable');
-      if(sel.contentEditable==='true')sel.contentEditable='false';
-    }
-    if(!el||el===document.body||el===document.documentElement||!el.tagName){
-      sel=null;window.parent.postMessage({type:'VE_DESELECT'},'*');return;
-    }
-    sel=el;
-    el.setAttribute('data-ves','1');
-    el.setAttribute('draggable','true');
-    var r=el.getBoundingClientRect();
-    var tag=el.tagName;
-    var isImg=tag==='IMG';
-    var canMove=!!(el.parentElement&&el.parentElement.children.length>1);
-    window.parent.postMessage({
-      type:'VE_SELECT',tag:tag,
-      isText:['H1','H2','H3','H4','H5','H6','P','SPAN','A','LI','BUTTON','LABEL','STRONG','EM','B','I','TD','TH','DIV'].indexOf(tag)>=0,
-      isImage:isImg,
-      isBlock:['DIV','SECTION','ARTICLE','HEADER','FOOTER','MAIN','ASIDE','NAV','FIGURE'].indexOf(tag)>=0,
-      canMove:canMove,
-      rect:{top:r.top+window.scrollY,left:r.left+window.scrollX,width:r.width,height:r.height},
-      computedStyle:computedProps(el),
-      textContent:el.innerText||el.textContent||'',
-      imgW:isImg?el.naturalWidth:0,imgH:isImg?el.naturalHeight:0,
-      imgOW:isImg?el.offsetWidth:0,imgOH:isImg?el.offsetHeight:0
-    },'*');
-  }
-
-  document.addEventListener('mouseover',function(e){
-    var t=e.target;
-    if(t&&t.setAttribute&&t!==document.body&&t!==document.documentElement&&t!==sel)
-      t.setAttribute('data-veh','1');
-  },true);
-  document.addEventListener('mouseout',function(e){
-    var t=e.target;if(t&&t.removeAttribute)t.removeAttribute('data-veh');
-  },true);
-
-  document.addEventListener('click',function(e){
-    e.preventDefault();e.stopPropagation();
-    if(e.target&&e.target.tagName)selectEl(e.target);
-  },true);
-
-  document.addEventListener('dblclick',function(e){
-    var el=e.target;
-    if(!el||!el.tagName)return;
-    if(['H1','H2','H3','H4','H5','H6','P','SPAN','A','LI','BUTTON','LABEL','STRONG','EM','B','I','TD','TH'].indexOf(el.tagName)>=0){
-      e.preventDefault();e.stopPropagation();
-      el.contentEditable='true';el.focus();
-      try{var rng=document.createRange();rng.selectNodeContents(el);var s=window.getSelection();s.removeAllRanges();s.addRange(rng);}catch(ex){}
-    }
-  },true);
-
-  /* drag-and-drop block reorder */
-  document.addEventListener('dragstart',function(e){
-    if(e.target===sel){dragEl=sel;e.target.setAttribute('data-vedrag','1');e.dataTransfer.effectAllowed='move';}
-  },true);
-  document.addEventListener('dragover',function(e){
-    if(!dragEl)return;e.preventDefault();e.dataTransfer.dropEffect='move';
-  },true);
-  document.addEventListener('drop',function(e){
-    if(!dragEl)return;
-    e.preventDefault();e.stopPropagation();
-    var target=e.target;
-    while(target&&target!==document.body){
-      if(target.parentElement===dragEl.parentElement&&target!==dragEl)break;
-      target=target.parentElement;
-    }
-    if(target&&target!==dragEl&&target.parentElement===dragEl.parentElement){
-      var siblings=Array.from(dragEl.parentElement.children);
-      var fromIdx=siblings.indexOf(dragEl);
-      var toIdx=siblings.indexOf(target);
-      if(fromIdx<toIdx){dragEl.parentElement.insertBefore(dragEl,target.nextSibling);}
-      else{dragEl.parentElement.insertBefore(dragEl,target);}
-      push();
-    }
-    dragEl.removeAttribute('data-vedrag');dragEl=null;
-  },true);
-  document.addEventListener('dragend',function(){
-    if(dragEl)dragEl.removeAttribute('data-vedrag');dragEl=null;
-  },true);
-
-  document.addEventListener('input',function(){
-    push();
-    if(sel&&sel.contentEditable==='true'){
-      window.parent.postMessage({type:'VE_TEXT_SYNC',text:sel.innerText||''},'*');
-    }
-  });
-
-  document.addEventListener('keydown',function(e){
-    if(e.key==='Escape'){selectEl(null);}
-  });
-
-  window.addEventListener('message',function(e){
-    if(!e.data||!e.data.type)return;
-    if(e.data.type==='VE_STYLE'&&sel){try{sel.style[e.data.prop]=e.data.value;}catch(ex){}push();}
-    if(e.data.type==='VE_TEXT'&&sel){sel.innerText=e.data.value;push();}
-    if(e.data.type==='VE_IMG_SRC'&&sel&&sel.tagName==='IMG'){sel.src=e.data.value;push();}
-    if(e.data.type==='VE_MOVE_UP'&&sel&&sel.previousElementSibling){
-      sel.parentElement.insertBefore(sel,sel.previousElementSibling);push();
-    }
-    if(e.data.type==='VE_MOVE_DOWN'&&sel&&sel.nextElementSibling){
-      sel.parentElement.insertBefore(sel.nextElementSibling,sel);push();
-    }
-    if(e.data.type==='VE_INSERT_IMG'){
-      var img=document.createElement('img');
-      img.src=e.data.src;img.style.maxWidth='100%';
-      if(sel){sel.appendChild(img);}else{document.body.appendChild(img);}
-      selectEl(img);push();
-    }
-  });
-})();
-<\/script>`;
 
   /* inject inspect/visual-edit script into preview */
   const getPreviewSrc = () => {
@@ -597,9 +634,6 @@ export default function ProjectEditor() {
     if (inspectMode) {
       const script = `<script>document.addEventListener('click',function(e){e.preventDefault();e.stopPropagation();window.parent.postMessage({type:'INSPECT_ELEMENT',tag:e.target.tagName,id:e.target.id,cls:e.target.className},'*');},true);<\/script>`;
       injected = injected.replace(/<\/body>/i, `${script}</body>`);
-    }
-    if (visualEditMode) {
-      injected = injected.replace(/<\/body>/i, `${VISUAL_EDIT_SCRIPT}</body>`);
     }
     if (prevUrlRef.current) URL.revokeObjectURL(prevUrlRef.current);
     const blob = new Blob([injected], { type: "text/html" });
@@ -648,51 +682,26 @@ export default function ProjectEditor() {
               <Button size="sm" variant={visualEditMode ? "default" : "outline"}
                 className={`text-xs h-8 px-2 sm:px-3 ${visualEditMode ? "bg-violet-600 hover:bg-violet-700 text-white border-0" : "border-border/60"}`}
                 onClick={() => {
-                  const next = !visualEditMode;
-                  if (next) {
+                  if (!visualEditMode) {
+                    // Enter VE mode
                     veOriginalHtmlRef.current = htmlCode;
-                    // Build proper full HTML document (same logic as buildPreview)
-                    const h = htmlCode, c = cssCode, j = jsCode;
-                    const vmeta = '<meta name="viewport" content="width=device-width,initial-scale=1">';
-                    const isFullDoc = /<!doctype|<html[\s>]/i.test(h);
-                    let full: string;
-                    if (isFullDoc) {
-                      full = h;
-                      if (!h.includes('name="viewport"') && !h.includes("name='viewport'"))
-                        full = full.replace(/<head>/i, `<head>${vmeta}`);
-                      if (c && !/<style/i.test(h)) full = full.replace(/<\/head>/i, `<style>${c}</style></head>`);
-                      if (j && !/<script/i.test(h)) full = full.replace(/<\/body>/i, `<script>${j}<\/script></body>`);
-                    } else if (h) {
-                      full = h
-                        .replace(/<head>/i, `<head>${vmeta}`)
-                        .replace(/<\/head>/i, `<style>${c}</style></head>`)
-                        .replace(/<\/body>/i, `<script>${j}<\/script></body>`);
-                      if (!/<html/i.test(full))
-                        full = `<!DOCTYPE html><html><head>${vmeta}<meta charset="UTF-8"><style>${c}</style></head><body>${full}<script>${j}<\/script></body></html>`;
-                    } else {
-                      full = `<!DOCTYPE html><html><head>${vmeta}<meta charset="UTF-8"><style>${c}</style></head><body><script>${j}<\/script></body></html>`;
-                    }
-                    // Inject VE script — append if no </body> found
-                    const injected = /<\/body>/i.test(full)
-                      ? full.replace(/<\/body>/i, `${VISUAL_EDIT_SCRIPT}</body>`)
-                      : full + VISUAL_EDIT_SCRIPT;
-                    if (veUrlRef.current) URL.revokeObjectURL(veUrlRef.current);
-                    const blob = new Blob([injected], { type: "text/html" });
-                    const url = URL.createObjectURL(blob);
-                    veUrlRef.current = url;
-                    setVePreviewSrc(url);
-                  } else {
-                    // Exiting without saving — restore original and rebuild regular preview
-                    const restoreHtml = veDirty ? veOriginalHtmlRef.current : htmlCode;
-                    if (veDirty) {
-                      setHtmlCode(restoreHtml);
-                      setVeDirty(false);
-                    }
+                    veCurrentHtmlRef.current = "";
+                    setVeDirty(false);
                     setVeSelection(null);
-                    buildPreview(restoreHtml, cssCode, jsCode);
+                    setInspectMode(false);
+                    setVisualEditMode(true);
+                    // Inject script after React re-renders (iframe already has previewSrc loaded)
+                    requestAnimationFrame(() => setTimeout(injectVeScript, 50));
+                  } else {
+                    // Exit VE mode without saving
+                    if (veDirty) {
+                      setHtmlCode(veOriginalHtmlRef.current);
+                      buildPreview(veOriginalHtmlRef.current, cssCode, jsCode);
+                    }
+                    setVeDirty(false);
+                    setVeSelection(null);
+                    setVisualEditMode(false);
                   }
-                  setVisualEditMode(next);
-                  setInspectMode(false);
                 }}>
                 <PencilRuler className="w-3.5 h-3.5 sm:mr-1.5" />
                 <span className="hidden sm:inline">Éditeur Visuel</span>
@@ -1322,12 +1331,15 @@ ${jsCode}`;
                         Annuler
                       </button>
                       <button onClick={() => {
+                        const fullHtml = veCurrentHtmlRef.current;
+                        const newHtml = fullHtml ? (extractHtml(fullHtml) || fullHtml) : htmlCode;
+                        setHtmlCode(newHtml);
                         const vId = selectedVersionId || project?.currentVersionId;
-                        if (vId) updateCode.mutate({ versionId: vId, code: htmlCode });
+                        if (vId) updateCode.mutate({ versionId: vId, code: newHtml });
                         setVeDirty(false);
                         setVeSelection(null);
                         setVisualEditMode(false);
-                        buildPreview(htmlCode, cssCode, jsCode);
+                        buildPreview(newHtml, cssCode, jsCode);
                         toast.success("Modifications sauvegardées !");
                       }} className="text-xs bg-emerald-600 hover:bg-emerald-500 text-white px-3 py-1 rounded font-medium">
                         💾 Sauvegarder
@@ -1363,7 +1375,8 @@ ${jsCode}`;
                   style={{ width: VIEW_SIZES[viewMode], maxWidth: "100%" }}>
                   <iframe
                     ref={previewRef}
-                    src={visualEditMode ? (vePreviewSrc || "about:blank") : inspectMode ? getPreviewSrc() : (previewSrc || "about:blank")}
+                    src={inspectMode ? getPreviewSrc() : (previewSrc || "about:blank")}
+                    onLoad={() => { if (visualEditMode) setTimeout(injectVeScript, 50); }}
                     className="w-full h-full border-0"
                     title="Preview"
                     sandbox="allow-scripts allow-same-origin"
