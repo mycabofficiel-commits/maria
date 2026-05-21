@@ -74,11 +74,13 @@ export default function AppLayout({ children, title }: AppLayoutProps) {
       >
         {/* Logo */}
         <div className="flex items-center gap-2.5 px-3 h-16 border-b border-sidebar-border overflow-hidden">
-          <LogoBrand
-            size="sm"
-            showText={!navCollapsed}
-            className={`transition-all duration-300 ${navCollapsed ? "lg:opacity-100" : ""}`}
-          />
+          <Link href="/">
+            <LogoBrand
+              size="sm"
+              showText={!navCollapsed}
+              className={`transition-all duration-300 cursor-pointer hover:opacity-80 ${navCollapsed ? "lg:opacity-100" : ""}`}
+            />
+          </Link>
         </div>
 
         {/* Nav */}
