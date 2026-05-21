@@ -101,7 +101,7 @@ export default function ProjectEditor() {
 
   /* visual edit state */
   const [veSelection, setVeSelection] = useState<null | {
-    tag: string; isText: boolean; isImage: boolean; isBlock: boolean;
+    tag: string; isText: boolean; isImage: boolean; isBlock: boolean; canMove: boolean;
     rect: { top: number; left: number; width: number; height: number };
     color: string; backgroundColor: string; fontSize: string; fontWeight: string; textAlign: string;
     textContent: string;
@@ -111,6 +111,7 @@ export default function ProjectEditor() {
   const veOriginalHtmlRef = useRef<string>("");
   const [veDirty, setVeDirty] = useState(false);
   const imageUploadRef = useRef<HTMLInputElement>(null);
+  const imageInsertRef = useRef<HTMLInputElement>(null);
   const veUrlRef = useRef<string>("");
   const [vePreviewSrc, setVePreviewSrc] = useState("");
 
@@ -410,6 +411,7 @@ export default function ProjectEditor() {
           isText: e.data.isText,
           isImage: e.data.isImage,
           isBlock: e.data.isBlock,
+          canMove: e.data.canMove || false,
           rect: e.data.rect,
           color: e.data.computedStyle?.color || "",
           backgroundColor: e.data.computedStyle?.backgroundColor || "",
@@ -442,20 +444,19 @@ export default function ProjectEditor() {
 
   const VISUAL_EDIT_SCRIPT = `<script id="__ve__">
 (function(){
-  var sel=null,deb=null;
+  var sel=null,deb=null,dragEl=null;
 
-  /* VE styles — marked with id for cleanup */
   var vs=document.createElement('style');
   vs.id='__ve_s__';
-  vs.textContent='[data-veh]{outline:2px dashed rgba(99,102,241,.5)!important;cursor:pointer!important}[data-ves]{outline:2px solid #6366f1!important}';
+  vs.textContent='[data-veh]{outline:2px dashed rgba(99,102,241,.5)!important;cursor:pointer!important}[data-ves]{outline:2px solid #6366f1!important}[data-vedrag]{opacity:0.4!important;outline:2px dashed #f59e0b!important}';
   document.head.appendChild(vs);
 
-  /* Returns outerHTML stripped of ALL VE artifacts */
   function cleanHtml(){
     var h=document.documentElement.outerHTML;
     h=h.replace(/<script[^>]*id="__ve__"[^>]*>[\\s\\S]*?<\\/script>/i,'');
     h=h.replace(/<style[^>]*id="__ve_s__"[^>]*>[\\s\\S]*?<\\/style>/i,'');
-    h=h.replace(/\\s*data-ve[hs]="[^"]*"/g,'');
+    h=h.replace(/\\s*data-ve[hsd][a-z]*="[^"]*"/g,'');
+    h=h.replace(/\\s*draggable="[^"]*"/g,'');
     h=h.replace(/\\s*contenteditable="[^"]*"/g,'');
     return h;
   }
@@ -473,19 +474,27 @@ export default function ProjectEditor() {
   }
 
   function selectEl(el){
-    if(sel){sel.removeAttribute('data-ves');if(sel.contentEditable==='true')sel.contentEditable='false';}
+    if(sel){
+      sel.removeAttribute('data-ves');
+      sel.removeAttribute('draggable');
+      if(sel.contentEditable==='true')sel.contentEditable='false';
+    }
     if(!el||el===document.body||el===document.documentElement||!el.tagName){
       sel=null;window.parent.postMessage({type:'VE_DESELECT'},'*');return;
     }
-    sel=el;el.setAttribute('data-ves','1');
+    sel=el;
+    el.setAttribute('data-ves','1');
+    el.setAttribute('draggable','true');
     var r=el.getBoundingClientRect();
     var tag=el.tagName;
     var isImg=tag==='IMG';
+    var canMove=!!(el.parentElement&&el.parentElement.children.length>1);
     window.parent.postMessage({
       type:'VE_SELECT',tag:tag,
       isText:['H1','H2','H3','H4','H5','H6','P','SPAN','A','LI','BUTTON','LABEL','STRONG','EM','B','I','TD','TH','DIV'].indexOf(tag)>=0,
       isImage:isImg,
       isBlock:['DIV','SECTION','ARTICLE','HEADER','FOOTER','MAIN','ASIDE','NAV','FIGURE'].indexOf(tag)>=0,
+      canMove:canMove,
       rect:{top:r.top+window.scrollY,left:r.left+window.scrollX,width:r.width,height:r.height},
       computedStyle:computedProps(el),
       textContent:el.innerText||el.textContent||'',
@@ -494,7 +503,6 @@ export default function ProjectEditor() {
     },'*');
   }
 
-  /* hover — skip selected element to keep its outline stable */
   document.addEventListener('mouseover',function(e){
     var t=e.target;
     if(t&&t.setAttribute&&t!==document.body&&t!==document.documentElement&&t!==sel)
@@ -519,15 +527,42 @@ export default function ProjectEditor() {
     }
   },true);
 
-  /* sync text content while typing in contentEditable */
-  document.addEventListener('input',function(e){
+  /* drag-and-drop block reorder */
+  document.addEventListener('dragstart',function(e){
+    if(e.target===sel){dragEl=sel;e.target.setAttribute('data-vedrag','1');e.dataTransfer.effectAllowed='move';}
+  },true);
+  document.addEventListener('dragover',function(e){
+    if(!dragEl)return;e.preventDefault();e.dataTransfer.dropEffect='move';
+  },true);
+  document.addEventListener('drop',function(e){
+    if(!dragEl)return;
+    e.preventDefault();e.stopPropagation();
+    var target=e.target;
+    while(target&&target!==document.body){
+      if(target.parentElement===dragEl.parentElement&&target!==dragEl)break;
+      target=target.parentElement;
+    }
+    if(target&&target!==dragEl&&target.parentElement===dragEl.parentElement){
+      var siblings=Array.from(dragEl.parentElement.children);
+      var fromIdx=siblings.indexOf(dragEl);
+      var toIdx=siblings.indexOf(target);
+      if(fromIdx<toIdx){dragEl.parentElement.insertBefore(dragEl,target.nextSibling);}
+      else{dragEl.parentElement.insertBefore(dragEl,target);}
+      push();
+    }
+    dragEl.removeAttribute('data-vedrag');dragEl=null;
+  },true);
+  document.addEventListener('dragend',function(){
+    if(dragEl)dragEl.removeAttribute('data-vedrag');dragEl=null;
+  },true);
+
+  document.addEventListener('input',function(){
     push();
     if(sel&&sel.contentEditable==='true'){
       window.parent.postMessage({type:'VE_TEXT_SYNC',text:sel.innerText||''},'*');
     }
   });
 
-  /* ESC = deselect (no scroll deselect — too aggressive) */
   document.addEventListener('keydown',function(e){
     if(e.key==='Escape'){selectEl(null);}
   });
@@ -537,6 +572,18 @@ export default function ProjectEditor() {
     if(e.data.type==='VE_STYLE'&&sel){try{sel.style[e.data.prop]=e.data.value;}catch(ex){}push();}
     if(e.data.type==='VE_TEXT'&&sel){sel.innerText=e.data.value;push();}
     if(e.data.type==='VE_IMG_SRC'&&sel&&sel.tagName==='IMG'){sel.src=e.data.value;push();}
+    if(e.data.type==='VE_MOVE_UP'&&sel&&sel.previousElementSibling){
+      sel.parentElement.insertBefore(sel,sel.previousElementSibling);push();
+    }
+    if(e.data.type==='VE_MOVE_DOWN'&&sel&&sel.nextElementSibling){
+      sel.parentElement.insertBefore(sel.nextElementSibling,sel);push();
+    }
+    if(e.data.type==='VE_INSERT_IMG'){
+      var img=document.createElement('img');
+      img.src=e.data.src;img.style.maxWidth='100%';
+      if(sel){sel.appendChild(img);}else{document.body.appendChild(img);}
+      selectEl(img);push();
+    }
   });
 })();
 <\/script>`;
@@ -603,12 +650,32 @@ export default function ProjectEditor() {
                 onClick={() => {
                   const next = !visualEditMode;
                   if (next) {
-                    // Entering visual edit mode — save original and build blob URL ONCE
                     veOriginalHtmlRef.current = htmlCode;
-                    const code = currentVersionData?.generatedCode || "";
-                    const base = code ||
-                      `<!DOCTYPE html><html><head><meta charset="UTF-8"><style>${cssCode}</style></head><body>${htmlCode}</body></html>`;
-                    const injected = base.replace(/<\/body>/i, `${VISUAL_EDIT_SCRIPT}</body>`);
+                    // Build proper full HTML document (same logic as buildPreview)
+                    const h = htmlCode, c = cssCode, j = jsCode;
+                    const vmeta = '<meta name="viewport" content="width=device-width,initial-scale=1">';
+                    const isFullDoc = /<!doctype|<html[\s>]/i.test(h);
+                    let full: string;
+                    if (isFullDoc) {
+                      full = h;
+                      if (!h.includes('name="viewport"') && !h.includes("name='viewport'"))
+                        full = full.replace(/<head>/i, `<head>${vmeta}`);
+                      if (c && !/<style/i.test(h)) full = full.replace(/<\/head>/i, `<style>${c}</style></head>`);
+                      if (j && !/<script/i.test(h)) full = full.replace(/<\/body>/i, `<script>${j}<\/script></body>`);
+                    } else if (h) {
+                      full = h
+                        .replace(/<head>/i, `<head>${vmeta}`)
+                        .replace(/<\/head>/i, `<style>${c}</style></head>`)
+                        .replace(/<\/body>/i, `<script>${j}<\/script></body>`);
+                      if (!/<html/i.test(full))
+                        full = `<!DOCTYPE html><html><head>${vmeta}<meta charset="UTF-8"><style>${c}</style></head><body>${full}<script>${j}<\/script></body></html>`;
+                    } else {
+                      full = `<!DOCTYPE html><html><head>${vmeta}<meta charset="UTF-8"><style>${c}</style></head><body><script>${j}<\/script></body></html>`;
+                    }
+                    // Inject VE script — append if no </body> found
+                    const injected = /<\/body>/i.test(full)
+                      ? full.replace(/<\/body>/i, `${VISUAL_EDIT_SCRIPT}</body>`)
+                      : full + VISUAL_EDIT_SCRIPT;
                     if (veUrlRef.current) URL.revokeObjectURL(veUrlRef.current);
                     const blob = new Blob([injected], { type: "text/html" });
                     const url = URL.createObjectURL(blob);
@@ -1164,6 +1231,22 @@ ${jsCode}`;
                       </label>
                     </>}
 
+                    {/* Move up/down */}
+                    {veSelection?.canMove && <>
+                      <div className="w-px h-5 bg-white/20" />
+                      <button title="Monter le bloc" onClick={() => sendToIframe({ type: 'VE_MOVE_UP' })}
+                        className="w-7 h-7 rounded hover:bg-white/10 flex items-center justify-center text-white/70 text-sm">▲</button>
+                      <button title="Descendre le bloc" onClick={() => sendToIframe({ type: 'VE_MOVE_DOWN' })}
+                        className="w-7 h-7 rounded hover:bg-white/10 flex items-center justify-center text-white/70 text-sm">▼</button>
+                    </>}
+
+                    {/* Insert image */}
+                    <div className="w-px h-5 bg-white/20" />
+                    <button title="Insérer une image" onClick={() => imageInsertRef.current?.click()}
+                      className="flex items-center gap-1 px-2 h-7 rounded hover:bg-white/10 text-white/70 text-[11px]">
+                      <Upload className="w-3 h-3" /> Img+
+                    </button>
+
                     <div className="ml-auto text-[10px] text-white/40 px-1">{veSelection ? `<${veSelection.tag.toLowerCase()}>` : 'Cliquez un élément'}</div>
                   </div>
 
@@ -1252,7 +1335,7 @@ ${jsCode}`;
                     </div>
                   )}
 
-                  {/* Hidden image upload input */}
+                  {/* Hidden inputs for image replace and insert */}
                   <input ref={imageUploadRef} type="file" accept="image/*" className="hidden"
                     onChange={e => {
                       const file = e.target.files?.[0];
@@ -1260,6 +1343,16 @@ ${jsCode}`;
                       const reader = new FileReader();
                       reader.onload = ev => sendToIframe({ type: 'VE_IMG_SRC', value: ev.target?.result as string });
                       reader.readAsDataURL(file);
+                      e.target.value = "";
+                    }} />
+                  <input ref={imageInsertRef} type="file" accept="image/*" className="hidden"
+                    onChange={e => {
+                      const file = e.target.files?.[0];
+                      if (!file) return;
+                      const reader = new FileReader();
+                      reader.onload = ev => sendToIframe({ type: 'VE_INSERT_IMG', src: ev.target?.result as string });
+                      reader.readAsDataURL(file);
+                      e.target.value = "";
                     }} />
                 </div>
               )}
