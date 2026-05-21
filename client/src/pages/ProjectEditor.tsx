@@ -130,11 +130,29 @@ const VE_SCRIPT = `(function(){
     overlay=null;resizing=null;
   }
 
+  function getBodyChildren(){
+    return Array.from(document.body.children).filter(function(el){
+      return el.id!=='__ve_ov__'&&!(el.getAttribute&&el.getAttribute('data-vehandle'));
+    });
+  }
+
+  function sendLayers(){
+    var items=getBodyChildren().map(function(el,i){
+      var cs=window.getComputedStyle(el);
+      return {idx:i,tag:el.tagName,text:(el.innerText||el.textContent||'').trim().slice(0,40),zIndex:cs.zIndex,selected:el===sel};
+    });
+    window.parent.postMessage({type:'VE_LAYERS',items:items},'*');
+  }
+
+  function ensurePositioned(el){
+    if(window.getComputedStyle(el).position==='static')el.style.position='relative';
+  }
+
   function selectEl(el){
     if(sel){sel.removeAttribute('data-ves');sel.removeAttribute('draggable');if(sel.contentEditable==='true')sel.contentEditable='false';}
     removeOverlay();
     if(!el||el===document.body||el===document.documentElement||!el.tagName||(el.getAttribute&&el.getAttribute('data-vehandle'))){
-      sel=null;window.parent.postMessage({type:'VE_DESELECT'},'*');return;
+      sel=null;window.parent.postMessage({type:'VE_DESELECT'},'*');sendLayers();return;
     }
     sel=el;el.setAttribute('draggable','true');
     createOverlay(el);
@@ -147,10 +165,12 @@ const VE_SCRIPT = `(function(){
       canMove:!!(el.parentElement&&el.parentElement.children.length>1),
       rect:{top:r.top+window.scrollY,left:r.left+window.scrollX,width:r.width,height:r.height},
       computedStyle:computedProps(el),
+      zIndex:window.getComputedStyle(el).zIndex,
       textContent:el.innerText||el.textContent||'',
       imgW:isImg?el.naturalWidth:0,imgH:isImg?el.naturalHeight:0,
       imgOW:isImg?el.offsetWidth:0,imgOH:isImg?el.offsetHeight:0
     },'*');
+    sendLayers();
   }
 
   document.addEventListener('mouseover',function(e){
@@ -224,13 +244,40 @@ const VE_SCRIPT = `(function(){
     if(e.data.type==='VE_STYLE'&&sel){try{sel.style[e.data.prop]=e.data.value;}catch(x){}updateOverlay();push();}
     if(e.data.type==='VE_TEXT'&&sel){sel.innerText=e.data.value;push();}
     if(e.data.type==='VE_IMG_SRC'&&sel&&sel.tagName==='IMG'){sel.src=e.data.value;push();}
-    if(e.data.type==='VE_MOVE_UP'&&sel&&sel.previousElementSibling){sel.parentElement.insertBefore(sel,sel.previousElementSibling);updateOverlay();push();}
-    if(e.data.type==='VE_MOVE_DOWN'&&sel&&sel.nextElementSibling){sel.parentElement.insertBefore(sel.nextElementSibling,sel);updateOverlay();push();}
+    if(e.data.type==='VE_MOVE_UP'&&sel&&sel.previousElementSibling){sel.parentElement.insertBefore(sel,sel.previousElementSibling);updateOverlay();push();sendLayers();}
+    if(e.data.type==='VE_MOVE_DOWN'&&sel&&sel.nextElementSibling){sel.parentElement.insertBefore(sel.nextElementSibling,sel);updateOverlay();push();sendLayers();}
     if(e.data.type==='VE_INSERT_IMG'){
       var img=document.createElement('img');img.src=e.data.src;img.style.maxWidth='100%';
       if(sel)sel.appendChild(img);else document.body.appendChild(img);
       selectEl(img);push();
     }
+    if(e.data.type==='VE_LAYER_FRONT'&&sel){
+      var sib1=sel.parentElement?Array.from(sel.parentElement.children):[];
+      var mx=sib1.reduce(function(m,s){var z=parseInt(window.getComputedStyle(s).zIndex)||0;return z>m?z:m;},0);
+      ensurePositioned(sel);sel.style.zIndex=(mx+1)+'';push();sendLayers();
+    }
+    if(e.data.type==='VE_LAYER_BACK'&&sel){
+      var sib2=sel.parentElement?Array.from(sel.parentElement.children):[];
+      var mn=sib2.reduce(function(m,s){var z=parseInt(window.getComputedStyle(s).zIndex)||0;return z<m?z:m;},0);
+      ensurePositioned(sel);sel.style.zIndex=(mn-1)+'';push();sendLayers();
+    }
+    if(e.data.type==='VE_LAYER_UP'&&sel){
+      var z1=parseInt(window.getComputedStyle(sel).zIndex)||0;
+      ensurePositioned(sel);sel.style.zIndex=(z1+1)+'';push();sendLayers();
+    }
+    if(e.data.type==='VE_LAYER_DOWN'&&sel){
+      var z2=parseInt(window.getComputedStyle(sel).zIndex)||0;
+      ensurePositioned(sel);sel.style.zIndex=(z2-1)+'';push();sendLayers();
+    }
+    if(e.data.type==='VE_SELECT_IDX'){
+      var bc=getBodyChildren();var tgt=bc[e.data.idx];if(tgt)selectEl(tgt);
+    }
+    if(e.data.type==='VE_LAYER_ZIDX'){
+      var bc2=getBodyChildren();var el2=bc2[e.data.idx];if(!el2)return;
+      var curZ=parseInt(window.getComputedStyle(el2).zIndex)||0;
+      ensurePositioned(el2);el2.style.zIndex=(curZ+e.data.delta)+'';push();sendLayers();
+    }
+    if(e.data.type==='VE_GET_LAYERS'){sendLayers();}
   });
 })();`;
 
@@ -269,13 +316,15 @@ export default function ProjectEditor() {
 
   /* visual edit state */
   const [veSelection, setVeSelection] = useState<null | {
-    tag: string; isText: boolean; isImage: boolean; isBlock: boolean; canMove: boolean;
+    tag: string; isText: boolean; isImage: boolean; isBlock: boolean; canMove: boolean; zIndex: string;
     rect: { top: number; left: number; width: number; height: number };
     color: string; backgroundColor: string; fontSize: string; fontWeight: string; textAlign: string;
     textContent: string;
     imgW: number; imgH: number; imgOW: number; imgOH: number;
   }>(null);
   const [veTextInput, setVeTextInput] = useState("");
+  const [showLayers, setShowLayers] = useState(false);
+  const [veLayers, setVeLayers] = useState<Array<{ idx: number; tag: string; text: string; zIndex: string; selected: boolean }>>([]);
   const veOriginalHtmlRef = useRef<string>("");
   const [veDirty, setVeDirty] = useState(false);
   const imageUploadRef = useRef<HTMLInputElement>(null);
@@ -587,6 +636,9 @@ export default function ProjectEditor() {
         const updatedHtml = e.data.html as string;
         setHtmlCode(extractHtml(updatedHtml) || updatedHtml);
       }
+      if (e.data?.type === "VE_LAYERS") {
+        setVeLayers(e.data.items || []);
+      }
       if (e.data?.type === "VE_SELECT") {
         const s = {
           tag: e.data.tag,
@@ -594,6 +646,7 @@ export default function ProjectEditor() {
           isImage: e.data.isImage,
           isBlock: e.data.isBlock,
           canMove: e.data.canMove || false,
+          zIndex: e.data.zIndex || "auto",
           rect: e.data.rect,
           color: e.data.computedStyle?.color || "",
           backgroundColor: e.data.computedStyle?.backgroundColor || "",
@@ -1249,11 +1302,33 @@ ${jsCode}`;
                         className="w-7 h-7 rounded hover:bg-white/10 flex items-center justify-center text-white/70 text-sm">▼</button>
                     </>}
 
+                    {/* Z-index / calques */}
+                    {veSelection && <>
+                      <div className="w-px h-5 bg-white/20" />
+                      <span className="text-[10px] text-white/40">z:{veSelection.zIndex}</span>
+                      <button title="Premier plan" onClick={() => sendToIframe({ type: 'VE_LAYER_FRONT' })}
+                        className="px-1.5 h-7 rounded hover:bg-white/10 text-white/60 text-[11px]">⬆</button>
+                      <button title="Avancer d'un niveau" onClick={() => sendToIframe({ type: 'VE_LAYER_UP' })}
+                        className="px-1.5 h-7 rounded hover:bg-white/10 text-white/60 text-[11px]">+z</button>
+                      <button title="Reculer d'un niveau" onClick={() => sendToIframe({ type: 'VE_LAYER_DOWN' })}
+                        className="px-1.5 h-7 rounded hover:bg-white/10 text-white/60 text-[11px]">-z</button>
+                      <button title="Arrière plan" onClick={() => sendToIframe({ type: 'VE_LAYER_BACK' })}
+                        className="px-1.5 h-7 rounded hover:bg-white/10 text-white/60 text-[11px]">⬇</button>
+                    </>}
+
                     {/* Insert image */}
                     <div className="w-px h-5 bg-white/20" />
                     <button title="Insérer une image" onClick={() => imageInsertRef.current?.click()}
                       className="flex items-center gap-1 px-2 h-7 rounded hover:bg-white/10 text-white/70 text-[11px]">
                       <Upload className="w-3 h-3" /> Img+
+                    </button>
+
+                    {/* Layers panel toggle */}
+                    <div className="w-px h-5 bg-white/20" />
+                    <button
+                      onClick={() => { setShowLayers(v => !v); sendToIframe({ type: 'VE_GET_LAYERS' }); }}
+                      className={`flex items-center gap-1 px-2 h-7 rounded text-[11px] transition-colors ${showLayers ? 'bg-primary/30 text-primary' : 'hover:bg-white/10 text-white/60'}`}>
+                      Calques
                     </button>
 
                     <div className="ml-auto text-[10px] text-white/40 px-1">{veSelection ? `<${veSelection.tag.toLowerCase()}>` : 'Cliquez un élément'}</div>
@@ -1344,6 +1419,32 @@ ${jsCode}`;
                       }} className="text-xs bg-emerald-600 hover:bg-emerald-500 text-white px-3 py-1 rounded font-medium">
                         💾 Sauvegarder
                       </button>
+                    </div>
+                  )}
+
+                  {/* Layers panel */}
+                  {showLayers && (
+                    <div className="border border-white/10 rounded-lg overflow-hidden">
+                      <div className="text-[10px] text-white/40 px-2 py-1 bg-white/5 flex items-center justify-between">
+                        <span>Calques — corps de page</span>
+                        <span className="text-white/25">ordre visuel ↑ devant</span>
+                      </div>
+                      {veLayers.length === 0 && (
+                        <div className="text-[10px] text-white/30 px-2 py-1.5">Cliquez un élément pour voir les calques</div>
+                      )}
+                      {[...veLayers].reverse().map(layer => (
+                        <div key={layer.idx}
+                          className={`flex items-center gap-1.5 px-2 py-1 cursor-pointer border-t border-white/5 ${layer.selected ? 'bg-primary/20 text-primary' : 'hover:bg-white/5 text-white/70'}`}
+                          onClick={() => sendToIframe({ type: 'VE_SELECT_IDX', idx: layer.idx })}>
+                          <span className="font-mono text-[10px] text-white/40 w-14 flex-shrink-0">&lt;{layer.tag.toLowerCase()}&gt;</span>
+                          <span className="flex-1 truncate text-[10px]">{layer.text || '—'}</span>
+                          <span className={`text-[10px] w-10 text-right flex-shrink-0 ${layer.zIndex === 'auto' ? 'text-white/25' : 'text-violet-400'}`}>z:{layer.zIndex}</span>
+                          <button title="Avancer" onClick={e => { e.stopPropagation(); sendToIframe({ type: 'VE_LAYER_ZIDX', idx: layer.idx, delta: 1 }); }}
+                            className="w-5 h-5 rounded hover:bg-white/10 flex items-center justify-center text-white/40 hover:text-white text-[11px]">↑</button>
+                          <button title="Reculer" onClick={e => { e.stopPropagation(); sendToIframe({ type: 'VE_LAYER_ZIDX', idx: layer.idx, delta: -1 }); }}
+                            className="w-5 h-5 rounded hover:bg-white/10 flex items-center justify-center text-white/40 hover:text-white text-[11px]">↓</button>
+                        </div>
+                      ))}
                     </div>
                   )}
 
