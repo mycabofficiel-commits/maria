@@ -41,46 +41,14 @@ export default function LogoBrand({
     <span className={`inline-flex items-center ${GAP[size]} ${className}`}>
 
       {/* ── M icon ────────────────────────────────────── */}
-      <svg
+      <img
+        src="/logo-icon.png"
+        alt="Mar-ia"
         width={iw}
         height={ih}
-        viewBox="0 0 112 86"
-        fill="none"
-        xmlns="http://www.w3.org/2000/svg"
-        aria-hidden="true"
-        className="flex-shrink-0"
-      >
-        <defs>
-          <linearGradient id="mg" x1="0" y1="0" x2="112" y2="0" gradientUnits="userSpaceOnUse">
-            <stop offset="0%"   stopColor="#3B82F6" />
-            <stop offset="100%" stopColor="#7C3AED" />
-          </linearGradient>
-        </defs>
-        {/*
-          M path:
-          • (12,72) → up left leg → (12,38)
-          • arch over left shoulder   → (32,8)
-          • curve down to valley      → (50,42)
-          • curve up to right arch    → (68,8)
-          • arch over right shoulder  → (88,38)
-          • down right leg            → (88,72)
-        */}
-        <path
-          d="M 12,72 L 12,38
-             C 12,18 20,8 32,8
-             C 44,8 50,22 50,42
-             C 50,22 56,8 68,8
-             C 80,8 88,18 88,38
-             L 88,72"
-          stroke="url(#mg)"
-          strokeWidth="14"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          fill="none"
-        />
-        {/* Violet dot */}
-        <circle cx="99" cy="72" r="8" fill="#7C3AED" />
-      </svg>
+        className="flex-shrink-0 object-contain"
+        draggable={false}
+      />
 
       {/* ── Text ──────────────────────────────────────── */}
       {showText && (
