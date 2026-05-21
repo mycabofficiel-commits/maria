@@ -42,7 +42,7 @@ function extractTitle(html: string): string {
   return match?.[1]?.trim() || "Site généré par Maria";
 }
 
-/** Splits a single-file HTML into index.html + style.css + script.js */
+/** Splits a single-file HTML into index.html + assets/style.css + assets/script.js */
 function splitHtmlIntoFiles(html: string): Record<string, string> {
   // Extract <style> blocks
   const styleMatches = Array.from(html.matchAll(/<style[^>]*>([\s\S]*?)<\/style>/gi));
@@ -52,18 +52,18 @@ function splitHtmlIntoFiles(html: string): Record<string, string> {
   const scriptMatches = Array.from(html.matchAll(/<script(?![^>]*src)[^>]*>([\s\S]*?)<\/script>/gi));
   const jsContent = scriptMatches.map((m) => m[1]).join("\n\n");
 
-  // Clean HTML: remove inline style/script, link external files
+  // Clean HTML: remove inline style/script, link external files in assets/
   let cleanHtml = html
     .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, "")
     .replace(/<script(?![^>]*src)[^>]*>[\s\S]*?<\/script>/gi, "")
-    .replace("</head>", `  <link rel="stylesheet" href="style.css">\n</head>`)
-    .replace("</body>", `  <script src="script.js"></script>\n</body>`);
+    .replace("</head>", `  <link rel="stylesheet" href="assets/style.css">\n</head>`)
+    .replace("</body>", `  <script src="assets/script.js"></script>\n</body>`);
 
   return {
     "index.html": cleanHtml,
-    "style.css": cssContent || "/* Styles */",
-    "script.js": jsContent || "// Scripts",
-    "README.md": `# Site généré par Maria\n\nCe site a été généré par [Maria](https://maria.app) — AI Website Builder.\n\n## Structure\n\n- \`index.html\` — Page principale\n- \`style.css\` — Styles CSS\n- \`script.js\` — Scripts JavaScript\n\n## Utilisation\n\nOuvrez \`index.html\` dans votre navigateur ou déployez sur n'importe quel hébergeur statique.\n`,
+    "assets/style.css": cssContent || "/* Styles */",
+    "assets/script.js": jsContent || "// Scripts",
+    "README.md": `# Site généré par Maria\n\nCe site a été généré par [Maria](https://mar-ia.net) — AI Website Builder.\n\n## Structure\n\n- \`index.html\` — Page principale\n- \`assets/style.css\` — Styles CSS\n- \`assets/script.js\` — Scripts JavaScript\n\n## Utilisation\n\nOuvrez \`index.html\` dans votre navigateur ou déployez sur n'importe quel hébergeur statique.\n`,
   };
 }
 
