@@ -98,12 +98,30 @@ async function callSync(
   }
 }
 
+/** callSync with fault tolerance — returns null on error instead of throwing */
+async function tryCallSync(
+  provider: "anthropic" | "openai" | "deepseek" | "qwen",
+  model: string,
+  apiKey: string,
+  systemPrompt: string,
+  userMessage: string,
+  maxTokens = 800
+): Promise<string | null> {
+  try {
+    return await callSync(provider, model, apiKey, systemPrompt, userMessage, maxTokens);
+  } catch {
+    return null;
+  }
+}
+
 /**
  * Multi-agent orchestration — enriches the prompt with briefs from intermediate agents.
- * FREE: DeepSeek seul (no orchestration)
- * CREATOR: Qwen brief → DeepSeek exécute
- * PRO: Claude architecture → Qwen optimise → DeepSeek exécute
- * AGENCY: GPT-4o stratégie → Claude gère → Qwen optimise → DeepSeek exécute
+ * Each agent step is fault-tolerant: if it fails, the next available agent takes over.
+ *
+ * FREE:   DeepSeek seul
+ * CREATOR: Qwen brief → (fallback: skip) → DeepSeek exécute
+ * PRO:    Claude architecture → (fallback: Qwen) → Qwen SEO → DeepSeek exécute
+ * AGENCY: GPT-4o stratégie → (fallback: Claude) → Claude design → (fallback: Qwen) → Qwen copy → DeepSeek exécute
  */
 async function orchestrateGenerate(
   res: Response,
@@ -116,76 +134,101 @@ async function orchestrateGenerate(
 ): Promise<string> {
   let enriched = prompt;
 
+  /** Emit progress + call agent, with automatic fallback chain */
+  async function runStep(
+    primary:  { provider: "anthropic"|"openai"|"deepseek"|"qwen"; model: string; key: string|null; agent: string; step: string; icon: string },
+    fallback?: { provider: "anthropic"|"openai"|"deepseek"|"qwen"; model: string; key: string|null; agent: string; step: string; icon: string },
+    systemPrompt: string = "",
+    userMessage: string = "",
+    maxTokens = 800
+  ): Promise<string | null> {
+    // Try primary agent
+    if (primary.key) {
+      sseWrite(res, "progress", { agent: primary.agent, step: primary.step, icon: primary.icon });
+      const result = await tryCallSync(primary.provider, primary.model, primary.key, systemPrompt, userMessage, maxTokens);
+      if (result) return result;
+      // Primary failed — signal fallback
+      sseWrite(res, "progress", { agent: primary.agent, step: `Indisponible — relais ${fallback?.agent ?? "ignoré"}`, icon: "⏭️" });
+    }
+    // Try fallback agent
+    if (fallback?.key) {
+      sseWrite(res, "progress", { agent: fallback.agent, step: fallback.step, icon: fallback.icon });
+      const result = await tryCallSync(fallback.provider, fallback.model, fallback.key, systemPrompt, userMessage, maxTokens);
+      if (result) return result;
+      sseWrite(res, "progress", { agent: fallback.agent, step: "Indisponible — étape ignorée", icon: "⏭️" });
+    }
+    return null; // Both failed — step skipped silently
+  }
+
+  // ── Keys ──────────────────────────────────────────────────────────────────
+  const claudeKey  = getPlatformKey("anthropic");
+  const openaiKey  = getPlatformKey("openai");
+  const qwenKey    = getPlatformKey("qwen");
+
+  // ── CREATOR ───────────────────────────────────────────────────────────────
   if (plan === "creator") {
-    const qwenKey = getPlatformKey("qwen");
-    if (qwenKey) {
-      sseWrite(res, "progress", { agent: "Qwen", step: "Analyse & stratégie de contenu", icon: "🧠" });
-      const brief = await callSync("qwen", "qwen-plus", qwenKey,
-        `Tu es un expert en stratégie web. Analyse la demande et produis un brief structuré: sections principales, proposition de valeur, mots-clés SEO. 150 mots max. Langue: ${language}.`,
-        `Demande: ${prompt}\nType: ${siteType}\nStyle: ${style}\nPalette: ${colorPalette}`,
-        600
-      );
-      enriched = `${prompt}\n\n[BRIEF STRATÉGIQUE — Qwen]:\n${brief}`;
-    }
+    const brief = await runStep(
+      { provider: "qwen",     model: "qwen-plus",      key: qwenKey,   agent: "Qwen",   step: "Analyse & stratégie de contenu", icon: "🧠" },
+      { provider: "anthropic",model: "claude-haiku-4-5",key: claudeKey, agent: "Claude", step: "Stratégie de contenu (relais)",   icon: "🧠" },
+      `Tu es un expert en stratégie web. Produis un brief structuré: sections, proposition de valeur, mots-clés SEO. 150 mots max. Langue: ${language}.`,
+      `Demande: ${prompt}\nType: ${siteType}\nStyle: ${style}\nPalette: ${colorPalette}`,
+      600
+    );
+    if (brief) enriched = `${prompt}\n\n[BRIEF STRATÉGIQUE]:\n${brief}`;
 
+  // ── PRO ───────────────────────────────────────────────────────────────────
   } else if (plan === "pro") {
-    const claudeKey = getPlatformKey("anthropic");
-    const qwenKey   = getPlatformKey("qwen");
+    // Step 1 — Architecture (Claude → fallback Qwen)
+    const architecture = await runStep(
+      { provider: "anthropic", model: "claude-haiku-4-5", key: claudeKey, agent: "Claude", step: "Architecture & structure du site", icon: "🏗️" },
+      { provider: "qwen",      model: "qwen-plus",        key: qwenKey,   agent: "Qwen",   step: "Architecture (relais)",            icon: "🏗️" },
+      `Tu es un architecte web senior. Définis la structure optimale: sections, UX flow, points de conversion. 200 mots max. Langue: ${language}.`,
+      `Demande: ${prompt}\nType: ${siteType}\nStyle: ${style}`,
+      800
+    );
+    if (architecture) enriched = `${prompt}\n\n[ARCHITECTURE]:\n${architecture}`;
 
-    if (claudeKey) {
-      sseWrite(res, "progress", { agent: "Claude", step: "Architecture & structure du site", icon: "🏗️" });
-      const architecture = await callSync("anthropic", "claude-haiku-4-5", claudeKey,
-        `Tu es un architecte web senior. Définis la structure optimale: sections, hiérarchie, UX flow, points de conversion. 200 mots max. Langue: ${language}.`,
-        `Demande: ${prompt}\nType: ${siteType}\nStyle: ${style}`,
-        800
-      );
-      enriched = `${prompt}\n\n[ARCHITECTURE — Claude]:\n${architecture}`;
-    }
+    // Step 2 — SEO/Copy (Qwen → fallback Claude)
+    const seo = await runStep(
+      { provider: "qwen",      model: "qwen-plus",        key: qwenKey,   agent: "Qwen",   step: "Optimisation contenu & SEO",    icon: "📈" },
+      { provider: "anthropic", model: "claude-haiku-4-5", key: claudeKey, agent: "Claude", step: "Optimisation SEO (relais)",      icon: "📈" },
+      `Tu es un expert SEO et copywriting. Propose textes optimisés, titres accrocheurs, CTAs, méta-descriptions. 250 mots max. Langue: ${language}.`,
+      enriched,
+      900
+    );
+    if (seo) enriched = `${enriched}\n\n[COPY & SEO]:\n${seo}`;
 
-    if (qwenKey) {
-      sseWrite(res, "progress", { agent: "Qwen", step: "Optimisation contenu & SEO", icon: "📈" });
-      const optimization = await callSync("qwen", "qwen-plus", qwenKey,
-        `Tu es un expert SEO et copywriting. Propose les textes optimisés pour chaque section: titres accrocheurs, CTAs percutants, méta-descriptions. 250 mots max. Langue: ${language}.`,
-        enriched,
-        900
-      );
-      enriched = `${enriched}\n\n[COPY & SEO — Qwen]:\n${optimization}`;
-    }
-
+  // ── AGENCY ────────────────────────────────────────────────────────────────
   } else if (plan === "agency") {
-    const openaiKey = getPlatformKey("openai");
-    const claudeKey = getPlatformKey("anthropic");
-    const qwenKey   = getPlatformKey("qwen");
+    // Step 1 — Strategy (GPT-4o → fallback Claude)
+    const strategy = await runStep(
+      { provider: "openai",    model: "gpt-4o-mini",      key: openaiKey, agent: "GPT-4o", step: "Stratégie business & positionnement", icon: "🎯" },
+      { provider: "anthropic", model: "claude-haiku-4-5", key: claudeKey, agent: "Claude", step: "Stratégie business (relais)",          icon: "🎯" },
+      `Tu es un consultant business senior. Définis: positionnement, audience cible, proposition de valeur, messages clés. 200 mots max. Langue: ${language}.`,
+      `Projet: ${prompt}\nType: ${siteType}\nStyle: ${style}\nPalette: ${colorPalette}`,
+      800
+    );
+    if (strategy) enriched = `${prompt}\n\n[STRATÉGIE BUSINESS]:\n${strategy}`;
 
-    if (openaiKey) {
-      sseWrite(res, "progress", { agent: "GPT-4o", step: "Stratégie business & positionnement", icon: "🎯" });
-      const strategy = await callSync("openai", "gpt-4o-mini", openaiKey,
-        `Tu es un consultant business senior. Définis la stratégie: positionnement, audience cible, proposition de valeur unique, messages clés. 200 mots max. Langue: ${language}.`,
-        `Projet: ${prompt}\nType: ${siteType}\nStyle: ${style}\nPalette: ${colorPalette}`,
-        800
-      );
-      enriched = `${prompt}\n\n[STRATÉGIE BUSINESS — GPT-4o]:\n${strategy}`;
-    }
+    // Step 2 — Architecture & design (Claude → fallback Qwen)
+    const architecture = await runStep(
+      { provider: "anthropic", model: "claude-haiku-4-5", key: claudeKey, agent: "Claude", step: "Architecture & design system", icon: "🏗️" },
+      { provider: "qwen",      model: "qwen-plus",        key: qwenKey,   agent: "Qwen",   step: "Architecture (relais)",        icon: "🏗️" },
+      `Tu es un architecte web et designer senior. Définis: structure des sections, hiérarchie visuelle, composants clés. 250 mots max. Langue: ${language}.`,
+      enriched,
+      1000
+    );
+    if (architecture) enriched = `${enriched}\n\n[ARCHITECTURE & DESIGN]:\n${architecture}`;
 
-    if (claudeKey) {
-      sseWrite(res, "progress", { agent: "Claude", step: "Architecture & design system", icon: "🏗️" });
-      const architecture = await callSync("anthropic", "claude-haiku-4-5", claudeKey,
-        `Tu es un architecte web et designer senior. Sur la base de la stratégie, définis: structure des sections, hiérarchie visuelle, composants clés. 250 mots max. Langue: ${language}.`,
-        enriched,
-        1000
-      );
-      enriched = `${enriched}\n\n[ARCHITECTURE & DESIGN — Claude]:\n${architecture}`;
-    }
-
-    if (qwenKey) {
-      sseWrite(res, "progress", { agent: "Qwen", step: "Copywriting & optimisation SEO", icon: "✍️" });
-      const copy = await callSync("qwen", "qwen-plus", qwenKey,
-        `Tu es un expert SEO et copywriter senior. Génère les textes finaux: titres H1/H2, textes de sections, CTAs, méta-title/description. 300 mots max. Langue: ${language}.`,
-        enriched,
-        1000
-      );
-      enriched = `${enriched}\n\n[COPY & SEO FINAL — Qwen]:\n${copy}`;
-    }
+    // Step 3 — Copywriting (Qwen → fallback Claude)
+    const copy = await runStep(
+      { provider: "qwen",      model: "qwen-plus",        key: qwenKey,   agent: "Qwen",   step: "Copywriting & optimisation SEO", icon: "✍️" },
+      { provider: "anthropic", model: "claude-haiku-4-5", key: claudeKey, agent: "Claude", step: "Copywriting (relais)",            icon: "✍️" },
+      `Tu es un expert SEO et copywriter senior. Génère les textes finaux: titres H1/H2, CTAs, méta-title/description. 300 mots max. Langue: ${language}.`,
+      enriched,
+      1000
+    );
+    if (copy) enriched = `${enriched}\n\n[COPY & SEO FINAL]:\n${copy}`;
   }
 
   return enriched;
