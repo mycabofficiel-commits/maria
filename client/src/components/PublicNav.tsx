@@ -2,7 +2,8 @@ import { Link, useLocation } from "wouter";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/_core/hooks/useAuth";
 import { getLoginUrl } from "@/const";
-import { Sparkles, Menu, X } from "lucide-react";
+import { Menu, X } from "lucide-react";
+import LogoBrand from "@/components/LogoBrand";
 import { useState } from "react";
 
 export default function PublicNav() {
@@ -19,11 +20,8 @@ export default function PublicNav() {
     <nav className="fixed top-0 left-0 right-0 z-50 glass border-b border-border/50">
       <div className="container flex items-center justify-between h-16">
         {/* Logo */}
-        <Link href="/" className="flex items-center gap-2 group">
-          <div className="w-8 h-8 rounded-lg bg-primary flex items-center justify-center glow-brand">
-            <Sparkles className="w-4 h-4 text-primary-foreground" />
-          </div>
-          <span className="font-display font-bold text-xl text-foreground">Maria</span>
+        <Link href="/" className="flex items-center group">
+          <LogoBrand size="md" />
         </Link>
 
         {/* Desktop Nav */}

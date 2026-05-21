@@ -6,11 +6,11 @@ import { HelpCircle, MessageSquare, BookOpen, Mail, ChevronRight, Zap } from "lu
 const faqs = [
   {
     q: "Quelle clé API dois-je utiliser ?",
-    a: "Maria utilise l'API Anthropic (Claude). Créez une clé sur console.anthropic.com, puis collez-la dans Paramètres > Clés API. Le modèle recommandé est claude-sonnet-4-5.",
+    a: "Mar-ia utilise l'API Anthropic (Claude). Créez une clé sur console.anthropic.com, puis collez-la dans Paramètres > Clés API. Le modèle recommandé est claude-sonnet-4-5.",
   },
   {
     q: "Combien coûte une génération ?",
-    a: "Maria est BYOK (Bring Your Own Key) : vous payez directement Anthropic. Une génération typique coûte entre 0,02 € et 0,10 € selon la longueur du site. Aucune marge n'est prélevée par Maria.",
+    a: "Mar-ia est BYOK (Bring Your Own Key) : vous payez directement Anthropic. Une génération typique coûte entre 0,02 € et 0,10 € selon la longueur du site. Aucune marge n'est prélevée par Mar-ia.",
   },
   {
     q: "Mon site est-il publié automatiquement ?",
@@ -26,11 +26,11 @@ const faqs = [
   },
   {
     q: "Quels navigateurs sont supportés ?",
-    a: "Maria fonctionne sur Chrome, Firefox, Edge et Safari (mode normal). Les modes navigation privée avec restrictions de cookies ne sont pas supportés.",
+    a: "Mar-ia fonctionne sur Chrome, Firefox, Edge et Safari (mode normal). Les modes navigation privée avec restrictions de cookies ne sont pas supportés.",
   },
   {
     q: "Mon site est-il responsive ?",
-    a: "Oui. Maria génère du code mobile-first par défaut. Utilisez les boutons Desktop/Tablet/Mobile dans la barre de prévisualisation pour vérifier le rendu.",
+    a: "Oui. Mar-ia génère du code mobile-first par défaut. Utilisez les boutons Desktop/Tablet/Mobile dans la barre de prévisualisation pour vérifier le rendu.",
   },
   {
     q: "Puis-je exporter mon site ?",
@@ -60,7 +60,7 @@ export default function Support() {
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-12">
             {[
               { icon: BookOpen, label: "Documentation", href: "/documentation", desc: "Guides complets" },
-              { icon: MessageSquare, label: "Chat avec Maria", href: "/dashboard", desc: "Créer un projet" },
+              { icon: MessageSquare, label: "Chat avec Mar-ia", href: "/dashboard", desc: "Créer un projet" },
               { icon: Zap, label: "Démarrage rapide", href: "/documentation", desc: "En 5 minutes" },
             ].map((item) => {
               const Icon = item.icon;

@@ -6,7 +6,8 @@ import { Label } from "@/components/ui/label";
 import { useAuth } from "@/_core/hooks/useAuth";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
-import { Sparkles, ArrowRight, CheckCircle2, Loader2 } from "lucide-react";
+import { ArrowRight, CheckCircle2, Loader2, Sparkles } from "lucide-react";
+import LogoBrand from "@/components/LogoBrand";
 import { getLoginUrl } from "@/const";
 
 const PLAN_OPTIONS = [
@@ -23,7 +24,7 @@ export default function Onboarding() {
 
   const completeOnboarding = trpc.auth.completeOnboarding.useMutation({
     onSuccess: () => {
-      toast.success("Bienvenue sur Maria !");
+      toast.success("Bienvenue sur Mar-ia !");
       navigate("/dashboard");
     },
     onError: (err: any) => toast.error(err.message),
@@ -51,11 +52,8 @@ export default function Onboarding() {
     <div className="min-h-screen bg-background flex items-center justify-center p-4">
       <div className="w-full max-w-lg">
         {/* Logo */}
-        <div className="flex items-center justify-center gap-2 mb-8">
-          <div className="w-9 h-9 rounded-xl bg-primary flex items-center justify-center glow-brand">
-            <Sparkles className="w-5 h-5 text-primary-foreground" />
-          </div>
-          <span className="font-display font-bold text-2xl text-foreground">Maria</span>
+        <div className="flex items-center justify-center mb-8">
+          <LogoBrand size="lg" />
         </div>
 
         {/* Progress */}
@@ -81,7 +79,7 @@ export default function Onboarding() {
                 Bienvenue, {user?.name?.split(" ")[0] || "là"} !
               </h1>
               <p className="text-muted-foreground mb-6">
-                Maria est prêt. Commençons par choisir votre plan.
+                Mar-ia est prêt. Commençons par choisir votre plan.
               </p>
 
               <div className="space-y-3 mb-6">

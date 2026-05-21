@@ -13,7 +13,7 @@ const PLANS = [
     name: "Free",
     price: "0€",
     period: "/mois",
-    desc: "Pour découvrir Maria",
+    desc: "Pour découvrir Mar-ia",
     icon: Sparkles,
     color: "text-muted-foreground",
     border: "border-border/60",
@@ -220,7 +220,7 @@ export default function Billing() {
               },
               {
                 q: "Les coûts API Anthropic sont-ils inclus ?",
-                a: "Non, les coûts Anthropic sont séparés et débités directement sur votre compte Anthropic. Maria ne prend aucune marge sur ces coûts.",
+                a: "Non, les coûts Anthropic sont séparés et débités directement sur votre compte Anthropic. Mar-ia ne prend aucune marge sur ces coûts.",
               },
             ].map((item) => (
               <div key={item.q} className="border-b border-border/40 pb-4 last:border-0 last:pb-0">

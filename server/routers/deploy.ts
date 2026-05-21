@@ -39,7 +39,7 @@ function randomSuffix(): string {
 /** Extracts <title> from HTML, falls back to project name */
 function extractTitle(html: string): string {
   const match = html.match(/<title[^>]*>([^<]+)<\/title>/i);
-  return match?.[1]?.trim() || "Site généré par Maria";
+  return match?.[1]?.trim() || "Site généré par Mar-ia";
 }
 
 /** Splits a single-file HTML into index.html + assets/style.css + assets/script.js */
@@ -63,7 +63,7 @@ function splitHtmlIntoFiles(html: string): Record<string, string> {
     "index.html": cleanHtml,
     "assets/style.css": cssContent || "/* Styles */",
     "assets/script.js": jsContent || "// Scripts",
-    "README.md": `# Site généré par Maria\n\nCe site a été généré par [Maria](https://mar-ia.net) — AI Website Builder.\n\n## Structure\n\n- \`index.html\` — Page principale\n- \`assets/style.css\` — Styles CSS\n- \`assets/script.js\` — Scripts JavaScript\n\n## Utilisation\n\nOuvrez \`index.html\` dans votre navigateur ou déployez sur n'importe quel hébergeur statique.\n`,
+    "README.md": `# Site généré par Mar-ia\n\nCe site a été généré par [Mar-ia](https://mar-ia.net) — AI Website Builder.\n\n## Structure\n\n- \`index.html\` — Page principale\n- \`assets/style.css\` — Styles CSS\n- \`assets/script.js\` — Scripts JavaScript\n\n## Utilisation\n\nOuvrez \`index.html\` dans votre navigateur ou déployez sur n'importe quel hébergeur statique.\n`,
   };
 }
 

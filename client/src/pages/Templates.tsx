@@ -70,7 +70,7 @@ export default function Templates() {
             <h2 className="text-2xl font-display font-bold text-foreground">Galerie de templates</h2>
           </div>
           <p className="text-muted-foreground text-sm">
-            Choisis un template et Maria génère ton site en quelques secondes.
+            Choisis un template et Mar-ia génère ton site en quelques secondes.
           </p>
         </div>
 
@@ -166,7 +166,7 @@ export default function Templates() {
           </DialogHeader>
           <div className="space-y-4 pt-2">
             <p className="text-sm text-muted-foreground">
-              Maria va générer ce site en partant de ce template. Tu peux modifier le nom du projet.
+              Mar-ia va générer ce site en partant de ce template. Tu peux modifier le nom du projet.
             </p>
             <div>
               <Label className="text-sm text-foreground mb-1.5 block">Nom du projet</Label>

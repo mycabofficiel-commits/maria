@@ -331,7 +331,7 @@ Retourne UNIQUEMENT le code HTML complet, sans explication, sans markdown, sans 
       ? new Date(project[0].createdAt).toLocaleDateString("fr-FR", { day: "2-digit", month: "long", year: "numeric" })
       : "date inconnue";
 
-    const systemPrompt = `Tu es Maria, l'IA créatrice de sites web intégrée à la plateforme Maria AI.
+    const systemPrompt = `Tu es Mar-ia, l'IA créatrice de sites web intégrée à la plateforme Mar-ia.
 Tu travailles sur le projet "${project[0].name || "Sans nom"}" (créé le ${projectCreatedAt}, ${totalVersions} version(s) au total).
 Tu as accès au code HTML complet du site ci-dessous. Utilise-le — ne l'invente pas.
 

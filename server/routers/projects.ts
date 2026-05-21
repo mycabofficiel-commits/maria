@@ -333,7 +333,7 @@ Retourne UNIQUEMENT le code HTML complet, sans explication, sans markdown, sans 
       const startTime = Date.now();
 
       // Agent system prompt — Maria knows the project, remembers conversations, decides to modify or just chat
-      const systemPrompt = `Tu es Maria, une IA experte en création de sites web. Tu es l'assistante personnelle de l'utilisateur pour ce projet web.
+      const systemPrompt = `Tu es Mar-ia, une IA experte en création de sites web. Tu es l'assistante personnelle de l'utilisateur pour ce projet web.
 
 CONTEXTE DU PROJET:
 - Nom du projet: ${project[0].name}

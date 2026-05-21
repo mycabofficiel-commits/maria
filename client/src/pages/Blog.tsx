@@ -10,9 +10,9 @@ const posts = [
     category: "Annonce",
     date: "16 avril 2026",
     readTime: "3 min",
-    title: "Lancement de Maria — Créez votre site web par l'IA en quelques minutes",
+    title: "Lancement de Mar-ia — Créez votre site web par l'IA en quelques minutes",
     excerpt:
-      "Nous sommes ravis de vous présenter Maria, le premier AI Website Builder BYOK (Bring Your Own Key) qui vous permet de créer des sites web professionnels en quelques minutes grâce à Claude d'Anthropic.",
+      "Nous sommes ravis de vous présenter Mar-ia, le premier AI Website Builder BYOK (Bring Your Own Key) qui vous permet de créer des sites web professionnels en quelques minutes grâce à Claude d'Anthropic.",
     color: "text-primary",
   },
   {
@@ -22,7 +22,7 @@ const posts = [
     readTime: "4 min",
     title: "Streaming en temps réel : voyez votre site se construire caractère par caractère",
     excerpt:
-      "Avec la nouvelle version de Maria, le code HTML/CSS/JS s'affiche en temps réel dans l'éditeur pendant que l'IA génère. Fini l'attente — vous voyez votre site prendre forme instantanément.",
+      "Avec la nouvelle version de Mar-ia, le code HTML/CSS/JS s'affiche en temps réel dans l'éditeur pendant que l'IA génère. Fini l'attente — vous voyez votre site prendre forme instantanément.",
     color: "text-emerald-400",
   },
   {
@@ -32,7 +32,7 @@ const posts = [
     readTime: "5 min",
     title: "Prompt Caching Anthropic : -70% sur le coût en tokens",
     excerpt:
-      "Maria intègre désormais le Prompt Caching d'Anthropic sur les system prompts. Résultat : les appels répétés coûtent jusqu'à 70% moins cher en tokens, ce qui se traduit directement par une réduction de vos coûts API.",
+      "Mar-ia intègre désormais le Prompt Caching d'Anthropic sur les system prompts. Résultat : les appels répétés coûtent jusqu'à 70% moins cher en tokens, ce qui se traduit directement par une réduction de vos coûts API.",
     color: "text-amber-400",
   },
   {
@@ -42,7 +42,7 @@ const posts = [
     readTime: "6 min",
     title: "BYOK : pourquoi apporter votre propre clé API change tout",
     excerpt:
-      "Contrairement aux autres AI builders qui facturent à la génération, Maria vous laisse utiliser votre propre clé API Anthropic. Vous payez directement Anthropic au prix coûtant, sans marge intermédiaire.",
+      "Contrairement aux autres AI builders qui facturent à la génération, Mar-ia vous laisse utiliser votre propre clé API Anthropic. Vous payez directement Anthropic au prix coûtant, sans marge intermédiaire.",
     color: "text-blue-400",
   },
 ];
@@ -61,7 +61,7 @@ export default function Blog() {
             </div>
             <h1 className="text-4xl font-bold mb-4">Actualités & Tutoriels</h1>
             <p className="text-muted-foreground text-lg max-w-2xl mx-auto">
-              Nouveautés, guides techniques et conseils pour tirer le meilleur de Maria.
+              Nouveautés, guides techniques et conseils pour tirer le meilleur de Mar-ia.
             </p>
           </div>
 

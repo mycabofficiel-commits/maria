@@ -38,7 +38,7 @@ export default function Admin() {
       <div className="max-w-5xl space-y-6">
         <div>
           <h2 className="text-2xl font-display font-bold text-foreground mb-1">Administration</h2>
-          <p className="text-muted-foreground">Vue d'ensemble de la plateforme Maria.</p>
+          <p className="text-muted-foreground">Vue d'ensemble de la plateforme Mar-ia.</p>
         </div>
 
         {isLoading ? (

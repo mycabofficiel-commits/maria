@@ -36,10 +36,7 @@ export default function Register() {
         <div className="text-center mb-8">
           <Link href="/">
             <div className="inline-flex items-center gap-2 cursor-pointer">
-              <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center">
-                <span className="text-white text-sm font-bold">✦</span>
-              </div>
-              <span className="text-white text-xl font-semibold">Maria</span>
+              <span className="text-white text-xl font-semibold">Mar-ia</span>
             </div>
           </Link>
           <h1 className="text-white text-2xl font-bold mt-6">Créer un compte</h1>

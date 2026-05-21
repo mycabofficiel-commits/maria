@@ -13,17 +13,17 @@ export default function CGU() {
           <div className="prose prose-invert max-w-none space-y-8 text-muted-foreground">
             <section>
               <h2 className="text-xl font-display font-semibold text-foreground mb-3">1. Objet</h2>
-              <p>Les présentes Conditions Générales d'Utilisation (CGU) régissent l'accès et l'utilisation de la plateforme Maria, service de création de sites web par intelligence artificielle, accessible à l'adresse maria.app.</p>
+              <p>Les présentes Conditions Générales d'Utilisation (CGU) régissent l'accès et l'utilisation de la plateforme Mar-ia, service de création de sites web par intelligence artificielle, accessible à l'adresse maria.app.</p>
             </section>
 
             <section>
               <h2 className="text-xl font-display font-semibold text-foreground mb-3">2. Acceptation des CGU</h2>
-              <p>En accédant à la plateforme Maria, vous acceptez sans réserve les présentes CGU. Si vous n'acceptez pas ces conditions, vous devez cesser d'utiliser le service.</p>
+              <p>En accédant à la plateforme Mar-ia, vous acceptez sans réserve les présentes CGU. Si vous n'acceptez pas ces conditions, vous devez cesser d'utiliser le service.</p>
             </section>
 
             <section>
               <h2 className="text-xl font-display font-semibold text-foreground mb-3">3. Description du service</h2>
-              <p>Maria est une plateforme SaaS permettant aux utilisateurs de générer, modifier et publier des sites web à l'aide de l'intelligence artificielle. Le service nécessite la connexion d'une clé API Anthropic personnelle.</p>
+              <p>Mar-ia est une plateforme SaaS permettant aux utilisateurs de générer, modifier et publier des sites web à l'aide de l'intelligence artificielle. Le service nécessite la connexion d'une clé API Anthropic personnelle.</p>
             </section>
 
             <section>
@@ -33,12 +33,12 @@ export default function CGU() {
 
             <section>
               <h2 className="text-xl font-display font-semibold text-foreground mb-3">5. Clés API tierces</h2>
-              <p>L'utilisation du service requiert une clé API Anthropic valide. Maria n'est pas responsable des coûts générés par l'utilisation de votre clé API. Vous êtes seul responsable du respect des conditions d'utilisation d'Anthropic.</p>
+              <p>L'utilisation du service requiert une clé API Anthropic valide. Mar-ia n'est pas responsable des coûts générés par l'utilisation de votre clé API. Vous êtes seul responsable du respect des conditions d'utilisation d'Anthropic.</p>
             </section>
 
             <section>
               <h2 className="text-xl font-display font-semibold text-foreground mb-3">6. Propriété intellectuelle</h2>
-              <p>Les sites web générés via Maria vous appartiennent. Vous conservez tous les droits sur le contenu que vous créez. Maria conserve les droits sur sa plateforme, son interface et ses algorithmes.</p>
+              <p>Les sites web générés via Mar-ia vous appartiennent. Vous conservez tous les droits sur le contenu que vous créez. Mar-ia conserve les droits sur sa plateforme, son interface et ses algorithmes.</p>
             </section>
 
             <section>
@@ -48,7 +48,7 @@ export default function CGU() {
 
             <section>
               <h2 className="text-xl font-display font-semibold text-foreground mb-3">8. Limitation de responsabilité</h2>
-              <p>Maria est fourni "tel quel". Nous ne garantissons pas que le service sera ininterrompu ou exempt d'erreurs. Notre responsabilité est limitée au montant payé pour le service au cours des 3 derniers mois.</p>
+              <p>Mar-ia est fourni "tel quel". Nous ne garantissons pas que le service sera ininterrompu ou exempt d'erreurs. Notre responsabilité est limitée au montant payé pour le service au cours des 3 derniers mois.</p>
             </section>
 
             <section>

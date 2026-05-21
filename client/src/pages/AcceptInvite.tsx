@@ -5,7 +5,8 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { useAuth } from "@/_core/hooks/useAuth";
 import { getLoginUrl } from "@/const";
-import { Loader2, CheckCircle2, XCircle, Users, Eye, Edit3, Sparkles } from "lucide-react";
+import { Loader2, CheckCircle2, XCircle, Users, Eye, Edit3 } from "lucide-react";
+import LogoBrand from "@/components/LogoBrand";
 import { Link } from "wouter";
 
 export default function AcceptInvite() {
@@ -44,11 +45,8 @@ export default function AcceptInvite() {
       <div className="w-full max-w-md space-y-4">
         {/* Logo */}
         <div className="text-center mb-6">
-          <div className="inline-flex items-center gap-2 mb-2">
-            <div className="w-8 h-8 rounded-lg bg-primary flex items-center justify-center">
-              <Sparkles className="w-4 h-4 text-primary-foreground" />
-            </div>
-            <span className="font-display font-bold text-xl text-foreground">Maria</span>
+          <div className="inline-flex items-center justify-center mb-2">
+            <LogoBrand size="md" />
           </div>
         </div>
 

@@ -140,7 +140,7 @@ export default function UltraDashboard() {
                 <h1 className="text-xl font-bold text-foreground">Tableau de bord Ultra</h1>
                 <Badge className="bg-amber-500/20 text-amber-400 border-amber-500/30 text-xs">⚡ Accès exclusif</Badge>
               </div>
-              <p className="text-sm text-muted-foreground mt-0.5">Contrôle total de la plateforme Maria</p>
+              <p className="text-sm text-muted-foreground mt-0.5">Contrôle total de la plateforme Mar-ia</p>
             </div>
           </div>
           <Button

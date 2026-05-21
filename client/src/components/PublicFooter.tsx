@@ -1,5 +1,5 @@
 import { Link } from "wouter";
-import { Sparkles } from "lucide-react";
+import LogoBrand from "@/components/LogoBrand";
 
 export default function PublicFooter() {
   return (
@@ -7,11 +7,8 @@ export default function PublicFooter() {
       <div className="container">
         <div className="grid grid-cols-2 md:grid-cols-4 gap-8 mb-12">
           <div className="col-span-2 md:col-span-1">
-            <Link href="/" className="flex items-center gap-2 mb-4">
-              <div className="w-7 h-7 rounded-lg bg-primary flex items-center justify-center">
-                <Sparkles className="w-3.5 h-3.5 text-primary-foreground" />
-              </div>
-              <span className="font-display font-bold text-lg text-foreground">Maria</span>
+            <Link href="/" className="flex items-center mb-4">
+              <LogoBrand size="sm" />
             </Link>
             <p className="text-sm text-muted-foreground leading-relaxed">
               Créez votre site web en quelques minutes avec l'IA. Générez, modifiez et publiez depuis une seule plateforme.
@@ -46,7 +43,7 @@ export default function PublicFooter() {
         </div>
 
         <div className="border-t border-border/50 pt-6 flex flex-col sm:flex-row items-center justify-between gap-4">
-          <p className="text-xs text-muted-foreground">© 2025 Maria. Tous droits réservés.</p>
+          <p className="text-xs text-muted-foreground">© 2025 Mar-ia. Tous droits réservés.</p>
           <p className="text-xs text-muted-foreground">Propulsé par Claude d'Anthropic</p>
         </div>
       </div>

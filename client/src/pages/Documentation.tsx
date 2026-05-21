@@ -13,7 +13,7 @@ const sections = [
       { step: "1", text: "Créez un compte gratuit et connectez-vous." },
       { step: "2", text: "Depuis le Dashboard, cliquez sur « Nouveau projet »." },
       { step: "3", text: "Décrivez votre site en quelques phrases, choisissez un style et une palette." },
-      { step: "4", text: "Cliquez sur « Générer le site » — Maria produit votre code en temps réel." },
+      { step: "4", text: "Cliquez sur « Générer le site » — Mar-ia produit votre code en temps réel." },
       { step: "5", text: "Affinez avec le chat, puis publiez en un clic." },
     ],
   },
@@ -23,18 +23,18 @@ const sections = [
     badge: "Requis",
     content: [
       { step: "1", text: "Rendez-vous sur console.anthropic.com et créez une clé API." },
-      { step: "2", text: "Dans Maria, allez dans Paramètres > Clés API." },
+      { step: "2", text: "Dans Mar-ia, allez dans Paramètres > Clés API." },
       { step: "3", text: "Collez votre clé — elle est chiffrée AES-256 avant stockage." },
       { step: "4", text: "Choisissez le modèle : claude-sonnet-4-5 est recommandé." },
     ],
   },
   {
     icon: MessageSquare,
-    title: "Chat avec Maria",
+    title: "Chat avec Mar-ia",
     badge: "IA",
     content: [
       { step: "→", text: "Demandez des modifications en langage naturel : « Change le fond en noir », « Ajoute une section témoignages »." },
-      { step: "→", text: "Maria comprend le contexte du projet et de toute la conversation précédente." },
+      { step: "→", text: "Mar-ia comprend le contexte du projet et de toute la conversation précédente." },
       { step: "→", text: "Chaque modification génère une nouvelle version sauvegardée automatiquement." },
     ],
   },
@@ -74,7 +74,7 @@ export default function Documentation() {
             </div>
             <h1 className="text-4xl font-bold mb-4">Guide d'utilisation</h1>
             <p className="text-muted-foreground text-lg max-w-2xl mx-auto">
-              Tout ce dont vous avez besoin pour créer, modifier et publier votre site web avec Maria.
+              Tout ce dont vous avez besoin pour créer, modifier et publier votre site web avec Mar-ia.
             </p>
           </div>
 

@@ -68,7 +68,7 @@ const FAQ_SECTIONS = [
       },
       {
         q: "Comment sont calculés les coûts ?",
-        a: "Les coûts dépendent du modèle Claude utilisé et du nombre de tokens consommés. Maria affiche une estimation du coût pour chaque génération. Vous gardez un contrôle total sur votre budget via votre compte Anthropic.",
+        a: "Les coûts dépendent du modèle Claude utilisé et du nombre de tokens consommés. Mar-ia affiche une estimation du coût pour chaque génération. Vous gardez un contrôle total sur votre budget via votre compte Anthropic.",
       },
       {
         q: "Comment annuler mon abonnement ?",
@@ -114,7 +114,7 @@ export default function FAQ() {
               Questions fréquentes
             </h1>
             <p className="text-xl text-muted-foreground">
-              Tout ce que vous devez savoir sur Maria.
+              Tout ce que vous devez savoir sur Mar-ia.
             </p>
           </div>
 

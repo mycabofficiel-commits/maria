@@ -300,7 +300,7 @@ export default function ApiKeys() {
             </div>
           ))}
           <p className="text-xs text-muted-foreground mt-3 border-t border-border/40 pt-3">
-            Les coûts sont débités sur votre compte chez le fournisseur. Maria n'ajoute aucune marge.
+            Les coûts sont débités sur votre compte chez le fournisseur. Mar-ia n'ajoute aucune marge.
           </p>
         </div>
       </div>

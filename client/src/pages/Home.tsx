@@ -85,7 +85,7 @@ const TESTIMONIALS = [
     name: "Thomas Dupont",
     role: "Fondateur SaaS",
     avatar: "TD",
-    text: "Maria m'a permis de lancer ma landing page en une heure. Le chat d'édition est incroyablement intuitif.",
+    text: "Mar-ia m'a permis de lancer ma landing page en une heure. Le chat d'édition est incroyablement intuitif.",
     rating: 5,
   },
   {
@@ -302,7 +302,7 @@ export default function Home() {
         <div className="container">
           <div className="text-center mb-16">
             <h2 className="text-4xl font-display font-bold text-foreground mb-4">
-              Ils créent avec Maria
+              Ils créent avec Mar-ia
             </h2>
           </div>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
@@ -340,7 +340,7 @@ export default function Home() {
                 Prêt à créer votre site ?
               </h2>
               <p className="text-muted-foreground mb-8 max-w-lg mx-auto">
-                Rejoignez des milliers de créateurs qui utilisent Maria pour construire leur présence en ligne avec l'IA.
+                Rejoignez des milliers de créateurs qui utilisent Mar-ia pour construire leur présence en ligne avec l'IA.
               </p>
               {isAuthenticated ? (
                 <Link href="/dashboard">

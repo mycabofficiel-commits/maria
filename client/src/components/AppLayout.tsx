@@ -11,10 +11,11 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import {
-  Sparkles, LayoutDashboard, FolderOpen, Key, CreditCard,
-  User, LogOut, Settings, ChevronRight, Menu, X, Shield, Crown, Zap, LayoutTemplate,
-  PanelLeftClose, PanelLeftOpen
+  LayoutDashboard, FolderOpen, Key, CreditCard,
+  User, LogOut, ChevronRight, Menu, X, Shield, Crown, Zap, LayoutTemplate,
+  PanelLeftClose, PanelLeftOpen, Sparkles
 } from "lucide-react";
+import LogoBrand from "@/components/LogoBrand";
 import { useState } from "react";
 import { Loader2 } from "lucide-react";
 
@@ -73,12 +74,11 @@ export default function AppLayout({ children, title }: AppLayoutProps) {
       >
         {/* Logo */}
         <div className="flex items-center gap-2.5 px-3 h-16 border-b border-sidebar-border overflow-hidden">
-          <div className="w-7 h-7 rounded-lg bg-primary flex items-center justify-center flex-shrink-0">
-            <Sparkles className="w-3.5 h-3.5 text-primary-foreground" />
-          </div>
-          <span className={`font-display font-bold text-lg text-foreground transition-all duration-300 whitespace-nowrap overflow-hidden ${navCollapsed ? "lg:w-0 lg:opacity-0" : "lg:w-auto lg:opacity-100"}`}>
-            Maria
-          </span>
+          <LogoBrand
+            size="sm"
+            showText={!navCollapsed}
+            className={`transition-all duration-300 ${navCollapsed ? "lg:opacity-100" : ""}`}
+          />
         </div>
 
         {/* Nav */}

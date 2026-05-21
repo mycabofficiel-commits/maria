@@ -13,7 +13,7 @@ export default function Privacy() {
           <div className="space-y-8 text-muted-foreground">
             <section>
               <h2 className="text-xl font-display font-semibold text-foreground mb-3">1. Responsable du traitement</h2>
-              <p>Maria (ci-après "nous") est responsable du traitement de vos données personnelles conformément au Règlement Général sur la Protection des Données (RGPD).</p>
+              <p>Mar-ia (ci-après "nous") est responsable du traitement de vos données personnelles conformément au Règlement Général sur la Protection des Données (RGPD).</p>
             </section>
 
             <section>

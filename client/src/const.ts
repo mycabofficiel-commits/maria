@@ -1,4 +1,4 @@
-export const APP_NAME = "Maria";
+export const APP_NAME = "Mar-ia";
 
 export function getLoginUrl(): string {
   const oauthUrl = import.meta.env.VITE_OAUTH_PORTAL_URL;

@@ -1448,7 +1448,7 @@ ${jsCode}`;
                     {/* Text input */}
                     <input
                       type="text"
-                      placeholder={isRecording ? "🎤 Dictée en cours…" : "Parlez à Maria…"}
+                      placeholder={isRecording ? "🎤 Dictée en cours…" : "Parlez à Mar-ia…"}
                       value={chatMessage}
                       onChange={(e) => setChatMessage(e.target.value)}
                       onKeyDown={(e) => {
