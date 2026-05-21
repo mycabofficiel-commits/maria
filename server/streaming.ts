@@ -126,6 +126,14 @@ NAVIGATION MULTI-PAGES (CRITIQUE — ZÉRO LIEN CASSÉ):
 - Tous les boutons CTA: comportement JS défini (scroll, showPage, modal, etc.)
 - href="#" uniquement si ancre ou handler JS associé
 
+DONNÉES — ANTI-HALLUCINATION (CRITIQUE):
+- JAMAIS de vraies coordonnées: utilise "contact@exemple.fr", "+33 6 00 00 00 00", "12 rue de l'Exemple, 75000 Paris"
+- JAMAIS de vraies personnes réelles citées comme clients/témoins
+- Témoignages: prénoms génériques fictifs (Marie D., Thomas B., Sophie L.)
+- Statistiques: uniquement si l'utilisateur les a fournies. Sinon n'en mets PAS.
+- Prix: uniquement si l'utilisateur les a précisés. Sinon mets "Sur devis" ou "À partir de X€".
+- N'invente AUCUNE information non fournie dans le prompt. Si manquante → placeholder discret.
+
 TYPE DE SITE: ${siteType || "landing page"}
 STYLE: ${style || "moderne"}
 LANGUE: ${language || "fr"}
@@ -162,6 +170,7 @@ Retourne UNIQUEMENT le code HTML complet, sans explication, sans markdown, sans 
           body: JSON.stringify({
             model: modelToUse,
             max_tokens: 8000,
+            temperature: 0.3,
             stream: true,
             system: [{ type: "text", text: systemPrompt, cache_control: { type: "ephemeral" } }],
             messages: [{ role: "user", content: userMessage }],
@@ -202,6 +211,7 @@ Retourne UNIQUEMENT le code HTML complet, sans explication, sans markdown, sans 
           body: JSON.stringify({
             model: modelToUse,
             max_tokens: 8000,
+            temperature: 0.3,
             stream: true,
             messages: [{ role: "system", content: systemPrompt }, { role: "user", content: userMessage }],
           }),
@@ -336,10 +346,10 @@ Tu travailles sur le projet "${project[0].name || "Sans nom"}" (créé le ${proj
 Tu as accès au code HTML complet du site ci-dessous. Utilise-le — ne l'invente pas.
 
 QUI TU ES:
-- Tu t'appelles Maria, tu es experte en HTML/CSS/JS vanilla
+- Tu t'appelles Mar-ia, tu es experte en HTML/CSS/JS vanilla
 - Tu connais l'historique complet de la conversation et du projet
 - Tu peux répondre à des questions, donner des conseils, ou modifier le code
-- Tu es proactive, précise et concise
+- Tu es précise, factuelle et concise
 
 FORMAT DE RÉPONSE — TOUJOURS l'un des deux JSON valides ci-dessous, RIEN D'AUTRE:
 
@@ -352,7 +362,6 @@ Si question, conseil ou conversation uniquement:
 RÈGLES STRICTES:
 - Le champ "reply" TOUJOURS EN PREMIER dans le JSON, avant "code"
 - TOUJOURS agir sur la demande, jamais expliquer sans agir
-- JAMAIS demander plus d'informations — tu as le code, agis
 - JAMAIS inventer un bug ou problème non mentionné par l'utilisateur
 - JAMAIS répondre sans JSON valide
 - JAMAIS tronquer le code — il doit être complet et fonctionnel
@@ -361,12 +370,15 @@ RÈGLES STRICTES:
 - "Modifie Y" → modifie Y dans le code existant
 - "Il y a un bug Z" → corrige Z
 - Pour les questions : réponds en markdown (listes, gras, code inline si pertinent)
+- Si une information est manquante, utilise un placeholder générique (ex: "Votre titre", "contact@exemple.fr") — ne l'invente pas
 
-INTERDIT:
+ANTI-HALLUCINATION — INTERDIT ABSOLU:
+- Inventer des données non fournies par l'utilisateur (stats, prix, noms réels, adresses, numéros de téléphone)
+- Ajouter des fonctionnalités non demandées
+- Citer de vraies personnes ou entreprises réelles comme références
+- Créer de faux témoignages avec des noms qui ressemblent à de vraies personnes
+- Affirmer que quelque chose "existe dans le code" si ce n'est pas dans le code fourni ci-dessous
 - Demander à l'utilisateur de te montrer son code (tu l'as déjà ci-dessous)
-- Inventer des données ou du contexte
-- Répondre sans modifier le code si une action est demandée
-- Halluciner des erreurs ou états non confirmés
 - Mettre "reply" après "code" dans le JSON
 - Utiliser href="page.html" ou liens vers des fichiers .html séparés
 - Laisser des images cassées (src="#", src="", chemins locaux)
@@ -422,6 +434,7 @@ ${currentVersion[0].generatedCode || ""}`;
           body: JSON.stringify({
             model: modelToUse,
             max_tokens: 16000,
+            temperature: 0.3,
             stream: true,
             system: [{ type: "text", text: systemPrompt, cache_control: { type: "ephemeral" } }],
             messages: llmMessages,
@@ -460,7 +473,7 @@ ${currentVersion[0].generatedCode || ""}`;
         const aiRes = await fetch(`${baseUrl}/chat/completions`, {
           method: "POST",
           headers: { "Authorization": `Bearer ${apiKey}`, "content-type": "application/json" },
-          body: JSON.stringify({ model: modelToUse, max_tokens: 16000, stream: true, messages: allMessages }),
+          body: JSON.stringify({ model: modelToUse, max_tokens: 16000, temperature: 0.3, stream: true, messages: allMessages }),
         });
         if (!aiRes.ok || !aiRes.body) { sseWrite(res, "error", { message: `Erreur API ${provider}: ${await aiRes.text()}` }); res.end(); return; }
         const reader = aiRes.body.getReader();
@@ -656,6 +669,7 @@ Retourne UNIQUEMENT ce JSON (rien d'autre, pas de markdown):
           body: JSON.stringify({
             model: modelToUse,
             max_tokens: 8000,
+            temperature: 0.3,
             stream: true,
             messages: [{ role: "system", content: systemPrompt }, { role: "user", content: userMessage }],
           }),
