@@ -49,6 +49,150 @@ async function authenticate(req: Request, res: Response) {
   }
 }
 
+// ── Platform API key helpers ───────────────────────────────────────────────
+
+/** Returns a platform-managed API key, or null if not configured */
+function getPlatformKey(provider: "anthropic" | "openai" | "deepseek" | "qwen"): string | null {
+  const keys: Record<string, string | undefined> = {
+    anthropic: process.env.ANTHROPIC_API_KEY,
+    openai:    process.env.OPENAI_API_KEY,
+    deepseek:  process.env.DEEPSEEK_API_KEY,
+    qwen:      process.env.QWEN_API_KEY,
+  };
+  return keys[provider] || null;
+}
+
+/** Non-streaming AI call — returns generated text */
+async function callSync(
+  provider: "anthropic" | "openai" | "deepseek" | "qwen",
+  model: string,
+  apiKey: string,
+  systemPrompt: string,
+  userMessage: string,
+  maxTokens = 800
+): Promise<string> {
+  if (provider === "anthropic") {
+    const r = await fetch("https://api.anthropic.com/v1/messages", {
+      method: "POST",
+      headers: { "x-api-key": apiKey, "anthropic-version": "2023-06-01", "content-type": "application/json" },
+      body: JSON.stringify({ model, max_tokens: maxTokens, temperature: 0.3, system: systemPrompt, messages: [{ role: "user", content: userMessage }] }),
+    });
+    if (!r.ok) throw new Error(`${provider} sync error: ${await r.text()}`);
+    const d = await r.json() as any;
+    return d.content?.[0]?.text || "";
+  } else {
+    const baseUrls: Record<string, string> = {
+      openai:   "https://api.openai.com/v1",
+      deepseek: "https://api.deepseek.com/v1",
+      qwen:     "https://dashscope.aliyuncs.com/compatible-mode/v1",
+    };
+    const baseUrl = baseUrls[provider] || "https://api.openai.com/v1";
+    const r = await fetch(`${baseUrl}/chat/completions`, {
+      method: "POST",
+      headers: { "Authorization": `Bearer ${apiKey}`, "content-type": "application/json" },
+      body: JSON.stringify({ model, max_tokens: maxTokens, temperature: 0.3, messages: [{ role: "system", content: systemPrompt }, { role: "user", content: userMessage }] }),
+    });
+    if (!r.ok) throw new Error(`${provider} sync error: ${await r.text()}`);
+    const d = await r.json() as any;
+    return d.choices?.[0]?.message?.content || "";
+  }
+}
+
+/**
+ * Multi-agent orchestration — enriches the prompt with briefs from intermediate agents.
+ * FREE: DeepSeek seul (no orchestration)
+ * CREATOR: Qwen brief → DeepSeek exécute
+ * PRO: Claude architecture → Qwen optimise → DeepSeek exécute
+ * AGENCY: GPT-4o stratégie → Claude gère → Qwen optimise → DeepSeek exécute
+ */
+async function orchestrateGenerate(
+  res: Response,
+  plan: string,
+  prompt: string,
+  siteType: string,
+  style: string,
+  language: string,
+  colorPalette: string
+): Promise<string> {
+  let enriched = prompt;
+
+  if (plan === "creator") {
+    const qwenKey = getPlatformKey("qwen");
+    if (qwenKey) {
+      sseWrite(res, "progress", { agent: "Qwen", step: "Analyse & stratégie de contenu", icon: "🧠" });
+      const brief = await callSync("qwen", "qwen-plus", qwenKey,
+        `Tu es un expert en stratégie web. Analyse la demande et produis un brief structuré: sections principales, proposition de valeur, mots-clés SEO. 150 mots max. Langue: ${language}.`,
+        `Demande: ${prompt}\nType: ${siteType}\nStyle: ${style}\nPalette: ${colorPalette}`,
+        600
+      );
+      enriched = `${prompt}\n\n[BRIEF STRATÉGIQUE — Qwen]:\n${brief}`;
+    }
+
+  } else if (plan === "pro") {
+    const claudeKey = getPlatformKey("anthropic");
+    const qwenKey   = getPlatformKey("qwen");
+
+    if (claudeKey) {
+      sseWrite(res, "progress", { agent: "Claude", step: "Architecture & structure du site", icon: "🏗️" });
+      const architecture = await callSync("anthropic", "claude-haiku-4-5", claudeKey,
+        `Tu es un architecte web senior. Définis la structure optimale: sections, hiérarchie, UX flow, points de conversion. 200 mots max. Langue: ${language}.`,
+        `Demande: ${prompt}\nType: ${siteType}\nStyle: ${style}`,
+        800
+      );
+      enriched = `${prompt}\n\n[ARCHITECTURE — Claude]:\n${architecture}`;
+    }
+
+    if (qwenKey) {
+      sseWrite(res, "progress", { agent: "Qwen", step: "Optimisation contenu & SEO", icon: "📈" });
+      const optimization = await callSync("qwen", "qwen-plus", qwenKey,
+        `Tu es un expert SEO et copywriting. Propose les textes optimisés pour chaque section: titres accrocheurs, CTAs percutants, méta-descriptions. 250 mots max. Langue: ${language}.`,
+        enriched,
+        900
+      );
+      enriched = `${enriched}\n\n[COPY & SEO — Qwen]:\n${optimization}`;
+    }
+
+  } else if (plan === "agency") {
+    const openaiKey = getPlatformKey("openai");
+    const claudeKey = getPlatformKey("anthropic");
+    const qwenKey   = getPlatformKey("qwen");
+
+    if (openaiKey) {
+      sseWrite(res, "progress", { agent: "GPT-4o", step: "Stratégie business & positionnement", icon: "🎯" });
+      const strategy = await callSync("openai", "gpt-4o-mini", openaiKey,
+        `Tu es un consultant business senior. Définis la stratégie: positionnement, audience cible, proposition de valeur unique, messages clés. 200 mots max. Langue: ${language}.`,
+        `Projet: ${prompt}\nType: ${siteType}\nStyle: ${style}\nPalette: ${colorPalette}`,
+        800
+      );
+      enriched = `${prompt}\n\n[STRATÉGIE BUSINESS — GPT-4o]:\n${strategy}`;
+    }
+
+    if (claudeKey) {
+      sseWrite(res, "progress", { agent: "Claude", step: "Architecture & design system", icon: "🏗️" });
+      const architecture = await callSync("anthropic", "claude-haiku-4-5", claudeKey,
+        `Tu es un architecte web et designer senior. Sur la base de la stratégie, définis: structure des sections, hiérarchie visuelle, composants clés. 250 mots max. Langue: ${language}.`,
+        enriched,
+        1000
+      );
+      enriched = `${enriched}\n\n[ARCHITECTURE & DESIGN — Claude]:\n${architecture}`;
+    }
+
+    if (qwenKey) {
+      sseWrite(res, "progress", { agent: "Qwen", step: "Copywriting & optimisation SEO", icon: "✍️" });
+      const copy = await callSync("qwen", "qwen-plus", qwenKey,
+        `Tu es un expert SEO et copywriter senior. Génère les textes finaux: titres H1/H2, textes de sections, CTAs, méta-title/description. 300 mots max. Langue: ${language}.`,
+        enriched,
+        1000
+      );
+      enriched = `${enriched}\n\n[COPY & SEO FINAL — Qwen]:\n${copy}`;
+    }
+  }
+
+  return enriched;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+
 export function registerStreamingRoutes(app: Express) {
   // ── POST /api/stream/generate ─────────────────────────────────────────────
   app.post("/api/stream/generate", async (req: Request, res: Response) => {
@@ -80,28 +224,44 @@ export function registerStreamingRoutes(app: Express) {
       return;
     }
 
-    // Get API key
-    const keyRow = await db.select().from(apiKeys).where(eq(apiKeys.userId, user.id)).limit(1);
-    if (!keyRow[0]) { res.status(400).json({ error: "Aucune clé API configurée." }); return; }
-    let apiKey: string;
-    try { apiKey = decrypt(keyRow[0].encryptedKey); }
-    catch { res.status(400).json({ error: "Clé API invalide." }); return; }
-
-    const provider = keyRow[0].provider || "anthropic";
-    const modelToUse = ["claude-3-5-sonnet-20241022", "claude-3-5-haiku-20241022", "claude-3-opus-20240229", "claude-3-5-sonnet-latest", "claude-3-5-haiku-latest"].includes(keyRow[0].model)
-      ? "claude-sonnet-4-5"
-      : (keyRow[0].model || "claude-sonnet-4-5");
+    // ── Platform DeepSeek key (final executor) — fall back to user key ────────
+    const userPlan = u?.plan || "free";
+    let deepseekKey = getPlatformKey("deepseek");
+    if (!deepseekKey) {
+      // Backward compat: try the user's own stored API key
+      const keyRow = await db.select().from(apiKeys).where(eq(apiKeys.userId, user.id)).limit(1);
+      if (keyRow[0]) {
+        try { deepseekKey = decrypt(keyRow[0].encryptedKey); } catch { /* ignore */ }
+      }
+    }
+    if (!deepseekKey) {
+      res.status(400).json({ error: "Service IA temporairement indisponible. Contactez l'administrateur." });
+      return;
+    }
 
     const versionCount = await db.select({ count: count() }).from(versions).where(eq(versions.projectId, projectId));
     const versionNumber = (versionCount[0]?.count || 0) + 1;
 
     await db.update(projects).set({ status: "generating" }).where(eq(projects.id, projectId));
 
-    // SSE headers
+    // SSE headers — must be set before any sseWrite calls
     res.setHeader("Content-Type", "text/event-stream");
     res.setHeader("Cache-Control", "no-cache");
     res.setHeader("Connection", "keep-alive");
     res.flushHeaders();
+
+    // ── Multi-agent orchestration (creator / pro / agency) ─────────────────
+    let enrichedPrompt = prompt;
+    try {
+      enrichedPrompt = await orchestrateGenerate(
+        res, userPlan, prompt,
+        siteType || "landing page", style || "moderne",
+        language || "fr", colorPalette || "bleu/violet moderne"
+      );
+    } catch { /* orchestration failed — continue with original prompt */ }
+
+    // ── Final execution: DeepSeek streams the HTML ─────────────────────────
+    sseWrite(res, "progress", { agent: "DeepSeek", step: "Génération du code HTML…", icon: "💻" });
 
     const systemPrompt = `Tu es un expert en développement web. Tu génères du code HTML/CSS/JS de haute qualité, professionnel, responsive et optimisé SEO.
 
@@ -139,7 +299,7 @@ STYLE: ${style || "moderne"}
 LANGUE: ${language || "fr"}
 PALETTE: ${colorPalette || "bleu/violet moderne"}`;
 
-    const userMessage = `Crée un site web complet pour: ${prompt}
+    const userMessage = `Crée un site web complet pour: ${enrichedPrompt}
 
 Génère un code HTML/CSS/JS complet, professionnel et prêt à l'emploi. Inclus:
 - Un header avec navigation
@@ -158,83 +318,35 @@ Retourne UNIQUEMENT le code HTML complet, sans explication, sans markdown, sans 
     let outputTokens = 0;
 
     try {
-      if (provider === "anthropic") {
-        const aiRes = await fetch("https://api.anthropic.com/v1/messages", {
-          method: "POST",
-          headers: {
-            "x-api-key": apiKey,
-            "anthropic-version": "2023-06-01",
-            "anthropic-beta": "prompt-caching-2024-07-31",
-            "content-type": "application/json",
-          },
-          body: JSON.stringify({
-            model: modelToUse,
-            max_tokens: 8000,
-            temperature: 0.3,
-            stream: true,
-            system: [{ type: "text", text: systemPrompt, cache_control: { type: "ephemeral" } }],
-            messages: [{ role: "user", content: userMessage }],
-          }),
-        });
-        if (!aiRes.ok || !aiRes.body) { sseWrite(res, "error", { message: `Erreur API: ${await aiRes.text()}` }); res.end(); return; }
-        const reader = aiRes.body.getReader();
-        const decoder = new TextDecoder();
-        let buffer = "";
-        while (true) {
-          const { done, value } = await reader.read();
-          if (done) break;
-          buffer += decoder.decode(value, { stream: true });
-          const lines = buffer.split("\n"); buffer = lines.pop() || "";
-          for (const line of lines) {
-            if (!line.startsWith("data: ")) continue;
-            const raw = line.slice(6).trim(); if (raw === "[DONE]") continue;
-            try {
-              const evt = JSON.parse(raw);
-              if (evt.type === "content_block_delta" && evt.delta?.type === "text_delta") { fullCode += evt.delta.text; sseWrite(res, "chunk", { text: evt.delta.text }); }
-              if (evt.type === "message_delta" && evt.usage) outputTokens = evt.usage.output_tokens || 0;
-              if (evt.type === "message_start" && evt.message?.usage) inputTokens = evt.message.usage.input_tokens || 0;
-            } catch { /* skip */ }
-          }
-        }
-      } else {
-        // OpenAI-compatible providers (DeepSeek, OpenAI, Mistral, Groq…)
-        const baseUrls: Record<string, string> = {
-          deepseek: "https://api.deepseek.com/v1",
-          openai: "https://api.openai.com/v1",
-          mistral: "https://api.mistral.ai/v1",
-          groq: "https://api.groq.com/openai/v1",
-        };
-        const baseUrl = baseUrls[provider] || "https://api.openai.com/v1";
-        const aiRes = await fetch(`${baseUrl}/chat/completions`, {
-          method: "POST",
-          headers: { "Authorization": `Bearer ${apiKey}`, "content-type": "application/json" },
-          body: JSON.stringify({
-            model: modelToUse,
-            max_tokens: 8000,
-            temperature: 0.3,
-            stream: true,
-            messages: [{ role: "system", content: systemPrompt }, { role: "user", content: userMessage }],
-          }),
-        });
-        if (!aiRes.ok || !aiRes.body) { sseWrite(res, "error", { message: `Erreur API ${provider}: ${await aiRes.text()}` }); res.end(); return; }
-        const reader = aiRes.body.getReader();
-        const decoder = new TextDecoder();
-        let buffer = "";
-        while (true) {
-          const { done, value } = await reader.read();
-          if (done) break;
-          buffer += decoder.decode(value, { stream: true });
-          const lines = buffer.split("\n"); buffer = lines.pop() || "";
-          for (const line of lines) {
-            if (!line.startsWith("data: ")) continue;
-            const raw = line.slice(6).trim(); if (raw === "[DONE]") continue;
-            try {
-              const evt = JSON.parse(raw);
-              const chunk = evt.choices?.[0]?.delta?.content;
-              if (chunk) { fullCode += chunk; sseWrite(res, "chunk", { text: chunk }); }
-              if (evt.usage) { inputTokens = evt.usage.prompt_tokens || 0; outputTokens = evt.usage.completion_tokens || 0; }
-            } catch { /* skip */ }
-          }
+      const aiRes = await fetch("https://api.deepseek.com/v1/chat/completions", {
+        method: "POST",
+        headers: { "Authorization": `Bearer ${deepseekKey}`, "content-type": "application/json" },
+        body: JSON.stringify({
+          model: "deepseek-chat",
+          max_tokens: 8000,
+          temperature: 0.3,
+          stream: true,
+          messages: [{ role: "system", content: systemPrompt }, { role: "user", content: userMessage }],
+        }),
+      });
+      if (!aiRes.ok || !aiRes.body) { sseWrite(res, "error", { message: `Erreur DeepSeek: ${await aiRes.text()}` }); res.end(); return; }
+      const reader = aiRes.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split("\n"); buffer = lines.pop() || "";
+        for (const line of lines) {
+          if (!line.startsWith("data: ")) continue;
+          const raw = line.slice(6).trim(); if (raw === "[DONE]") continue;
+          try {
+            const evt = JSON.parse(raw);
+            const chunk = evt.choices?.[0]?.delta?.content;
+            if (chunk) { fullCode += chunk; sseWrite(res, "chunk", { text: chunk }); }
+            if (evt.usage) { inputTokens = evt.usage.prompt_tokens || 0; outputTokens = evt.usage.completion_tokens || 0; }
+          } catch { /* skip */ }
         }
       }
 
@@ -251,7 +363,7 @@ Retourne UNIQUEMENT le code HTML complet, sans explication, sans markdown, sans 
         generatedCode: fullCode,
         tokensUsed,
         generationTimeMs: durationMs,
-        model: modelToUse,
+        model: "deepseek-chat",
         status: "ready",
       }).returning({ id: versions.id });
       const versionId = versionResult.id;
@@ -271,7 +383,7 @@ Retourne UNIQUEMENT le code HTML complet, sans explication, sans markdown, sans 
         userId: user.id,
         projectId,
         action: "generate",
-        model: modelToUse,
+        model: "deepseek-chat",
         tokensUsed,
         durationMs,
         status: "success",
@@ -312,14 +424,23 @@ Retourne UNIQUEMENT le code HTML complet, sans explication, sans markdown, sans 
       .where(eq(versions.id, project[0].currentVersionId!)).limit(1);
     if (!currentVersion[0]) { res.status(400).json({ error: "Aucune version générée" }); return; }
 
-    const keyRow = await db.select().from(apiKeys).where(eq(apiKeys.userId, user.id)).limit(1);
-    if (!keyRow[0]) { res.status(400).json({ error: "Aucune clé API configurée" }); return; }
-    const apiKey = decrypt(keyRow[0].encryptedKey);
-    const provider = keyRow[0].provider || "anthropic";
-
-    const modelToUse = ["claude-3-5-sonnet-20241022", "claude-3-5-haiku-20241022", "claude-3-opus-20240229", "claude-3-5-sonnet-latest", "claude-3-5-haiku-latest"].includes(keyRow[0].model)
-      ? "claude-sonnet-4-5"
-      : (keyRow[0].model || "claude-sonnet-4-5");
+    // Platform DeepSeek key for chat (fall back to user key)
+    let apiKey: string;
+    let provider = "deepseek";
+    let modelToUse = "deepseek-chat";
+    const platformChatKey = getPlatformKey("deepseek");
+    if (platformChatKey) {
+      apiKey = platformChatKey;
+    } else {
+      const keyRow = await db.select().from(apiKeys).where(eq(apiKeys.userId, user.id)).limit(1);
+      if (!keyRow[0]) { res.status(400).json({ error: "Aucune clé API configurée" }); return; }
+      try { apiKey = decrypt(keyRow[0].encryptedKey); }
+      catch { res.status(400).json({ error: "Clé API invalide" }); return; }
+      provider = keyRow[0].provider || "anthropic";
+      modelToUse = ["claude-3-5-sonnet-20241022", "claude-3-5-haiku-20241022", "claude-3-opus-20240229", "claude-3-5-sonnet-latest", "claude-3-5-haiku-latest"].includes(keyRow[0].model)
+        ? "claude-sonnet-4-5"
+        : (keyRow[0].model || "claude-sonnet-4-5");
+    }
 
     // Save user message
     await db.insert(chatMessages).values({
@@ -572,16 +693,23 @@ ${currentVersion[0].generatedCode || ""}`;
       .where(eq(versions.id, project[0].currentVersionId!)).limit(1);
     if (!currentVersion[0]?.generatedCode) { res.status(400).json({ error: "Aucune version à débugger" }); return; }
 
-    const keyRow = await db.select().from(apiKeys).where(eq(apiKeys.userId, user.id)).limit(1);
-    if (!keyRow[0]) { res.status(400).json({ error: "Aucune clé API configurée" }); return; }
+    // Platform Anthropic key for debug (fall back to user key)
     let apiKey: string;
-    try { apiKey = decrypt(keyRow[0].encryptedKey); }
-    catch { res.status(400).json({ error: "Clé API invalide" }); return; }
-
-    const provider = keyRow[0].provider || "anthropic";
-    const modelToUse = ["claude-3-5-sonnet-20241022", "claude-3-5-haiku-20241022", "claude-3-opus-20240229", "claude-3-5-sonnet-latest", "claude-3-5-haiku-latest"].includes(keyRow[0].model)
-      ? "claude-sonnet-4-5"
-      : (keyRow[0].model || "claude-sonnet-4-5");
+    let provider = "anthropic";
+    let modelToUse = "claude-haiku-4-5";
+    const platformDebugKey = getPlatformKey("anthropic");
+    if (platformDebugKey) {
+      apiKey = platformDebugKey;
+    } else {
+      const keyRow = await db.select().from(apiKeys).where(eq(apiKeys.userId, user.id)).limit(1);
+      if (!keyRow[0]) { res.status(400).json({ error: "Aucune clé API configurée" }); return; }
+      try { apiKey = decrypt(keyRow[0].encryptedKey); }
+      catch { res.status(400).json({ error: "Clé API invalide" }); return; }
+      provider = keyRow[0].provider || "anthropic";
+      modelToUse = ["claude-3-5-sonnet-20241022", "claude-3-5-haiku-20241022", "claude-3-opus-20240229", "claude-3-5-sonnet-latest", "claude-3-5-haiku-latest"].includes(keyRow[0].model)
+        ? "claude-sonnet-4-5"
+        : (keyRow[0].model || "claude-sonnet-4-5");
+    }
 
     const versionCount = await db.select({ count: count() }).from(versions).where(eq(versions.projectId, projectId));
     const nextVersionNumber = (versionCount[0]?.count || 0) + 1;

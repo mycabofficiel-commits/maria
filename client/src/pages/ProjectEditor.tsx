@@ -361,6 +361,7 @@ export default function ProjectEditor() {
   const [copiedTab, setCopiedTab] = useState<CodeTab | null>(null);
   const [streamingReply, setStreamingReply] = useState("");
   const [editorCollapsed, setEditorCollapsed] = useState(false);
+  const [agentStep, setAgentStep] = useState<{ agent: string; step: string; icon: string } | null>(null);
 
   /* visual edit state */
   const [veSelection, setVeSelection] = useState<null | {
@@ -514,6 +515,7 @@ export default function ProjectEditor() {
   const generateSiteStream = useCallback(async () => {
     if (!prompt.trim()) { toast.error("Décrivez votre site d'abord."); return; }
     setIsGenerating(true);
+    setAgentStep(null);
     setStreamingCode("");
     setHtmlCode("");
     setCssCode("");
@@ -540,6 +542,10 @@ export default function ProjectEditor() {
           if (line.startsWith("data: ")) {
             try {
               const evt = JSON.parse(line.slice(6));
+              if (evt.agent !== undefined && evt.step !== undefined) {
+                // Multi-agent progress event
+                setAgentStep({ agent: evt.agent, step: evt.step, icon: evt.icon || "⚙️" });
+              }
               if (evt.text !== undefined) {
                 accumulated += evt.text;
                 setStreamingCode(accumulated);
@@ -550,6 +556,7 @@ export default function ProjectEditor() {
                 setJsCode(extractJs(accumulated));
               }
               if (evt.versionId) {
+                setAgentStep(null);
                 setSelectedVersionId(evt.versionId);
                 setStreamingTokens(evt.tokensUsed || 0);
                 toast.success(`Site généré ! ${evt.tokensUsed} tokens.`);
@@ -567,6 +574,7 @@ export default function ProjectEditor() {
     } finally {
       setIsGenerating(false);
       setStreamingChars(0);
+      setAgentStep(null);
     }
   }, [projectId, prompt, siteType, style, language, colorPalette]);
 
@@ -1037,9 +1045,24 @@ export default function ProjectEditor() {
           </div>
         ) : isGenerating ? (
           /* ═══ GENERATING SPINNER ═══ */
-          <div className="flex-1 flex flex-col items-center justify-center gap-4">
+          <div className="flex-1 flex flex-col items-center justify-center gap-5">
             <Loader2 className="w-10 h-10 text-primary animate-spin" />
-            <p className="text-sm text-muted-foreground animate-pulse">Maria génère votre site…</p>
+
+            {/* Agent step badge */}
+            {agentStep ? (
+              <div className="flex flex-col items-center gap-1">
+                <div className="flex items-center gap-2 px-4 py-2 rounded-full bg-primary/10 border border-primary/20 text-sm font-medium text-primary">
+                  <span>{agentStep.icon}</span>
+                  <span className="font-semibold">{agentStep.agent}</span>
+                  <span className="text-muted-foreground">—</span>
+                  <span className="text-muted-foreground">{agentStep.step}</span>
+                </div>
+              </div>
+            ) : (
+              <p className="text-sm text-muted-foreground animate-pulse">Mar-ia génère votre site…</p>
+            )}
+
+            {/* Code streaming progress */}
             {streamingChars > 0 && (
               <div className="flex flex-col items-center gap-2 w-64">
                 <div className="w-full h-1.5 bg-border/40 rounded-full overflow-hidden">
