@@ -55,7 +55,7 @@ export default function Login() {
         {/* Logo */}
         <div className="text-center space-y-2">
           <div className="flex items-center justify-center mb-4">
-            <LogoBrand size="lg" />
+            <LogoBrand size="lg" showSlogan />
           </div>
           <h1 className="text-2xl font-bold">
             {mode === "login" ? "Bon retour !" : "Créer un compte"}

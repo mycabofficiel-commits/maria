@@ -53,7 +53,7 @@ export default function Onboarding() {
       <div className="w-full max-w-lg">
         {/* Logo */}
         <div className="flex items-center justify-center mb-8">
-          <LogoBrand size="lg" />
+          <LogoBrand size="lg" showSlogan />
         </div>
 
         {/* Progress */}
