@@ -12,7 +12,7 @@ import { registerAuthRoutes } from "./authRoutes";
 import { migrate } from "drizzle-orm/node-postgres/migrator";
 import { getDb } from "../db";
 import { users } from "../../drizzle/schema";
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import crypto from "crypto";
 
 function adminHashPassword(password: string): string {
@@ -52,8 +52,45 @@ async function runMigrations() {
   }
 }
 
+/**
+ * Safety net: applique les colonnes/tables manquantes directement en SQL,
+ * indépendamment du système de migrations Drizzle.
+ * Idempotent — IF NOT EXISTS partout.
+ */
+async function ensureSchema() {
+  try {
+    const db = await getDb();
+    if (!db) return;
+
+    // Table platform_api_keys (clés LLM admin)
+    await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS "platform_api_keys" (
+        "id"           serial PRIMARY KEY NOT NULL,
+        "provider"     varchar(32) NOT NULL,
+        "encryptedKey" text NOT NULL,
+        "keyHint"      varchar(16),
+        "label"        varchar(64),
+        "isActive"     boolean NOT NULL DEFAULT true,
+        "createdAt"    timestamp NOT NULL DEFAULT now(),
+        "updatedAt"    timestamp NOT NULL DEFAULT now(),
+        CONSTRAINT "platform_api_keys_provider_unique" UNIQUE("provider")
+      )
+    `);
+
+    // Colonne monthlyTokensLimit sur users
+    await db.execute(sql`
+      ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "monthlyTokensLimit" integer
+    `);
+
+    console.log("[DB] Schema patch OK");
+  } catch (err) {
+    console.warn("[DB] ensureSchema warning:", err);
+  }
+}
+
 async function startServer() {
   await runMigrations();
+  await ensureSchema();
   const app = express();
   const server = createServer(app);
   // Configure body parser with larger size limit for file uploads
