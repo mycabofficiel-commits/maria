@@ -34,6 +34,25 @@ function slugify(name: string): string {
   );
 }
 
+// ── Token pricing (USD per 1 M tokens) ───────────────────────────────────────
+const COST_PER_M: Record<string, { in: number; out: number }> = {
+  "gpt-4o-mini":       { in: 0.15,  out: 0.60  },
+  "gpt-4o":            { in: 2.50,  out: 10.00 },
+  "claude-haiku-4-5":  { in: 0.80,  out: 4.00  },
+  "claude-sonnet-4-5": { in: 3.00,  out: 15.00 },
+  "qwen-plus":         { in: 0.40,  out: 1.20  },
+  "deepseek-chat":     { in: 0.14,  out: 0.28  },
+};
+
+/** Cost in USD — stored as micro-USD integer (multiply by 1e6) in the DB */
+function estimateCost(model: string, inputTokens: number, outputTokens: number): number {
+  const p = COST_PER_M[model];
+  if (!p) return 0;
+  return (inputTokens * p.in + outputTokens * p.out) / 1_000_000;
+}
+
+interface LlmResult { text: string; inputTokens: number; outputTokens: number; }
+
 /** Send an SSE event */
 function sseWrite(res: Response, event: string, data: unknown) {
   res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
@@ -83,7 +102,7 @@ async function getPlatformKey(provider: "anthropic" | "openai" | "deepseek" | "q
   return envKeys[provider] || null;
 }
 
-/** Non-streaming AI call — returns generated text */
+/** Non-streaming AI call — returns text + token counts */
 async function callSync(
   provider: "anthropic" | "openai" | "deepseek" | "qwen",
   model: string,
@@ -91,7 +110,7 @@ async function callSync(
   systemPrompt: string,
   userMessage: string,
   maxTokens = 800
-): Promise<string> {
+): Promise<LlmResult> {
   if (provider === "anthropic") {
     const r = await fetch("https://api.anthropic.com/v1/messages", {
       method: "POST",
@@ -100,7 +119,11 @@ async function callSync(
     });
     if (!r.ok) throw new Error(`${provider} sync error: ${await r.text()}`);
     const d = await r.json() as any;
-    return d.content?.[0]?.text || "";
+    return {
+      text: d.content?.[0]?.text || "",
+      inputTokens: d.usage?.input_tokens || 0,
+      outputTokens: d.usage?.output_tokens || 0,
+    };
   } else {
     const baseUrls: Record<string, string> = {
       openai:   "https://api.openai.com/v1",
@@ -115,7 +138,11 @@ async function callSync(
     });
     if (!r.ok) throw new Error(`${provider} sync error: ${await r.text()}`);
     const d = await r.json() as any;
-    return d.choices?.[0]?.message?.content || "";
+    return {
+      text: d.choices?.[0]?.message?.content || "",
+      inputTokens: d.usage?.prompt_tokens || 0,
+      outputTokens: d.usage?.completion_tokens || 0,
+    };
   }
 }
 
@@ -127,7 +154,7 @@ async function tryCallSync(
   systemPrompt: string,
   userMessage: string,
   maxTokens = 800
-): Promise<string | null> {
+): Promise<LlmResult | null> {
   try {
     return await callSync(provider, model, apiKey, systemPrompt, userMessage, maxTokens);
   } catch {
@@ -137,15 +164,18 @@ async function tryCallSync(
 
 /**
  * Multi-agent orchestration — enriches the prompt with briefs from intermediate agents.
- * Each agent step is fault-tolerant: if it fails, the next available agent takes over.
+ * Each step logs tokens + estimated cost to usageLogs for the admin token counter.
  *
- * FREE:   DeepSeek seul
- * CREATOR: Qwen brief → (fallback: skip) → DeepSeek exécute
- * PRO:    Claude architecture → (fallback: Qwen) → Qwen SEO → DeepSeek exécute
- * AGENCY: GPT-4o stratégie → (fallback: Claude) → Claude design → (fallback: Qwen) → Qwen copy → DeepSeek exécute
+ * FREE:    DeepSeek seul
+ * CREATOR: Qwen (stratégie) → DeepSeek (HTML)
+ * PRO:     Claude (architecture) → Qwen (SEO/copy) → DeepSeek (HTML)
+ * AGENCY:  GPT-4o (stratégie biz) → Claude (architecture+design) → Qwen (copy SEO) → DeepSeek (HTML)
  */
 async function orchestrateGenerate(
   res: Response,
+  db: Awaited<ReturnType<typeof getDb>>,
+  userId: number,
+  projectId: number,
   plan: string,
   prompt: string,
   siteType: string,
@@ -155,30 +185,59 @@ async function orchestrateGenerate(
 ): Promise<string> {
   let enriched = prompt;
 
-  /** Emit progress + call agent, with automatic fallback chain */
+  /** Emit progress, call agent, log tokens to DB, with automatic fallback */
   async function runStep(
     primary:  { provider: "anthropic"|"openai"|"deepseek"|"qwen"; model: string; key: string|null; agent: string; step: string; icon: string },
     fallback?: { provider: "anthropic"|"openai"|"deepseek"|"qwen"; model: string; key: string|null; agent: string; step: string; icon: string },
-    systemPrompt: string = "",
-    userMessage: string = "",
+    systemPrompt = "",
+    userMessage = "",
     maxTokens = 800
-  ): Promise<string | null> {
-    // Try primary agent
+  ): Promise<LlmResult | null> {
+    // ── Try primary agent ────────────────────────────────────────────────────
     if (primary.key) {
+      const t0 = Date.now();
       sseWrite(res, "progress", { agent: primary.agent, step: primary.step, icon: primary.icon });
       const result = await tryCallSync(primary.provider, primary.model, primary.key, systemPrompt, userMessage, maxTokens);
-      if (result) return result;
-      // Primary failed — signal fallback
+      if (result) {
+        if (db) {
+          const cost = estimateCost(primary.model, result.inputTokens, result.outputTokens);
+          await db.insert(usageLogs).values({
+            userId, projectId,
+            action: `agent:${primary.agent.toLowerCase()}`,
+            model: primary.model,
+            tokensUsed: result.inputTokens + result.outputTokens,
+            durationMs: Date.now() - t0,
+            status: "success" as const,
+            costEstimateUsd: Math.round(cost * 1_000_000),
+          }).catch(() => {});
+        }
+        return result;
+      }
       sseWrite(res, "progress", { agent: primary.agent, step: `Indisponible — relais ${fallback?.agent ?? "ignoré"}`, icon: "⏭️" });
     }
-    // Try fallback agent
+    // ── Try fallback agent ───────────────────────────────────────────────────
     if (fallback?.key) {
+      const t1 = Date.now();
       sseWrite(res, "progress", { agent: fallback.agent, step: fallback.step, icon: fallback.icon });
       const result = await tryCallSync(fallback.provider, fallback.model, fallback.key, systemPrompt, userMessage, maxTokens);
-      if (result) return result;
+      if (result) {
+        if (db) {
+          const cost = estimateCost(fallback.model, result.inputTokens, result.outputTokens);
+          await db.insert(usageLogs).values({
+            userId, projectId,
+            action: `agent:${fallback.agent.toLowerCase()}:relay`,
+            model: fallback.model,
+            tokensUsed: result.inputTokens + result.outputTokens,
+            durationMs: Date.now() - t1,
+            status: "success" as const,
+            costEstimateUsd: Math.round(cost * 1_000_000),
+          }).catch(() => {});
+        }
+        return result;
+      }
       sseWrite(res, "progress", { agent: fallback.agent, step: "Indisponible — étape ignorée", icon: "⏭️" });
     }
-    return null; // Both failed — step skipped silently
+    return null;
   }
 
   // ── Keys (fetched concurrently from DB / env) ─────────────────────────────
@@ -188,20 +247,19 @@ async function orchestrateGenerate(
     getPlatformKey("qwen"),
   ]);
 
-  // ── CREATOR ───────────────────────────────────────────────────────────────
+  // ── CREATOR: Qwen stratégie de contenu → DeepSeek HTML ───────────────────
   if (plan === "creator") {
     const brief = await runStep(
-      { provider: "qwen",     model: "qwen-plus",      key: qwenKey,   agent: "Qwen",   step: "Analyse & stratégie de contenu", icon: "🧠" },
-      { provider: "anthropic",model: "claude-haiku-4-5",key: claudeKey, agent: "Claude", step: "Stratégie de contenu (relais)",   icon: "🧠" },
+      { provider: "qwen",      model: "qwen-plus",       key: qwenKey,   agent: "Qwen",   step: "Analyse & stratégie de contenu", icon: "🧠" },
+      { provider: "anthropic", model: "claude-haiku-4-5", key: claudeKey, agent: "Claude", step: "Stratégie de contenu (relais)",  icon: "🧠" },
       `Tu es un expert en stratégie web. Produis un brief structuré: sections, proposition de valeur, mots-clés SEO. 150 mots max. Langue: ${language}.`,
       `Demande: ${prompt}\nType: ${siteType}\nStyle: ${style}\nPalette: ${colorPalette}`,
       600
     );
-    if (brief) enriched = `${prompt}\n\n[BRIEF STRATÉGIQUE]:\n${brief}`;
+    if (brief) enriched = `${prompt}\n\n[BRIEF STRATÉGIQUE]:\n${brief.text}`;
 
-  // ── PRO ───────────────────────────────────────────────────────────────────
+  // ── PRO: Claude architecture → Qwen SEO/copy → DeepSeek HTML ────────────
   } else if (plan === "pro") {
-    // Step 1 — Architecture (Claude → fallback Qwen)
     const architecture = await runStep(
       { provider: "anthropic", model: "claude-haiku-4-5", key: claudeKey, agent: "Claude", step: "Architecture & structure du site", icon: "🏗️" },
       { provider: "qwen",      model: "qwen-plus",        key: qwenKey,   agent: "Qwen",   step: "Architecture (relais)",            icon: "🏗️" },
@@ -209,9 +267,8 @@ async function orchestrateGenerate(
       `Demande: ${prompt}\nType: ${siteType}\nStyle: ${style}`,
       800
     );
-    if (architecture) enriched = `${prompt}\n\n[ARCHITECTURE]:\n${architecture}`;
+    if (architecture) enriched = `${prompt}\n\n[ARCHITECTURE]:\n${architecture.text}`;
 
-    // Step 2 — SEO/Copy (Qwen → fallback Claude)
     const seo = await runStep(
       { provider: "qwen",      model: "qwen-plus",        key: qwenKey,   agent: "Qwen",   step: "Optimisation contenu & SEO",    icon: "📈" },
       { provider: "anthropic", model: "claude-haiku-4-5", key: claudeKey, agent: "Claude", step: "Optimisation SEO (relais)",      icon: "📈" },
@@ -219,11 +276,10 @@ async function orchestrateGenerate(
       enriched,
       900
     );
-    if (seo) enriched = `${enriched}\n\n[COPY & SEO]:\n${seo}`;
+    if (seo) enriched = `${enriched}\n\n[COPY & SEO]:\n${seo.text}`;
 
-  // ── AGENCY ────────────────────────────────────────────────────────────────
+  // ── AGENCY: GPT-4o stratégie → Claude architecture → Qwen copy → DeepSeek
   } else if (plan === "agency") {
-    // Step 1 — Strategy (GPT-4o → fallback Claude)
     const strategy = await runStep(
       { provider: "openai",    model: "gpt-4o-mini",      key: openaiKey, agent: "GPT-4o", step: "Stratégie business & positionnement", icon: "🎯" },
       { provider: "anthropic", model: "claude-haiku-4-5", key: claudeKey, agent: "Claude", step: "Stratégie business (relais)",          icon: "🎯" },
@@ -231,9 +287,8 @@ async function orchestrateGenerate(
       `Projet: ${prompt}\nType: ${siteType}\nStyle: ${style}\nPalette: ${colorPalette}`,
       800
     );
-    if (strategy) enriched = `${prompt}\n\n[STRATÉGIE BUSINESS]:\n${strategy}`;
+    if (strategy) enriched = `${prompt}\n\n[STRATÉGIE BUSINESS]:\n${strategy.text}`;
 
-    // Step 2 — Architecture & design (Claude → fallback Qwen)
     const architecture = await runStep(
       { provider: "anthropic", model: "claude-haiku-4-5", key: claudeKey, agent: "Claude", step: "Architecture & design system", icon: "🏗️" },
       { provider: "qwen",      model: "qwen-plus",        key: qwenKey,   agent: "Qwen",   step: "Architecture (relais)",        icon: "🏗️" },
@@ -241,9 +296,8 @@ async function orchestrateGenerate(
       enriched,
       1000
     );
-    if (architecture) enriched = `${enriched}\n\n[ARCHITECTURE & DESIGN]:\n${architecture}`;
+    if (architecture) enriched = `${enriched}\n\n[ARCHITECTURE & DESIGN]:\n${architecture.text}`;
 
-    // Step 3 — Copywriting (Qwen → fallback Claude)
     const copy = await runStep(
       { provider: "qwen",      model: "qwen-plus",        key: qwenKey,   agent: "Qwen",   step: "Copywriting & optimisation SEO", icon: "✍️" },
       { provider: "anthropic", model: "claude-haiku-4-5", key: claudeKey, agent: "Claude", step: "Copywriting (relais)",            icon: "✍️" },
@@ -251,7 +305,7 @@ async function orchestrateGenerate(
       enriched,
       1000
     );
-    if (copy) enriched = `${enriched}\n\n[COPY & SEO FINAL]:\n${copy}`;
+    if (copy) enriched = `${enriched}\n\n[COPY & SEO FINAL]:\n${copy.text}`;
   }
 
   return enriched;
@@ -335,7 +389,7 @@ export function registerStreamingRoutes(app: Express) {
     let enrichedPrompt = prompt;
     try {
       enrichedPrompt = await orchestrateGenerate(
-        res, userPlan, prompt,
+        res, db, user.id, projectId, userPlan, prompt,
         siteType || "landing page", style || "moderne",
         language || "fr", colorPalette || "bleu/violet moderne"
       );
@@ -460,6 +514,7 @@ Retourne UNIQUEMENT le code HTML complet, sans explication, sans markdown, sans 
 
       await db.update(users).set({ generationsUsed: (u?.generationsUsed || 0) + 1 }).where(eq(users.id, user.id));
 
+      const generateCost = estimateCost("deepseek-chat", inputTokens, outputTokens);
       await db.insert(usageLogs).values({
         userId: user.id,
         projectId,
@@ -467,6 +522,7 @@ Retourne UNIQUEMENT le code HTML complet, sans explication, sans markdown, sans 
         model: "deepseek-chat",
         tokensUsed,
         durationMs,
+        costEstimateUsd: Math.round(generateCost * 1_000_000),
         status: "success",
       });
 
@@ -947,6 +1003,7 @@ Retourne UNIQUEMENT ce JSON (rien d'autre, pas de markdown):
         status: "ready",
       }).where(eq(projects.id, projectId));
 
+      const debugCost = estimateCost(modelToUse, inputTokens, outputTokens);
       await db.insert(usageLogs).values({
         userId: user.id,
         projectId,
@@ -954,6 +1011,7 @@ Retourne UNIQUEMENT ce JSON (rien d'autre, pas de markdown):
         model: modelToUse,
         tokensUsed,
         durationMs,
+        costEstimateUsd: Math.round(debugCost * 1_000_000),
         status: "success",
       }).catch(() => {});
 

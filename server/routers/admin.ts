@@ -290,6 +290,50 @@ export const adminRouter = router({
       return { success: true };
     }),
 
+  // ─── Tokens & coûts par LLM (ultra) ─────────────────────────────────────────
+  getTokensByLlm: ultraProcedure.query(async () => {
+    const db = await getDb();
+    if (!db) return [];
+
+    const now = new Date();
+    const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+
+    const [allTime, thisMonth] = await Promise.all([
+      db.select({
+        model:      usageLogs.model,
+        totalTokens: sum(usageLogs.tokensUsed),
+        totalCost:   sum(usageLogs.costEstimateUsd),
+        totalCalls:  count(),
+      }).from(usageLogs).groupBy(usageLogs.model),
+      db.select({
+        model:      usageLogs.model,
+        monthTokens: sum(usageLogs.tokensUsed),
+        monthCost:   sum(usageLogs.costEstimateUsd),
+        monthCalls:  count(),
+      }).from(usageLogs)
+        .where(gte(usageLogs.createdAt, startOfMonth))
+        .groupBy(usageLogs.model),
+    ]);
+
+    const monthMap = new Map(thisMonth.map(r => [r.model || "", r]));
+
+    return allTime
+      .filter(r => r.model) // ignore null model rows
+      .map(r => {
+        const m = monthMap.get(r.model || "");
+        return {
+          model:       r.model || "unknown",
+          totalTokens: Number(r.totalTokens  || 0),
+          totalCost:   Number(r.totalCost    || 0), // micro-USD — divide by 1e6 to display
+          totalCalls:  Number(r.totalCalls   || 0),
+          monthTokens: Number(m?.monthTokens || 0),
+          monthCost:   Number(m?.monthCost   || 0),
+          monthCalls:  Number(m?.monthCalls  || 0),
+        };
+      })
+      .sort((a, b) => b.totalTokens - a.totalTokens);
+  }),
+
   // ─── Liste de tous les projets (ultra) ───────────────────────────────────────
   getAllProjects: ultraProcedure.query(async () => {
     const db = await getDb();

@@ -10,7 +10,7 @@ import {
   Users, FolderOpen, Zap, Cpu, TrendingUp, Shield, Crown,
   RefreshCw, Trash2, BarChart3, Activity, Globe, Key,
   Calendar, ArrowLeft, Plus, Power, PowerOff, Eye, EyeOff,
-  Coins, Gauge,
+  Coins, Gauge, DollarSign, Layers,
 } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 import { fr } from "date-fns/locale";
@@ -66,11 +66,30 @@ const PROVIDERS: { id: "anthropic" | "openai" | "deepseek" | "qwen"; label: stri
   { id: "openai",    label: "GPT-4o",     role: "Stratège (Agency uniquement)",           color: "text-emerald-400" },
 ];
 
+// ── Pricing reference (mirrors server/streaming.ts COST_PER_M) ───────────────
+const LLM_META: Record<string, { label: string; role: string; color: string; plans: string }> = {
+  "deepseek-chat":     { label: "DeepSeek Chat",     role: "Exécuteur HTML final",              color: "text-blue-400",    plans: "Tous les plans" },
+  "qwen-plus":         { label: "Qwen Plus",          role: "Stratégie contenu & SEO/copy",      color: "text-orange-400",  plans: "Creator · Pro · Agency" },
+  "claude-haiku-4-5":  { label: "Claude Haiku 4.5",   role: "Architecture + Debug",              color: "text-violet-400",  plans: "Pro · Agency" },
+  "claude-sonnet-4-5": { label: "Claude Sonnet 4.5",  role: "Chat avancé",                       color: "text-violet-400",  plans: "Pro · Agency" },
+  "gpt-4o-mini":       { label: "GPT-4o mini",        role: "Stratège business",                 color: "text-emerald-400", plans: "Agency uniquement" },
+  "gpt-4o":            { label: "GPT-4o",             role: "Stratège business (premium)",       color: "text-emerald-400", plans: "Agency uniquement" },
+};
+
+/** micro-USD (stored as bigint × 1e6) → formatted USD string */
+function fmtCost(microUsd: number): string {
+  const usd = microUsd / 1_000_000;
+  if (usd >= 10)   return `$${usd.toFixed(2)}`;
+  if (usd >= 0.01) return `$${usd.toFixed(4)}`;
+  if (usd >= 0)    return `$${usd.toFixed(6)}`;
+  return "$0";
+}
+
 // ─── Main ─────────────────────────────────────────────────────────────────────
 export default function UltraDashboard() {
   const { user, loading } = useAuth();
   const [, navigate] = useLocation();
-  const [activeTab, setActiveTab] = useState<"overview" | "users" | "keys" | "projects">("overview");
+  const [activeTab, setActiveTab] = useState<"overview" | "users" | "keys" | "tokens" | "projects">("overview");
 
   useEffect(() => {
     if (!loading && user && user.role !== "ultra") navigate("/dashboard");
@@ -82,7 +101,8 @@ export default function UltraDashboard() {
   const { data: allUsers,    isLoading: usersLoading    } = trpc.admin.getAllUsers.useQuery(undefined, { enabled: user?.role === "ultra" && activeTab === "users" });
   const { data: tokenStats                              } = trpc.admin.getUserTokenStats.useQuery(undefined, { enabled: user?.role === "ultra" && activeTab === "users" });
   const { data: platformKeys, isLoading: keysLoading   } = trpc.admin.getPlatformKeys.useQuery(undefined, { enabled: user?.role === "ultra" && activeTab === "keys" });
-  const { data: allProjects, isLoading: projectsLoading } = trpc.admin.getAllProjects.useQuery(undefined, { enabled: user?.role === "ultra" && activeTab === "projects" });
+  const { data: allProjects,  isLoading: projectsLoading } = trpc.admin.getAllProjects.useQuery(undefined,  { enabled: user?.role === "ultra" && activeTab === "projects" });
+  const { data: tokensByLlm, isLoading: tokensLlmLoading } = trpc.admin.getTokensByLlm.useQuery(undefined, { enabled: user?.role === "ultra" && activeTab === "tokens" });
 
   // ── User mutations ──────────────────────────────────────────────────────────
   const setRole  = trpc.admin.setUserRole.useMutation({ onSuccess: () => { toast.success("Rôle mis à jour"); utils.admin.getAllUsers.invalidate(); }, onError: e => toast.error(e.message) });
@@ -140,6 +160,7 @@ export default function UltraDashboard() {
             { id: "overview",  label: "Vue d'ensemble",  icon: BarChart3 },
             { id: "users",     label: "Utilisateurs",    icon: Users },
             { id: "keys",      label: "Clés LLM",        icon: Key },
+            { id: "tokens",    label: "Tokens & Coûts",  icon: DollarSign },
             { id: "projects",  label: "Projets",         icon: FolderOpen },
           ].map(({ id, label, icon: Icon }) => (
             <button key={id} onClick={() => setActiveTab(id as typeof activeTab)}
@@ -529,6 +550,120 @@ export default function UltraDashboard() {
               <p>Si une clé DB est présente et active, elle prend le dessus sur la variable d'environnement correspondante.</p>
               <p>Désactiver une clé (sans la supprimer) fait basculer automatiquement sur la variable d'environnement si définie.</p>
             </div>
+          </div>
+        )}
+
+        {/* ═══════════════════════════ TOKENS & COÛTS ═════════════════════════ */}
+        {activeTab === "tokens" && (
+          <div className="space-y-6">
+            <div>
+              <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider mb-1">Consommation Tokens & Coûts estimés</h2>
+              <p className="text-xs text-muted-foreground">Coûts calculés à partir des tarifs publics de chaque fournisseur. Valeur indicative.</p>
+            </div>
+
+            {tokensLlmLoading ? (
+              <div className="space-y-2">{Array.from({ length: 5 }).map((_, i) => <div key={i} className="h-16 rounded-xl bg-muted/20 animate-pulse" />)}</div>
+            ) : (() => {
+              const rows = tokensByLlm || [];
+              const totalMonthCost  = rows.reduce((s, r) => s + r.monthCost,  0);
+              const totalMonthTokens = rows.reduce((s, r) => s + r.monthTokens, 0);
+              const totalCost       = rows.reduce((s, r) => s + r.totalCost,  0);
+              const totalTokens     = rows.reduce((s, r) => s + r.totalTokens, 0);
+              const maxMonthCost    = Math.max(...rows.map(r => r.monthCost), 1);
+
+              return (
+                <>
+                  {/* Summary cards */}
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                    <StatCard icon={DollarSign} label="Coût ce mois"        value={fmtCost(totalMonthCost)}                     color="amber" />
+                    <StatCard icon={Coins}       label="Tokens ce mois"      value={`${(totalMonthTokens/1000).toFixed(1)}k`}    color="primary" />
+                    <StatCard icon={DollarSign} label="Coût total"           value={fmtCost(totalCost)}                          color="rose" />
+                    <StatCard icon={Layers}      label="Tokens total"         value={`${(totalTokens/1000).toFixed(1)}k`}         color="violet" />
+                  </div>
+
+                  {/* Per-LLM breakdown table */}
+                  <div className="rounded-xl border border-border/40 bg-card/60 overflow-hidden">
+                    <div className="px-4 py-3 border-b border-border/30 flex items-center gap-2">
+                      <BarChart3 className="w-4 h-4 text-amber-400" />
+                      <span className="text-sm font-semibold text-foreground">Détail par LLM</span>
+                    </div>
+                    <table className="w-full text-sm">
+                      <thead className="bg-muted/10 border-b border-border/30">
+                        <tr>
+                          <th className="text-left px-4 py-2.5 text-xs font-medium text-muted-foreground">Modèle</th>
+                          <th className="text-left px-4 py-2.5 text-xs font-medium text-muted-foreground">Rôle</th>
+                          <th className="text-left px-4 py-2.5 text-xs font-medium text-muted-foreground">Plans</th>
+                          <th className="text-right px-4 py-2.5 text-xs font-medium text-muted-foreground">Appels (mois)</th>
+                          <th className="text-right px-4 py-2.5 text-xs font-medium text-muted-foreground">Tokens (mois)</th>
+                          <th className="text-right px-4 py-2.5 text-xs font-medium text-muted-foreground">Coût (mois)</th>
+                          <th className="text-right px-4 py-2.5 text-xs font-medium text-muted-foreground">Tokens (total)</th>
+                          <th className="text-right px-4 py-2.5 text-xs font-medium text-muted-foreground">Coût (total)</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {rows.length === 0 ? (
+                          <tr><td colSpan={8} className="px-4 py-8 text-center text-xs text-muted-foreground">Aucune donnée — les tokens seront comptés dès la première génération.</td></tr>
+                        ) : rows.map((r) => {
+                          const meta = LLM_META[r.model] || { label: r.model, role: "—", color: "text-foreground", plans: "—" };
+                          const barPct = maxMonthCost > 0 ? Math.round((r.monthCost / maxMonthCost) * 100) : 0;
+                          return (
+                            <tr key={r.model} className="border-b border-border/20 hover:bg-muted/10">
+                              <td className="px-4 py-3">
+                                <div className={`font-semibold text-sm ${meta.color}`}>{meta.label}</div>
+                                <div className="w-full mt-1.5 h-1 rounded-full bg-muted/30">
+                                  <div className="h-1 rounded-full bg-amber-400/60" style={{ width: `${barPct}%` }} />
+                                </div>
+                              </td>
+                              <td className="px-4 py-3 text-xs text-muted-foreground">{meta.role}</td>
+                              <td className="px-4 py-3 text-xs text-muted-foreground">{meta.plans}</td>
+                              <td className="px-4 py-3 text-right font-mono text-xs text-foreground">{r.monthCalls.toLocaleString()}</td>
+                              <td className="px-4 py-3 text-right font-mono text-xs text-foreground">{r.monthTokens.toLocaleString()}</td>
+                              <td className="px-4 py-3 text-right font-mono text-xs text-amber-400 font-semibold">{fmtCost(r.monthCost)}</td>
+                              <td className="px-4 py-3 text-right font-mono text-xs text-muted-foreground">{r.totalTokens.toLocaleString()}</td>
+                              <td className="px-4 py-3 text-right font-mono text-xs text-muted-foreground">{fmtCost(r.totalCost)}</td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                      {rows.length > 0 && (
+                        <tfoot className="bg-muted/10 border-t border-border/30">
+                          <tr>
+                            <td colSpan={4} className="px-4 py-2.5 text-xs font-semibold text-foreground">Total</td>
+                            <td className="px-4 py-2.5 text-right font-mono text-xs font-semibold text-foreground">{totalMonthTokens.toLocaleString()}</td>
+                            <td className="px-4 py-2.5 text-right font-mono text-xs font-semibold text-amber-400">{fmtCost(totalMonthCost)}</td>
+                            <td className="px-4 py-2.5 text-right font-mono text-xs font-semibold text-muted-foreground">{totalTokens.toLocaleString()}</td>
+                            <td className="px-4 py-2.5 text-right font-mono text-xs font-semibold text-muted-foreground">{fmtCost(totalCost)}</td>
+                          </tr>
+                        </tfoot>
+                      )}
+                    </table>
+                  </div>
+
+                  {/* Pipeline legend */}
+                  <div className="rounded-xl border border-border/40 bg-card/60 p-5 space-y-3">
+                    <h3 className="text-sm font-semibold text-foreground flex items-center gap-2"><Cpu className="w-4 h-4 text-violet-400" /> Pipeline d'orchestration par plan</h3>
+                    <div className="space-y-2 text-xs">
+                      {[
+                        { plan: "Free",    color: "text-muted-foreground",  badge: "bg-muted/30 text-muted-foreground",         chain: ["DeepSeek → HTML"] },
+                        { plan: "Creator", color: "text-violet-400",         badge: "bg-violet-500/10 text-violet-400",          chain: ["Qwen (stratégie)", "→ DeepSeek (HTML)"] },
+                        { plan: "Pro",     color: "text-blue-400",           badge: "bg-blue-500/10 text-blue-400",              chain: ["Claude (architecture)", "→ Qwen (SEO/copy)", "→ DeepSeek (HTML)"] },
+                        { plan: "Agency",  color: "text-emerald-400",        badge: "bg-emerald-500/10 text-emerald-400",        chain: ["GPT-4o (stratégie biz)", "→ Claude (design)", "→ Qwen (copy SEO)", "→ DeepSeek (HTML)"] },
+                      ].map(({ plan, color, badge, chain }) => (
+                        <div key={plan} className="flex items-center gap-3 flex-wrap">
+                          <span className={`px-2.5 py-0.5 rounded-full text-xs font-semibold ${badge}`}>{plan}</span>
+                          {chain.map((step, i) => (
+                            <span key={i} className={i === 0 ? `font-medium ${color}` : "text-muted-foreground"}>{step}</span>
+                          ))}
+                        </div>
+                      ))}
+                    </div>
+                    <p className="text-xs text-muted-foreground/60 pt-1">
+                      Chaque étape est loggée séparément dans <code className="font-mono bg-muted/30 px-1 rounded">usage_logs</code>. Si un agent est indisponible, son relais prend le relais et le log porte le suffixe <code className="font-mono bg-muted/30 px-1 rounded">:relay</code>.
+                    </p>
+                  </div>
+                </>
+              );
+            })()}
           </div>
         )}
 
