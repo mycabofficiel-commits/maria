@@ -363,6 +363,17 @@ export default function ProjectEditor() {
   const [editorCollapsed, setEditorCollapsed] = useState(false);
   const [agentStep, setAgentStep] = useState<{ agent: string; step: string; icon: string } | null>(null);
 
+  /* ── Resizable panel ── */
+  const [panelWidth, setPanelWidth] = useState(45);
+  const isDraggingRef = useRef(false);
+  const dragStartXRef = useRef(0);
+  const dragStartWidthRef = useRef(45);
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  /* ── Plan validation before actions ── */
+  const [pendingAction, setPendingAction] = useState<{ summary: string; action: () => void } | null>(null);
+  const [localChatItems, setLocalChatItems] = useState<Array<{ id: number; summary: string; timestamp: Date }>>([]);
+
   /* visual edit state */
   const [veSelection, setVeSelection] = useState<null | {
     tag: string; isText: boolean; isImage: boolean; isBlock: boolean; canMove: boolean; zIndex: string;
@@ -867,6 +878,20 @@ export default function ProjectEditor() {
     return () => window.removeEventListener("message", handler);
   }, []);
 
+  /* ── Drag resize ── */
+  useEffect(() => {
+    const onMove = (e: MouseEvent) => {
+      if (!isDraggingRef.current || !containerRef.current) return;
+      const rect = containerRef.current.getBoundingClientRect();
+      const newPct = ((e.clientX - rect.left) / rect.width) * 100;
+      setPanelWidth(Math.min(75, Math.max(20, newPct)));
+    };
+    const onUp = () => { isDraggingRef.current = false; };
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", onUp);
+    return () => { window.removeEventListener("mousemove", onMove); window.removeEventListener("mouseup", onUp); };
+  }, []);
+
 
   /* inject inspect/visual-edit script into preview */
   const getPreviewSrc = () => {
@@ -953,7 +978,7 @@ export default function ProjectEditor() {
             {hasCode && (
               <Button size="sm" variant="outline"
                 className="text-xs h-8 px-2 sm:px-3 border-amber-500/40 text-amber-400 hover:bg-amber-500/10 hover:text-amber-300"
-                onClick={runDebug}
+                onClick={() => setPendingAction({ summary: "Analyser le code du site, identifier les erreurs et les corriger automatiquement.", action: runDebug })}
                 disabled={isDebugging}
                 title="Analyser et corriger automatiquement les bugs, liens cassés et erreurs">
                 {isDebugging
@@ -1036,7 +1061,10 @@ export default function ProjectEditor() {
               </div>
               <Button
                 className="w-full h-11 bg-primary hover:bg-primary/90 text-primary-foreground font-medium gap-2"
-                onClick={generateSiteStream}
+                onClick={() => setPendingAction({
+                  summary: `Générer un ${siteType.toLowerCase()} de style "${style}" en ${language === 'fr' ? 'français' : language === 'en' ? 'anglais' : language}, palette ${colorPalette}. Prompt : "${prompt.slice(0, 120)}${prompt.length > 120 ? '…' : ''}"`,
+                  action: generateSiteStream,
+                })}
                 disabled={isGenerating || !prompt.trim()}
               >
                 {isGenerating ? <><Loader2 className="w-4 h-4 animate-spin" />Génération en cours…</> : <><Sparkles className="w-4 h-4" />Générer le site</>}
@@ -1077,24 +1105,17 @@ export default function ProjectEditor() {
           </div>
         ) : (
           /* ═══ EDITOR MODE (3-zone layout) ═══ */
-          <div
-            className="flex-1 overflow-hidden grid"
-            style={{
-              gridTemplateColumns: editorCollapsed ? '0px 1fr' : '45% 55%',
-              gridTemplateRows: '60% 40%',
-              transition: 'grid-template-columns 0.3s cubic-bezier(0.4,0,0.2,1)',
-            }}
-          >
+          <div ref={containerRef} className="flex-1 overflow-hidden flex">
 
             {/* ── LEFT PANEL : Code (top) + Chat (bottom) ── */}
             <div
-              className="flex flex-col border-r border-border/50 overflow-hidden"
+              className="flex flex-col border-r border-border/50 overflow-hidden flex-shrink-0"
               style={{
-                gridColumn: '1', gridRow: '1 / 3',
-                display: 'flex', flexDirection: 'column',
+                width: editorCollapsed ? 0 : `${panelWidth}%`,
                 opacity: editorCollapsed ? 0 : 1,
-                transition: 'opacity 0.2s ease',
+                transition: isDraggingRef.current ? 'none' : 'width 0.3s cubic-bezier(0.4,0,0.2,1), opacity 0.2s ease',
                 pointerEvents: editorCollapsed ? 'none' : 'auto',
+                minWidth: 0,
               }}
             >
 
@@ -1370,6 +1391,19 @@ ${jsCode}`;
                       );
                     })
                   )}
+                  {/* Plan summaries validated in this session */}
+                  {localChatItems.map(item => (
+                    <div key={item.id} className="flex gap-1.5 items-start">
+                      <div className="w-5 h-5 rounded-full bg-primary/10 flex items-center justify-center flex-shrink-0 mt-0.5">
+                        <Sparkles className="w-2.5 h-2.5 text-primary/70" />
+                      </div>
+                      <div className="bg-primary/5 border border-primary/20 rounded-xl rounded-tl-sm px-2.5 py-1.5 max-w-[90%]">
+                        <p className="text-[10px] font-semibold text-primary mb-0.5">✓ Plan validé</p>
+                        <p className="text-xs text-muted-foreground leading-relaxed">{item.summary}</p>
+                      </div>
+                    </div>
+                  ))}
+
                   {/* Debug report — shown after debugCode completes */}
                   {debugReport && (
                     <div className="flex gap-1.5 items-start">
@@ -1427,6 +1461,38 @@ ${jsCode}`;
                   <div ref={chatEndRef} />
                 </div>
 
+                {/* ── Confirmation de plan (avant chaque action) ── */}
+                {pendingAction && (
+                  <div className="mx-2 mb-1.5 rounded-xl border border-primary/30 bg-primary/5 p-3 space-y-2">
+                    <div className="flex items-start gap-2">
+                      <Sparkles className="w-3.5 h-3.5 text-primary mt-0.5 flex-shrink-0" />
+                      <div>
+                        <p className="text-xs font-semibold text-foreground mb-0.5">Mar-ia a compris</p>
+                        <p className="text-xs text-muted-foreground leading-relaxed">{pendingAction.summary}</p>
+                      </div>
+                    </div>
+                    <div className="flex gap-1.5">
+                      <Button size="sm" className="h-7 text-xs bg-primary hover:bg-primary/90 flex-1 gap-1"
+                        onClick={() => {
+                          const ts = new Date();
+                          setLocalChatItems(prev => [...prev, { id: ts.getTime(), summary: pendingAction.summary, timestamp: ts }]);
+                          pendingAction.action();
+                          setPendingAction(null);
+                        }}>
+                        ✓ Valider
+                      </Button>
+                      <Button size="sm" variant="outline" className="h-7 text-xs border-border/50 flex-1"
+                        onClick={() => setPendingAction(null)}>
+                        ✎ Modifier
+                      </Button>
+                      <Button size="sm" variant="ghost" className="h-7 text-xs text-muted-foreground flex-1"
+                        onClick={() => setPendingAction(null)}>
+                        ✕ Annuler
+                      </Button>
+                    </div>
+                  </div>
+                )}
+
                 {/* Chat input */}
                 <div className="px-2 pb-2 pt-1 border-t border-border/50 flex-shrink-0">
                   {/* Attachment thumbnails */}
@@ -1447,13 +1513,6 @@ ${jsCode}`;
                   )}
                   {/* Input pill */}
                   <div className="flex items-center gap-1 bg-[#1a1a2e] border border-[#2e2e4e] rounded-full px-2 py-1">
-                    {/* Camera — trigger image upload */}
-                    <button
-                      onClick={() => { if (attachInputRef.current) { attachInputRef.current.accept = "image/*"; attachInputRef.current.capture = "environment"; attachInputRef.current.click(); } }}
-                      className="p-1.5 rounded-full text-[#6b7280] hover:text-white hover:bg-white/10 transition-colors flex-shrink-0"
-                      title="Prendre une photo">
-                      <Camera className="w-3.5 h-3.5" />
-                    </button>
                     {/* Mic — dictation */}
                     <button
                       onClick={toggleDictation}
@@ -1477,14 +1536,17 @@ ${jsCode}`;
                       onKeyDown={(e) => {
                         if (e.key === "Enter" && !e.shiftKey && (chatMessage.trim() || attachments.length > 0)) {
                           e.preventDefault();
-                          sendChatStream(chatMessage);
+                          setPendingAction({
+                            summary: `Modifier le site selon : "${chatMessage.slice(0, 120)}${chatMessage.length > 120 ? '…' : ''}"`,
+                            action: () => sendChatStream(chatMessage),
+                          });
                         }
                       }}
                       className="flex-1 bg-transparent text-xs text-white placeholder-[#6b7280] outline-none min-w-0 px-1"
                     />
                     {/* Send */}
                     <button
-                      onClick={() => { if (chatMessage.trim() || attachments.length > 0) sendChatStream(chatMessage); }}
+                      onClick={() => { if (chatMessage.trim() || attachments.length > 0) setPendingAction({ summary: `Modifier le site selon : "${chatMessage.slice(0, 120)}${chatMessage.length > 120 ? '…' : ''}"`, action: () => sendChatStream(chatMessage) }); }}
                       disabled={chatEdit.isPending || (!chatMessage.trim() && attachments.length === 0)}
                       className="w-7 h-7 rounded-full bg-primary flex items-center justify-center flex-shrink-0 disabled:opacity-40 hover:bg-primary/90 transition-colors">
                       {chatEdit.isPending ? <Loader2 className="w-3 h-3 animate-spin text-white" /> : <Send className="w-3 h-3 text-white" />}
@@ -1497,8 +1559,23 @@ ${jsCode}`;
               </div>
             </div>
 
+            {/* ── DRAG HANDLE ── */}
+            {!editorCollapsed && (
+              <div
+                className="w-1.5 flex-shrink-0 cursor-col-resize group bg-border/20 hover:bg-primary/40 transition-colors select-none"
+                onMouseDown={(e) => {
+                  isDraggingRef.current = true;
+                  dragStartXRef.current = e.clientX;
+                  dragStartWidthRef.current = panelWidth;
+                  e.preventDefault();
+                }}
+              >
+                <div className="h-full w-px mx-auto bg-border/50 group-hover:bg-primary/60 transition-colors" />
+              </div>
+            )}
+
             {/* ── RIGHT PANEL : Preview pleine largeur ── */}
-            <div className="flex flex-col overflow-hidden" style={{ gridColumn: '2', gridRow: '1 / 3' }}>
+            <div className="flex flex-col overflow-hidden flex-1 min-w-0">
               {/* Preview toolbar */}
               <div className="flex items-center justify-between px-3 py-1.5 border-b border-border/50 flex-shrink-0 bg-background/60">
                 <div className="flex items-center gap-1">
