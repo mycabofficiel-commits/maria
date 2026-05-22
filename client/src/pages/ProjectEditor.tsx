@@ -365,6 +365,7 @@ export default function ProjectEditor() {
 
   /* ── Resizable panel ── */
   const [panelWidth, setPanelWidth] = useState(45);
+  const [codeCollapsed, setCodeCollapsed] = useState(false);
   const isDraggingRef = useRef(false);
   const dragStartXRef = useRef(0);
   const dragStartWidthRef = useRef(45);
@@ -1140,7 +1141,7 @@ export default function ProjectEditor() {
             >
 
               {/* ── Code zone (top-left, 60% height) ── */}
-              <div className="flex flex-col border-b border-border/50" style={{ flex: '0 0 60%', minHeight: 0 }}>
+              <div className="flex flex-col border-b border-border/50" style={{ flex: codeCollapsed ? '0 0 0%' : '0 0 60%', minHeight: 0, overflow: 'hidden', transition: isDraggingRef.current ? 'none' : 'flex 0.2s ease' }}>
                 {/* Code toolbar */}
                 <div className="flex items-center gap-1 px-2 py-1 bg-[#252526] border-b border-[#3c3c3c] flex-shrink-0">
                   {/* Arborescence : src/ > index.html | assets/ > style.css | assets/ > script.js */}
@@ -1159,6 +1160,15 @@ export default function ProjectEditor() {
                     );
                   })}
                        <div className="ml-auto flex items-center gap-1">
+                    {/* Collapse/expand code panel */}
+                    <Button size="sm" variant="ghost"
+                      className="h-6 px-2 text-[10px] gap-1 text-[#858585] hover:text-white"
+                      title={codeCollapsed ? "Afficher le code" : "Réduire le code"}
+                      onClick={() => setCodeCollapsed(v => !v)}>
+                      {codeCollapsed
+                        ? <PanelLeftOpen className="w-3 h-3 rotate-90" />
+                        : <PanelLeftClose className="w-3 h-3 rotate-90" />}
+                    </Button>
                     {/* Copy button */}
                     <Button size="sm" variant="ghost"
                       className="h-6 px-2 text-[10px] gap-1 text-[#858585] hover:text-white"
@@ -1262,7 +1272,7 @@ ${jsCode}`;
               </div>
 
               {/* ── Chat zone (bottom-left, 40% height) ── */}
-              <div className="flex flex-col" style={{ flex: '0 0 40%', minHeight: 0 }}>
+              <div className="flex flex-col" style={{ flex: codeCollapsed ? '1 1 100%' : '0 0 40%', minHeight: 0, transition: isDraggingRef.current ? 'none' : 'flex 0.2s ease' }}>
                 {/* Chat header */}
                 <div className="px-3 py-1.5 border-b border-border/40 flex-shrink-0 flex items-center gap-2 bg-background/60">
                   <div className="w-5 h-5 rounded-full bg-primary/20 flex items-center justify-center">
@@ -1556,7 +1566,7 @@ ${jsCode}`;
                     </div>
                   )}
                   {/* Input pill */}
-                  <div className="flex items-center gap-1 bg-[#1a1a2e] border border-[#2e2e4e] rounded-full px-2 py-1">
+                  <div className="flex items-end gap-1 bg-[#1a1a2e] border border-[#2e2e4e] rounded-2xl px-2 py-1.5">
                     {/* Mic — dictation */}
                     <button
                       onClick={toggleDictation}
@@ -1571,12 +1581,16 @@ ${jsCode}`;
                       title="Joindre une image">
                       <Paperclip className="w-3.5 h-3.5" />
                     </button>
-                    {/* Text input */}
-                    <input
-                      type="text"
+                    {/* Textarea input */}
+                    <textarea
+                      rows={2}
                       placeholder={isRecording ? "🎤 Dictée en cours…" : "Parlez à Mar-ia…"}
                       value={chatMessage}
-                      onChange={(e) => setChatMessage(e.target.value)}
+                      onChange={(e) => {
+                        setChatMessage(e.target.value);
+                        e.target.style.height = "auto";
+                        e.target.style.height = Math.min(e.target.scrollHeight, 120) + "px";
+                      }}
                       onKeyDown={(e) => {
                         if (e.key === "Enter" && !e.shiftKey && (chatMessage.trim() || attachments.length > 0)) {
                           e.preventDefault();
@@ -1586,7 +1600,8 @@ ${jsCode}`;
                           });
                         }
                       }}
-                      className="flex-1 bg-transparent text-xs text-white placeholder-[#6b7280] outline-none min-w-0 px-1"
+                      className="flex-1 bg-transparent text-xs text-white placeholder-[#6b7280] outline-none min-w-0 px-1 resize-none leading-relaxed"
+                      style={{ minHeight: "2.5rem", maxHeight: "7.5rem" }}
                     />
                     {/* Send */}
                     <button

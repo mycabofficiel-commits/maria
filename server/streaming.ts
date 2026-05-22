@@ -53,6 +53,32 @@ function estimateCost(model: string, inputTokens: number, outputTokens: number):
 
 interface LlmResult { text: string; inputTokens: number; outputTokens: number; }
 
+/**
+ * Extracts the first well-balanced JSON object from a string.
+ * Handles cases where the LLM wraps the JSON in markdown or adds trailing text.
+ */
+function extractJsonObject(text: string): string | null {
+  let depth = 0;
+  let start = -1;
+  let inString = false;
+  let escape = false;
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i];
+    if (escape) { escape = false; continue; }
+    if (c === "\\" && inString) { escape = true; continue; }
+    if (c === '"') { inString = !inString; continue; }
+    if (inString) continue;
+    if (c === "{") {
+      if (depth === 0) start = i;
+      depth++;
+    } else if (c === "}") {
+      depth--;
+      if (depth === 0 && start !== -1) return text.slice(start, i + 1);
+    }
+  }
+  return null;
+}
+
 /** Send an SSE event */
 function sseWrite(res: Response, event: string, data: unknown) {
   res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
@@ -609,39 +635,35 @@ QUI TU ES:
 - Tu peux répondre à des questions, donner des conseils, ou modifier le code
 - Tu es précise, factuelle et concise
 
-FORMAT DE RÉPONSE — TOUJOURS l'un des deux JSON valides ci-dessous, RIEN D'AUTRE:
+FORMAT DE RÉPONSE — OBLIGATOIRE: UN SEUL JSON BRUT, RIEN AVANT, RIEN APRÈS.
 
-Si modification/création/correction demandée:
-{"action":"modify","reply":"Ce que tu as fait en une phrase claire","code":"<html complet>"}
+Si modification/création/correction/ajout demandé (MÊME PARTIEL):
+{"action":"modify","reply":"Ce que tu as fait en une phrase","code":"<!DOCTYPE html>...code HTML complet..."}
 
-Si question, conseil ou conversation uniquement:
+Si UNIQUEMENT question ou conseil sans toucher au code:
 {"action":"chat","reply":"Ta réponse en markdown"}
 
-RÈGLES STRICTES:
-- Le champ "reply" TOUJOURS EN PREMIER dans le JSON, avant "code"
-- TOUJOURS agir sur la demande, jamais expliquer sans agir
-- JAMAIS inventer un bug ou problème non mentionné par l'utilisateur
-- JAMAIS répondre sans JSON valide
-- JAMAIS tronquer le code — il doit être complet et fonctionnel
-- Réponds dans la langue de l'utilisateur (détecte automatiquement)
-- "Crée X" → code X immédiatement dans le HTML
-- "Modifie Y" → modifie Y dans le code existant
-- "Il y a un bug Z" → corrige Z
-- Pour les questions : réponds en markdown (listes, gras, code inline si pertinent)
-- Si une information est manquante, utilise un placeholder générique (ex: "Votre titre", "contact@exemple.fr") — ne l'invente pas
+RÈGLES ABSOLUES (violation = réponse invalide):
+1. RIEN avant le JSON — pas de texte introductif, pas de markdown, pas de \`\`\`
+2. RIEN après le JSON — pas de notes, pas d'explication supplémentaire
+3. "reply" TOUJOURS EN PREMIER dans le JSON, avant "code"
+4. Quand action="modify": le champ "code" est OBLIGATOIRE et contient le HTML COMPLET
+5. JAMAIS tronquer ou résumer le code — toujours 100% complet et fonctionnel
+6. JAMAIS utiliser action="chat" si une modification est demandée, même mineure
+7. TOUJOURS agir immédiatement — jamais "je vais faire X", faire X directement
+8. Réponds dans la langue de l'utilisateur (détecte automatiquement)
+9. Si information manquante → placeholder générique ("Votre titre", "contact@exemple.fr")
 
 ANTI-HALLUCINATION — INTERDIT ABSOLU:
-- Inventer des données non fournies par l'utilisateur (stats, prix, noms réels, adresses, numéros de téléphone)
-- Ajouter des fonctionnalités non demandées
-- Citer de vraies personnes ou entreprises réelles comme références
-- Créer de faux témoignages avec des noms qui ressemblent à de vraies personnes
-- Affirmer que quelque chose "existe dans le code" si ce n'est pas dans le code fourni ci-dessous
-- Demander à l'utilisateur de te montrer son code (tu l'as déjà ci-dessous)
-- Mettre "reply" après "code" dans le JSON
-- Utiliser href="page.html" ou liens vers des fichiers .html séparés
-- Laisser des images cassées (src="#", src="", chemins locaux)
+- Inventer données (stats, prix, noms réels, adresses, téléphones)
+- Ajouter fonctionnalités non demandées
+- Citer vraies personnes/entreprises comme références
+- Créer faux témoignages
+- Demander le code à l'utilisateur (tu l'as ci-dessous)
+- href="page.html" ou liens vers fichiers .html séparés
+- Images cassées (src="#", src="", chemins locaux)
 
-RÈGLES CODE (chaque modification doit les respecter):
+RÈGLES CODE:
 - Navigation multi-pages = JS pur avec sections <section id="page-xxx"> + fonction showPage()
 - Images = URLs Unsplash valides ou SVG inline
 - Boutons/formulaires = handlers JS définis
@@ -758,13 +780,17 @@ ${currentVersion[0].generatedCode || ""}`;
       const tokensUsed = inputTokens + outputTokens;
       const durationMs = Date.now() - startTime;
 
-      // Parse agent response
+      // Parse agent response — try pure parse first, then balanced-brace extraction
       let agentResponse: { action: string; code?: string; reply: string };
       try {
-        const jsonMatch = fullRaw.match(/\{[\s\S]*\}/);
-        agentResponse = JSON.parse(jsonMatch ? jsonMatch[0] : fullRaw);
+        agentResponse = JSON.parse(fullRaw.trim());
       } catch {
-        agentResponse = { action: "chat", reply: fullRaw };
+        try {
+          const extracted = extractJsonObject(fullRaw);
+          agentResponse = JSON.parse(extracted ?? fullRaw);
+        } catch {
+          agentResponse = { action: "chat", reply: fullRaw };
+        }
       }
 
       let versionId: number | null = null;
