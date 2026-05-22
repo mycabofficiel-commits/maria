@@ -782,13 +782,17 @@ ${currentVersion[0].generatedCode || ""}`;
 
       // Parse agent response — try pure parse first, then balanced-brace extraction
       let agentResponse: { action: string; code?: string; reply: string };
+      console.log("[chat] fullRaw preview:", fullRaw.slice(0, 300));
       try {
         agentResponse = JSON.parse(fullRaw.trim());
+        console.log("[chat] JSON.parse OK — action:", agentResponse.action, "hasCode:", !!agentResponse.code);
       } catch {
         try {
           const extracted = extractJsonObject(fullRaw);
           agentResponse = JSON.parse(extracted ?? fullRaw);
-        } catch {
+          console.log("[chat] extractJsonObject OK — action:", agentResponse.action, "hasCode:", !!agentResponse.code);
+        } catch (e2) {
+          console.log("[chat] parse FAILED:", String(e2), "— fallback to chat action");
           agentResponse = { action: "chat", reply: fullRaw };
         }
       }

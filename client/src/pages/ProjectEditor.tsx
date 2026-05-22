@@ -663,6 +663,7 @@ export default function ProjectEditor() {
               }
               if (evt.reply !== undefined) {
                 // Final done event — clear streaming bubble, refresh messages
+                console.log("[chat/done] action=", evt.action, "versionId=", evt.versionId, "hasCode=", !!evt.generatedCode);
                 setStreamingReply("");
                 utils.projects.getChatMessages.invalidate({ projectId });
                 utils.projects.getVersions.invalidate({ projectId });
@@ -672,6 +673,9 @@ export default function ProjectEditor() {
                   setHtmlCode(extractHtml(evt.generatedCode));
                   setCssCode(extractCss(evt.generatedCode));
                   setJsCode(extractJs(evt.generatedCode));
+                } else if (evt.action === "modify") {
+                  // LLM said modify but didn't return code — parse error likely
+                  toast.warning("Mar-ia a répondu mais le code n'a pas pu être extrait. Réessaie.");
                 }
                 fetchSuggestions(msg, "chat", language);
               }
