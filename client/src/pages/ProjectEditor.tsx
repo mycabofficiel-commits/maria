@@ -374,6 +374,23 @@ export default function ProjectEditor() {
   const [pendingAction, setPendingAction] = useState<{ summary: string; action: () => void } | null>(null);
   const [localChatItems, setLocalChatItems] = useState<Array<{ id: number; summary: string; timestamp: Date }>>([]);
 
+  /* ── Suggestions post-action ── */
+  const [suggestions, setSuggestions] = useState<string[]>([]);
+  const fetchSuggestions = useCallback(async (context: string, lastAction: string, lang = language) => {
+    setSuggestions([]);
+    try {
+      const r = await fetch("/api/stream/suggestions", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ context: context.slice(0, 400), lastAction, language: lang }),
+      });
+      if (!r.ok) return;
+      const { suggestions: s } = await r.json();
+      if (Array.isArray(s) && s.length > 0) setSuggestions(s);
+    } catch { /* silencieux */ }
+  }, [language]);
+
   /* visual edit state */
   const [veSelection, setVeSelection] = useState<null | {
     tag: string; isText: boolean; isImage: boolean; isBlock: boolean; canMove: boolean; zIndex: string;
@@ -574,6 +591,7 @@ export default function ProjectEditor() {
                 utils.projects.getVersions.invalidate({ projectId });
                 utils.projects.get.invalidate({ id: projectId });
                 utils.user.getUsageStats.invalidate();
+                fetchSuggestions(`${siteType} ${style} — ${prompt}`, "generate", language);
               }
               if (evt.message) toast.error(evt.message);
             } catch { /* skip */ }
@@ -654,6 +672,7 @@ export default function ProjectEditor() {
                   setCssCode(extractCss(evt.generatedCode));
                   setJsCode(extractJs(evt.generatedCode));
                 }
+                fetchSuggestions(msg, "chat", language);
               }
               if (evt.message) toast.error(evt.message);
             } catch { /* skip */ }
@@ -788,6 +807,7 @@ export default function ProjectEditor() {
               utils.projects.getVersions.invalidate({ projectId });
               utils.projects.get.invalidate({ id: projectId });
               toast.success("Débogage terminé — nouvelle version créée", { duration: 5000 });
+              fetchSuggestions("débogage automatique du site", "debug", language);
             }
             if (evt.message) throw new Error(evt.message);
           } catch (e: any) {
@@ -1458,6 +1478,30 @@ ${jsCode}`;
                       </div>
                     </div>
                   )}
+                  {/* ── Suggestions post-action ── */}
+                  {suggestions.length > 0 && (
+                    <div className="pt-1 space-y-1.5">
+                      <p className="text-[10px] text-muted-foreground font-medium flex items-center gap-1 px-0.5">
+                        <Sparkles className="w-3 h-3 text-primary/60" />
+                        Suggestions
+                      </p>
+                      <div className="flex flex-col gap-1">
+                        {suggestions.map((s, i) => (
+                          <button
+                            key={i}
+                            className="text-left text-[11px] px-3 py-1.5 rounded-lg border border-primary/25 bg-primary/5 text-primary hover:bg-primary/15 hover:border-primary/50 transition-all w-full leading-snug"
+                            onClick={() => {
+                              setChatMessage(s);
+                              setSuggestions([]);
+                            }}
+                          >
+                            {s}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
                   <div ref={chatEndRef} />
                 </div>
 

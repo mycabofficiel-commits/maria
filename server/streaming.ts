@@ -1022,4 +1022,45 @@ Retourne UNIQUEMENT ce JSON (rien d'autre, pas de markdown):
 
     res.end();
   });
+
+  // ── POST /api/stream/suggestions ─────────────────────────────────────────
+  // Génère 3 suggestions contextuelles après chaque action (generate / chat / debug)
+  app.post("/api/stream/suggestions", async (req: Request, res: Response) => {
+    try {
+      const { context = "", lastAction = "generate", language = "fr" } = req.body || {};
+      const apiKey = await getPlatformKey("deepseek");
+      if (!apiKey) return res.json({ suggestions: [] });
+
+      const langLabel = language === "en" ? "English" : language === "es" ? "español" : "français";
+
+      const r = await fetch("https://api.deepseek.com/v1/chat/completions", {
+        method: "POST",
+        headers: { "Authorization": `Bearer ${apiKey}`, "content-type": "application/json" },
+        body: JSON.stringify({
+          model: "deepseek-chat",
+          max_tokens: 150,
+          temperature: 0.85,
+          messages: [
+            {
+              role: "system",
+              content: `Tu es un assistant web design expert. Réponds UNIQUEMENT avec un tableau JSON de exactement 3 suggestions courtes et actionnables (6 mots max chacune) en ${langLabel}. Chaque suggestion doit être différente et utile. Format strict : ["suggestion 1", "suggestion 2", "suggestion 3"]`,
+            },
+            {
+              role: "user",
+              content: `Contexte du site : ${String(context).slice(0, 400)}\nAction effectuée : ${lastAction}\nProposes 3 améliorations concrètes.`,
+            },
+          ],
+        }),
+      });
+
+      if (!r.ok) return res.json({ suggestions: [] });
+      const d = await r.json() as any;
+      const text: string = d.choices?.[0]?.message?.content || "[]";
+      const match = text.match(/\[[\s\S]*?\]/);
+      const suggestions = match ? JSON.parse(match[0]).slice(0, 3) : [];
+      res.json({ suggestions });
+    } catch {
+      res.json({ suggestions: [] });
+    }
+  });
 }
