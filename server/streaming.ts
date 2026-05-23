@@ -616,7 +616,7 @@ Retourne UNIQUEMENT le code HTML complet, sans explication, sans markdown, sans 
     const history = await db.select().from(chatMessages)
       .where(eq(chatMessages.projectId, projectId))
       .orderBy(chatMessages.createdAt)
-      .limit(30);
+      .limit(10);
 
     const versionCount = await db.select({ count: count() }).from(versions).where(eq(versions.projectId, projectId));
     const totalVersions = versionCount[0]?.count || 0;

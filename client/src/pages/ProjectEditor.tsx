@@ -24,7 +24,7 @@ import {
   Sparkles, Send, Eye, Code2, History, Smartphone, Tablet, Monitor,
   Loader2, ArrowLeft, Globe, RotateCcw, Save, CheckCircle2, MessageSquare,
   Rocket, Share2, Tag, MousePointer2, Copy, Check, PencilRuler, Upload,
-  PanelLeftClose, PanelLeftOpen, Bug, Mic, MicOff, Paperclip, Camera, X as XIcon, Image as ImageIcon
+  PanelLeftClose, PanelLeftOpen, Bug, Mic, MicOff, Paperclip, Camera, X as XIcon, Image as ImageIcon, Trash2
 } from "lucide-react";
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
@@ -605,6 +605,10 @@ export default function ProjectEditor() {
 
   /* Keep tRPC mutation as fallback (unused but keeps types happy) */
   const generateSite = trpc.projects.generate.useMutation({ onError: (err: any) => toast.error(err.message) });
+  const clearChat = trpc.projects.clearChat.useMutation({
+    onSuccess: () => { utils.projects.getChatMessages.invalidate({ projectId }); toast.success("Historique effacé"); },
+    onError: (err: any) => toast.error(err.message),
+  });
 
   /* ── Streaming chat ── */
   const sendChatStream = useCallback(async (msg: string) => {
@@ -1302,6 +1306,15 @@ ${jsCode}`;
                     >
                       <Upload className="w-3 h-3" />
                       Import
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-6 px-2 text-[10px] gap-1 text-muted-foreground hover:text-destructive"
+                      title="Vider l'historique du chat"
+                      onClick={() => { if (confirm("Vider tout l'historique du chat ?")) clearChat.mutate({ projectId }); }}
+                    >
+                      <Trash2 className="w-3 h-3" />
                     </Button>
                     <Link href={`/projects/${projectId}/share`}>
                       <Button variant="ghost" size="icon" className="w-6 h-6"><Share2 className="w-3 h-3" /></Button>

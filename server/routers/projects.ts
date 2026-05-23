@@ -509,6 +509,18 @@ RÈGLES CODE (à respecter pour chaque modification):
         .orderBy(chatMessages.createdAt);
     }),
 
+  // Clear chat history for a project
+  clearChat: protectedProcedure
+    .input(z.object({ projectId: z.number() }))
+    .mutation(async ({ ctx, input }) => {
+      const db = await getDb();
+      if (!db) throw new Error("DB unavailable");
+      await db.delete(chatMessages).where(
+        and(eq(chatMessages.projectId, input.projectId), eq(chatMessages.userId, ctx.user.id))
+      );
+      return { success: true };
+    }),
+
   // Update code manually
   updateCode: protectedProcedure
     .input(z.object({ versionId: z.number(), code: z.string() }))
