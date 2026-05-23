@@ -749,11 +749,24 @@ ${currentVersion[0].generatedCode || ""}`;
           groq: "https://api.groq.com/openai/v1",
         };
         const baseUrl = baseUrls[provider] || "https://api.openai.com/v1";
-        const allMessages = [{ role: "system", content: systemPrompt }, ...llmMessages];
+        // Wrap assistant history messages so DeepSeek doesn't learn "plain text" style
+        const wrappedMessages = llmMessages.map(m =>
+          m.role === "assistant"
+            ? { ...m, content: `{"action":"chat","reply":${JSON.stringify(m.content)}}` }
+            : m
+        );
+        const allMessages = [{ role: "system", content: systemPrompt }, ...wrappedMessages];
         const aiRes = await fetch(`${baseUrl}/chat/completions`, {
           method: "POST",
           headers: { "Authorization": `Bearer ${apiKey}`, "content-type": "application/json" },
-          body: JSON.stringify({ model: modelToUse, max_tokens: 16000, temperature: 0.3, stream: true, messages: allMessages }),
+          body: JSON.stringify({
+            model: modelToUse,
+            max_tokens: 16000,
+            temperature: 0.3,
+            stream: true,
+            response_format: { type: "json_object" },
+            messages: allMessages,
+          }),
         });
         if (!aiRes.ok || !aiRes.body) { sseWrite(res, "error", { message: `Erreur API ${provider}: ${await aiRes.text()}` }); res.end(); return; }
         const reader = aiRes.body.getReader();
