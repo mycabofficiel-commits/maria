@@ -676,7 +676,7 @@ export default function ProjectEditor() {
                   // LLM said modify but didn't return code — parse error likely
                   toast.warning("Mar-ia a répondu mais le code n'a pas pu être extrait. Réessaie.");
                 }
-                // suggestions removed for more natural conversation flow
+                fetchSuggestions(msg, "chat", language);
               }
               if (evt.message) toast.error(evt.message);
             } catch { /* skip */ }
@@ -1494,6 +1494,21 @@ ${jsCode}`;
                           <span className="w-1.5 h-1.5 rounded-full bg-primary/60 animate-bounce" style={{ animationDelay: "300ms" }} />
                         </div>
                       </div>
+                    </div>
+                  )}
+
+                  {/* ── Suggestions fluides — sous le dernier message ── */}
+                  {suggestions.length > 0 && !streamingReply && (
+                    <div className="flex flex-col gap-1 pb-1 pl-7">
+                      {suggestions.map((s, i) => (
+                        <button
+                          key={i}
+                          className="text-left text-[11px] px-2.5 py-1.5 rounded-full border border-border/40 text-muted-foreground hover:text-foreground hover:border-primary/40 hover:bg-primary/5 transition-all w-fit max-w-full leading-snug"
+                          onClick={() => { setChatMessage(s); setSuggestions([]); }}
+                        >
+                          {s}
+                        </button>
+                      ))}
                     </div>
                   )}
 
