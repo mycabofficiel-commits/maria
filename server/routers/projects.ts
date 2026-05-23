@@ -340,7 +340,7 @@ CONTEXTE DU PROJET:
 - Description: ${project[0].description || "Non définie"}
 - Nombre de versions créées: ${totalVersions}
 - Code actuel du site (HTML complet):
-${currentVersion[0].generatedCode?.slice(0, 3000)}${(currentVersion[0].generatedCode?.length || 0) > 3000 ? "\n... (code tronqué)" : ""}
+${currentVersion[0].generatedCode}
 
 TU PEUX FAIRE DEUX CHOSES:
 1. MODIFIER LE SITE: Si l'utilisateur demande une modification du site (changer couleur, ajouter section, modifier texte, etc.), réponds avec le JSON suivant EXACTEMENT:
@@ -382,7 +382,7 @@ RÈGLES CODE (à respecter pour chaque modification):
         },
         body: JSON.stringify({
           model: modelToUse,
-          max_tokens: 8000,
+          max_tokens: 16000,
           system: systemPrompt,
           messages: llmMessages,
         }),
@@ -397,15 +397,34 @@ RÈGLES CODE (à respecter pour chaque modification):
       const rawReply = data.content?.[0]?.text || "{}";
       const tokensUsed = (data.usage?.input_tokens || 0) + (data.usage?.output_tokens || 0);
       const durationMs = Date.now() - startTime;
+      console.log("[chat] rawReply preview:", rawReply.slice(0, 400));
+      console.log("[chat] stop_reason:", data.stop_reason, "output_tokens:", data.usage?.output_tokens);
 
-      // Parse agent response
+      // Parse agent response — try direct parse, then markdown strip, then brace extraction
       let agentResponse: { action: string; code?: string; reply: string };
       try {
-        // Extract JSON from response (sometimes wrapped in ```json)
-        const jsonMatch = rawReply.match(/\{[\s\S]*\}/);
-        agentResponse = JSON.parse(jsonMatch ? jsonMatch[0] : rawReply);
-      } catch {
-        // Fallback: treat as chat reply
+        // Strip markdown code fences if present
+        const stripped = rawReply.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/i, "").trim();
+        // Find the outermost JSON object using balanced brace matching
+        let jsonStr: string | null = null;
+        const start = stripped.indexOf("{");
+        if (start !== -1) {
+          let depth = 0, inStr = false, escape = false;
+          for (let i = start; i < stripped.length; i++) {
+            const ch = stripped[i];
+            if (escape) { escape = false; continue; }
+            if (ch === "\\" && inStr) { escape = true; continue; }
+            if (ch === '"') inStr = !inStr;
+            if (!inStr) {
+              if (ch === "{") depth++;
+              else if (ch === "}") { depth--; if (depth === 0) { jsonStr = stripped.slice(start, i + 1); break; } }
+            }
+          }
+        }
+        agentResponse = JSON.parse(jsonStr ?? stripped);
+        console.log("[chat] parse OK — action:", agentResponse.action, "hasCode:", !!agentResponse.code);
+      } catch (e) {
+        console.log("[chat] parse FAILED:", String(e), "— fallback to chat action");
         agentResponse = { action: "chat", reply: rawReply };
       }
 
