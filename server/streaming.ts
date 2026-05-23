@@ -722,10 +722,9 @@ Format OBLIGATOIRE:
 
       await db.insert(chatMessages).values({ projectId, userId: user.id, role: "user", content: message });
 
-      // Fetch only the 2 most recent messages for continuity context (limits old-session confusion)
-      const history = await db.select().from(chatMessages)
-        .where(eq(chatMessages.projectId, projectId))
-        .orderBy(chatMessages.createdAt).limit(2);
+      // No history for execute phase — system prompt already contains task + current code + plan.
+      // History only causes confusion (old sessions, wrong tasks).
+      const history: typeof chatMessages.$inferSelect[] = [];
 
       try {
         // ── A : Agent / Planning ────────────────────────────────────────
