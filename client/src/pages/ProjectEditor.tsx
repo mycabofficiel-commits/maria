@@ -461,6 +461,10 @@ export default function ProjectEditor() {
     const t2 = setTimeout(scrollToBottom, 400);
     return () => { clearTimeout(t1); clearTimeout(t2); };
   }, [chatMessages, showVersions, scrollToBottom]);
+  // Scroll quand isChatPending démarre (pour voir les dots/agent steps)
+  useEffect(() => {
+    if (isChatPending) setTimeout(scrollToBottom, 80);
+  }, [isChatPending, scrollToBottom]);
 
   /* preview HTML content (srcdoc — no blob URL) */
   const [previewSrc, setPreviewSrc] = useState("");
@@ -668,6 +672,8 @@ export default function ProjectEditor() {
               setPendingSummary(evt.summary);
               setSummaryEdit(evt.summary);
               setChatPhase("awaiting_validation");
+              // Scroll to bottom so validation card is visible
+              setTimeout(scrollToBottom, 150);
             }
             if (evt.message) toast.error(evt.message);
           } catch { /* skip */ }
@@ -1537,8 +1543,23 @@ ${jsCode}`;
                       </div>
                     </div>
                   )}
-                  {/* Typing dots — shown only while waiting for first tokens */}
-                  {chatEdit.isPending && !streamingReply && (
+                  {/* Agent step — shown during chat execution */}
+                  {chatEdit.isPending && agentStep && (
+                    <div className="flex gap-1.5 items-start">
+                      <div className="w-5 h-5 rounded-full bg-primary/20 flex items-center justify-center flex-shrink-0 mt-0.5">
+                        <Sparkles className="w-2.5 h-2.5 text-primary animate-pulse" />
+                      </div>
+                      <div className="bg-card border border-primary/20 rounded-xl rounded-tl-sm px-2.5 py-1.5 max-w-[85%]">
+                        <div className="flex items-center gap-1.5">
+                          <span className="text-sm">{agentStep.icon}</span>
+                          <span className="text-[10px] font-semibold text-primary">{agentStep.agent}</span>
+                          <span className="text-[10px] text-muted-foreground">— {agentStep.step}</span>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                  {/* Typing dots — shown only while waiting for first tokens (no agent step yet) */}
+                  {chatEdit.isPending && !streamingReply && !agentStep && (
                     <div className="flex gap-1.5 items-start">
                       <div className="w-5 h-5 rounded-full bg-primary/20 flex items-center justify-center flex-shrink-0">
                         <Sparkles className="w-2.5 h-2.5 text-primary" />

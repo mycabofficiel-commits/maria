@@ -724,7 +724,7 @@ Format OBLIGATOIRE:
 
       const history = await db.select().from(chatMessages)
         .where(eq(chatMessages.projectId, projectId))
-        .orderBy(chatMessages.createdAt).limit(10);
+        .orderBy(chatMessages.createdAt).limit(6);
 
       try {
         // ── A : Agent / Planning ────────────────────────────────────────
@@ -770,11 +770,15 @@ Sois technique et concis.`,
 
         const systemPrompt = `Tu es Mar-ia, experte en développement web. Tu travailles sur le projet "${project[0].name}".
 
-FORMAT DE RÉPONSE — OBLIGATOIRE: UN SEUL JSON BRUT, RIEN AVANT, RIEN APRÈS.
-Si modification: {"action":"modify","reply":"[explication 2-3 phrases]","code":"<!DOCTYPE html>...HTML complet..."}
-Si discussion: {"action":"chat","reply":"[réponse]"}
+TÂCHE ACTUELLE: ${message}
 
-RÈGLES: code 100% complet, jamais tronqué. Navigation = sections <section id="page-xxx"> + showPage(). Images = Unsplash/SVG.
+FORMAT DE RÉPONSE — OBLIGATOIRE: UN SEUL JSON BRUT, RIEN AVANT, RIEN APRÈS.
+Pour toute demande de modification du site: {"action":"modify","reply":"[explication ultra-courte 1-2 phrases]","code":"<!DOCTYPE html>...HTML complet modifié..."}
+Pour une question purement conversationnelle SANS modification de code: {"action":"chat","reply":"[réponse]"}
+
+⚠️ RÈGLE ABSOLUE: Si l'utilisateur demande un changement visuel, une fonctionnalité, un ajout ou une modification → action="modify" OBLIGATOIRE.
+
+RÈGLES CODE: 100% complet, jamais tronqué. Navigation = showPage(). Images = Unsplash/SVG inline.
 
 CODE ACTUEL (v${currentVersion[0].versionNumber}):
 ${currentVersion[0].generatedCode || ""}
@@ -790,7 +794,8 @@ ${agentPlan ? `\n── PLAN D'ACTION ──\n${agentPlan}` : ""}${qwenDraft ? `
           llmMessages.push({ role: "user", content: [...imageBlocks, { type: "text", text: summary }] });
         } else if (llmMessages.length > 0 && llmMessages[llmMessages.length - 1].role === "user") {
           const last = llmMessages[llmMessages.length - 1];
-          if (typeof last.content === "string") last.content = summary;
+          // Use the original message as the clear instruction (not the structured summary which may contain "À définir")
+          if (typeof last.content === "string") last.content = message;
         }
 
         const startTime = Date.now();
