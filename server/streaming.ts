@@ -587,13 +587,24 @@ Retourne UNIQUEMENT le code HTML complet, sans explication, sans markdown, sans 
       .where(eq(versions.id, project[0].currentVersionId!)).limit(1);
     if (!currentVersion[0]) { res.status(400).json({ error: "Aucune version générée" }); return; }
 
-    // Platform DeepSeek key for chat (fall back to user key)
+    // ── Fetch user plan + all platform keys ─────────────────────────────────
+    const userRow = await db.select().from(users).where(eq(users.id, user.id)).limit(1);
+    const u = userRow[0];
+    const userPlan = u?.plan || "free";
+
+    const [claudeKey, openaiKey, deepseekKey, qwenKey] = await Promise.all([
+      getPlatformKey("anthropic"),
+      getPlatformKey("openai"),
+      getPlatformKey("deepseek"),
+      getPlatformKey("qwen"),
+    ]);
+
+    // ── Execution key: DeepSeek primary, fallback to user's stored key ───────
     let apiKey: string;
     let provider = "deepseek";
     let modelToUse = "deepseek-chat";
-    const platformChatKey = await getPlatformKey("deepseek");
-    if (platformChatKey) {
-      apiKey = platformChatKey;
+    if (deepseekKey) {
+      apiKey = deepseekKey;
     } else {
       const keyRow = await db.select().from(apiKeys).where(eq(apiKeys.userId, user.id)).limit(1);
       if (!keyRow[0]) { res.status(400).json({ error: "Aucune clé API configurée" }); return; }
@@ -693,6 +704,72 @@ ${currentVersion[0].generatedCode || ""}`;
     res.setHeader("Connection", "keep-alive");
     res.flushHeaders();
 
+    // ── Multi-LLM orchestration (pre-execution) ──────────────────────────────
+    // FREE   : DeepSeek seul
+    // CREATOR: Qwen analyse → DeepSeek exécute
+    // PRO    : Claude raisonne → DeepSeek exécute
+    // AGENCY : GPT-4o raisonne → Claude planifie → DeepSeek exécute → Claude contrôle
+    let agentContext = "";
+    const codeSnippet = (currentVersion[0].generatedCode || "").slice(0, 3000);
+
+    if (userPlan === "agency") {
+      // ── Étape 1 : Raisonnement — GPT-4o ────────────────────────────────
+      if (openaiKey) {
+        sseWrite(res, "progress", { agent: "GPT-4o", step: "Raisonnement & analyse de la demande", icon: "🧠" });
+        const reasoning = await tryCallSync(
+          "openai", "gpt-4o-mini", openaiKey,
+          `Tu es un expert senior en développement web. Analyse cette demande de modification en 150 mots max:\n1. Ce qui doit changer (éléments HTML/CSS/JS)\n2. Les contraintes techniques à respecter\n3. L'approche optimale recommandée`,
+          `Demande: ${message}\nExtrait code actuel:\n${codeSnippet}`,
+          400
+        );
+        if (reasoning) agentContext += `[RAISONNEMENT GPT-4o]:\n${reasoning.text}\n\n`;
+      }
+      // ── Étape 2 : Agent/Planning — Claude ──────────────────────────────
+      if (claudeKey) {
+        sseWrite(res, "progress", { agent: "Claude", step: "Planification précise des modifications", icon: "🤖" });
+        const plan = await tryCallSync(
+          "anthropic", "claude-haiku-4-5", claudeKey,
+          `Tu es un agent de développement web. Produis un plan d'action technique précis en 200 mots max:\n- Sélecteurs CSS / IDs / classes à modifier ou créer\n- Logique JS à implémenter\n- Contenus HTML à ajouter ou modifier`,
+          `Demande: ${message}\n\n${agentContext}Extrait code:\n${codeSnippet}`,
+          500
+        );
+        if (plan) agentContext += `[PLAN D'ACTION Claude]:\n${plan.text}\n\n`;
+      }
+      sseWrite(res, "progress", { agent: "DeepSeek", step: "Génération du code modifié…", icon: "💻" });
+
+    } else if (userPlan === "pro") {
+      // ── PRO : Raisonnement — Claude Haiku ──────────────────────────────
+      if (claudeKey) {
+        sseWrite(res, "progress", { agent: "Claude", step: "Analyse & planification", icon: "🧠" });
+        const analysis = await tryCallSync(
+          "anthropic", "claude-haiku-4-5", claudeKey,
+          `Tu es un expert en développement web. Analyse cette demande et produis un plan technique concis (150 mots max): quels éléments modifier, comment les implémenter, points d'attention.`,
+          `Demande: ${message}\nExtrait code:\n${codeSnippet}`,
+          400
+        );
+        if (analysis) agentContext += `[ANALYSE Claude]:\n${analysis.text}\n\n`;
+      }
+      sseWrite(res, "progress", { agent: "DeepSeek", step: "Génération du code modifié…", icon: "💻" });
+
+    } else if (userPlan === "creator") {
+      // ── CREATOR : Analyse UX/contenu — Qwen ────────────────────────────
+      if (qwenKey) {
+        sseWrite(res, "progress", { agent: "Qwen", step: "Analyse UX & contenu", icon: "✍️" });
+        const contentAnalysis = await tryCallSync(
+          "qwen", "qwen-plus", qwenKey,
+          `Tu es un expert UX/contenu. Donne des conseils sur le wording et l'ergonomie pour cette modification (100 mots max).`,
+          `Demande: ${message}`,
+          300
+        );
+        if (contentAnalysis) agentContext += `[ANALYSE Qwen]:\n${contentAnalysis.text}\n\n`;
+      }
+    }
+
+    // Inject multi-agent context into system prompt if available
+    const finalSystemPrompt = agentContext
+      ? systemPrompt + `\n\n── CONTEXTE MULTI-AGENTS (utilise ces analyses pour enrichir ta réponse) ──\n${agentContext}`
+      : systemPrompt;
+
     const startTime = Date.now();
     let fullRaw = "";
     let inputTokens = 0;
@@ -713,7 +790,7 @@ ${currentVersion[0].generatedCode || ""}`;
             max_tokens: 16000,
             temperature: 0.3,
             stream: true,
-            system: [{ type: "text", text: systemPrompt, cache_control: { type: "ephemeral" } }],
+            system: [{ type: "text", text: finalSystemPrompt, cache_control: { type: "ephemeral" } }],
             messages: llmMessages,
           }),
         });
@@ -752,7 +829,7 @@ ${currentVersion[0].generatedCode || ""}`;
             ? { ...m, content: `{"action":"chat","reply":${JSON.stringify(m.content)}}` }
             : m
         );
-        const allMessages = [{ role: "system", content: systemPrompt }, ...wrappedMessages];
+        const allMessages = [{ role: "system", content: finalSystemPrompt }, ...wrappedMessages];
         const aiRes = await fetch(`${baseUrl}/chat/completions`, {
           method: "POST",
           headers: { "Authorization": `Bearer ${apiKey}`, "content-type": "application/json" },
@@ -807,6 +884,24 @@ ${currentVersion[0].generatedCode || ""}`;
         }
       }
 
+      // ── Étape 4 (Agency) : Contrôle — Claude Haiku ──────────────────────
+      if (userPlan === "agency" && claudeKey && agentResponse.action === "modify" && agentResponse.code) {
+        sseWrite(res, "progress", { agent: "Claude", step: "Contrôle qualité du code généré", icon: "✅" });
+        const review = await tryCallSync(
+          "anthropic", "claude-haiku-4-5", claudeKey,
+          `Tu es un expert QA en développement web. Vérifie ce code HTML généré et signale uniquement les problèmes critiques (balises non fermées, JS cassé, liens brisés). Si tout est correct, réponds UNIQUEMENT "OK". Sinon liste les problèmes en moins de 50 mots.`,
+          agentResponse.code.slice(0, 6000),
+          200
+        );
+        if (review && review.text.trim() !== "OK") {
+          console.log("[chat:agency:contrôle] Problèmes détectés:", review.text);
+          // Append control feedback to reply so user sees it
+          agentResponse.reply = agentResponse.reply + `\n\n⚠️ *Contrôle qualité : ${review.text.trim()}*`;
+        } else {
+          console.log("[chat:agency:contrôle] Code validé ✅");
+        }
+      }
+
       let versionId: number | null = null;
 
       if (agentResponse.action === "modify" && agentResponse.code) {
@@ -820,7 +915,7 @@ ${currentVersion[0].generatedCode || ""}`;
           generatedCode: agentResponse.code,
           tokensUsed,
           generationTimeMs: durationMs,
-          model: modelToUse,
+          model: `${modelToUse}${userPlan === "agency" ? "+gpt4o+claude" : userPlan === "pro" ? "+claude" : userPlan === "creator" ? "+qwen" : ""}`,
           status: "ready",
         }).returning({ id: versions.id });
         versionId = versionResult.id;
