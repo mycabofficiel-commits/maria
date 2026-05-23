@@ -676,7 +676,7 @@ export default function ProjectEditor() {
                   // LLM said modify but didn't return code — parse error likely
                   toast.warning("Mar-ia a répondu mais le code n'a pas pu être extrait. Réessaie.");
                 }
-                fetchSuggestions(msg, "chat", language);
+                // suggestions removed for more natural conversation flow
               }
               if (evt.message) toast.error(evt.message);
             } catch { /* skip */ }
@@ -1496,34 +1496,11 @@ ${jsCode}`;
                       </div>
                     </div>
                   )}
-                  {/* ── Suggestions post-action ── */}
-                  {suggestions.length > 0 && (
-                    <div className="pt-1 space-y-1.5">
-                      <p className="text-[10px] text-muted-foreground font-medium flex items-center gap-1 px-0.5">
-                        <Sparkles className="w-3 h-3 text-primary/60" />
-                        Suggestions
-                      </p>
-                      <div className="flex flex-col gap-1">
-                        {suggestions.map((s, i) => (
-                          <button
-                            key={i}
-                            className="text-left text-[11px] px-3 py-1.5 rounded-lg border border-primary/25 bg-primary/5 text-primary hover:bg-primary/15 hover:border-primary/50 transition-all w-full leading-snug"
-                            onClick={() => {
-                              setChatMessage(s);
-                              setSuggestions([]);
-                            }}
-                          >
-                            {s}
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-                  )}
 
                   <div ref={chatEndRef} />
                 </div>
 
-                {/* ── Confirmation de plan (avant chaque action) ── */}
+                {/* pendingAction kept for generate/debug only — chat sends directly */}
                 {pendingAction && (
                   <div className="mx-2 mb-1.5 rounded-xl border border-primary/30 bg-primary/5 p-3 space-y-2">
                     <div className="flex items-start gap-2">
@@ -1535,12 +1512,7 @@ ${jsCode}`;
                     </div>
                     <div className="flex gap-1.5">
                       <Button size="sm" className="h-7 text-xs bg-primary hover:bg-primary/90 flex-1 gap-1"
-                        onClick={() => {
-                          const ts = new Date();
-                          setLocalChatItems(prev => [...prev, { id: ts.getTime(), summary: pendingAction.summary, timestamp: ts }]);
-                          pendingAction.action();
-                          setPendingAction(null);
-                        }}>
+                        onClick={() => { pendingAction.action(); setPendingAction(null); }}>
                         ✓ Valider
                       </Button>
                       <Button size="sm" variant="outline" className="h-7 text-xs border-border/50 flex-1"
@@ -1602,10 +1574,7 @@ ${jsCode}`;
                       onKeyDown={(e) => {
                         if (e.key === "Enter" && !e.shiftKey && (chatMessage.trim() || attachments.length > 0)) {
                           e.preventDefault();
-                          setPendingAction({
-                            summary: `Modifier le site selon : "${chatMessage.slice(0, 120)}${chatMessage.length > 120 ? '…' : ''}"`,
-                            action: () => sendChatStream(chatMessage),
-                          });
+                          sendChatStream(chatMessage);
                         }
                       }}
                       className="flex-1 bg-transparent text-xs text-white placeholder-[#6b7280] outline-none min-w-0 px-1 resize-none leading-relaxed"
@@ -1613,7 +1582,7 @@ ${jsCode}`;
                     />
                     {/* Send */}
                     <button
-                      onClick={() => { if (chatMessage.trim() || attachments.length > 0) setPendingAction({ summary: `Modifier le site selon : "${chatMessage.slice(0, 120)}${chatMessage.length > 120 ? '…' : ''}"`, action: () => sendChatStream(chatMessage) }); }}
+                      onClick={() => { if (chatMessage.trim() || attachments.length > 0) sendChatStream(chatMessage); }}
                       disabled={chatEdit.isPending || (!chatMessage.trim() && attachments.length === 0)}
                       className="w-7 h-7 rounded-full bg-primary flex items-center justify-center flex-shrink-0 disabled:opacity-40 hover:bg-primary/90 transition-colors">
                       {chatEdit.isPending ? <Loader2 className="w-3 h-3 animate-spin text-white" /> : <Send className="w-3 h-3 text-white" />}
