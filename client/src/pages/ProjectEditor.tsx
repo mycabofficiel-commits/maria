@@ -455,13 +455,11 @@ export default function ProjectEditor() {
     return () => { clearTimeout(t1); clearTimeout(t2); };
   }, [chatMessages, showVersions, scrollToBottom]);
 
-  /* preview blob URL */
+  /* preview HTML content (srcdoc — no blob URL) */
   const [previewSrc, setPreviewSrc] = useState("");
-  const prevUrlRef = useRef("");
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const buildPreview = useCallback((h: string, c: string, j: string) => {
-    if (prevUrlRef.current) URL.revokeObjectURL(prevUrlRef.current);
     const viewportMeta = '<meta name="viewport" content="width=device-width, initial-scale=1">';
     let full: string;
     // If h is a complete HTML document (imported), use it as-is with minimal additions
@@ -483,10 +481,7 @@ export default function ProjectEditor() {
     } else {
       full = `<!DOCTYPE html><html><head>${viewportMeta}<meta charset="UTF-8"><style>${c}</style></head><body><script>${j}<\/script></body></html>`;
     }
-    const blob = new Blob([full], { type: "text/html" });
-    const url = URL.createObjectURL(blob);
-    prevUrlRef.current = url;
-    setPreviewSrc(url);
+    setPreviewSrc(full);
   }, []);
 
   useEffect(() => {
@@ -928,11 +923,7 @@ export default function ProjectEditor() {
       const script = `<script>document.addEventListener('click',function(e){e.preventDefault();e.stopPropagation();window.parent.postMessage({type:'INSPECT_ELEMENT',tag:e.target.tagName,id:e.target.id,cls:e.target.className},'*');},true);<\/script>`;
       injected = injected.replace(/<\/body>/i, `${script}</body>`);
     }
-    if (prevUrlRef.current) URL.revokeObjectURL(prevUrlRef.current);
-    const blob = new Blob([injected], { type: "text/html" });
-    const url = URL.createObjectURL(blob);
-    prevUrlRef.current = url;
-    return url;
+    return injected;
   };
 
   const hasCode = !!(currentVersionData?.generatedCode);
@@ -1911,7 +1902,7 @@ ${jsCode}`;
                   style={{ width: VIEW_SIZES[viewMode], maxWidth: "100%" }}>
                   <iframe
                     ref={previewRef}
-                    src={inspectMode ? getPreviewSrc() : (previewSrc || "about:blank")}
+                    srcDoc={inspectMode ? getPreviewSrc() : previewSrc}
                     onLoad={() => { if (visualEditMode) setTimeout(injectVeScript, 50); }}
                     className="w-full h-full border-0"
                     title="Preview"
