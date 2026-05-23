@@ -371,12 +371,19 @@ export default function ProjectEditor() {
   const dragStartWidthRef = useRef(45);
   const containerRef = useRef<HTMLDivElement>(null);
 
-  /* ── Plan validation before actions ── */
+  /* ── Plan validation before actions (generate/debug) ── */
   const [pendingAction, setPendingAction] = useState<{ summary: string; action: () => void } | null>(null);
   const [localChatItems, setLocalChatItems] = useState<Array<{ id: number; summary: string; timestamp: Date }>>([]);
 
-  /* ── Suggestions post-action ── */
-  const [suggestions, setSuggestions] = useState<string[]>([]);
+  /* ── Chat workflow phases ── */
+  const [chatPhase, setChatPhase] = useState<"idle" | "reasoning" | "awaiting_validation" | "executing">("idle");
+  const [pendingSummary, setPendingSummary] = useState<string>("");
+  const [summaryEdit, setSummaryEdit] = useState<string>("");
+  const [isSummaryEditing, setIsSummaryEditing] = useState(false);
+  const [pendingOriginalMsg, setPendingOriginalMsg] = useState<string>("");
+
+  /* ── Suggestions A/B/C post-action ── */
+  const [suggestions, setSuggestions] = useState<Array<{ label: string; text: string } | string>>([]);
   const fetchSuggestions = useCallback(async (context: string, lastAction: string, lang = language) => {
     setSuggestions([]);
     try {
@@ -610,21 +617,26 @@ export default function ProjectEditor() {
     onError: (err: any) => toast.error(err.message),
   });
 
-  /* ── Streaming chat ── */
+  /* ── Phase 1: Raisonnement → awaiting_validation ── */
   const sendChatStream = useCallback(async (msg: string) => {
     if (!msg.trim() && attachments.length === 0) return;
     setIsChatPending(true);
     setStreamingReply("");
     setChatMessage("");
+    setSuggestions([]);
+    setChatPhase("reasoning");
     recognitionRef.current?.stop();
     setIsRecording(false);
     const sentAttachments = [...attachments];
     setAttachments([]);
-    // Optimistically add user message to local cache
+    setPendingOriginalMsg(msg);
+
+    // Optimistically add user message
     utils.projects.getChatMessages.setData({ projectId }, (old: any) => [
       ...(old || []),
       { id: Date.now(), role: "user", content: msg || "📎 Image jointe", createdAt: new Date().toISOString(), projectId, userId: 0, versionId: null, tokensUsed: null },
     ]);
+
     try {
       const res = await fetch("/api/stream/chat", {
         method: "POST",
@@ -632,9 +644,57 @@ export default function ProjectEditor() {
         credentials: "include",
         body: JSON.stringify({
           projectId,
-          message: msg || "Voici une image de référence. Utilise-la pour améliorer ou modifier le site.",
+          message: msg || "Voici une image de référence.",
+          phase: "reason",
           images: sentAttachments.map((a) => ({ base64: a.base64, mimeType: a.mimeType })),
         }),
+      });
+      if (!res.ok || !res.body) throw new Error(await res.text());
+      const reader = res.body.getReader();
+      const dec = new TextDecoder();
+      let buf = "";
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buf += dec.decode(value, { stream: true });
+        const lines = buf.split("\n");
+        buf = lines.pop() || "";
+        for (const line of lines) {
+          if (!line.startsWith("data: ")) continue;
+          try {
+            const evt = JSON.parse(line.slice(6));
+            if (evt.agent && evt.step) setAgentStep({ agent: evt.agent, step: evt.step, icon: evt.icon || "🧠" });
+            if (evt.summary !== undefined) {
+              setPendingSummary(evt.summary);
+              setSummaryEdit(evt.summary);
+              setChatPhase("awaiting_validation");
+            }
+            if (evt.message) toast.error(evt.message);
+          } catch { /* skip */ }
+        }
+      }
+    } catch (err: any) {
+      toast.error(err.message);
+      setChatPhase("idle");
+    } finally {
+      setIsChatPending(false);
+      setAgentStep(null);
+    }
+  }, [projectId, attachments]);
+
+  /* ── Phase 2: Execute après validation ── */
+  const executeChatStream = useCallback(async (originalMsg: string, validatedSummary: string) => {
+    setIsChatPending(true);
+    setStreamingReply("");
+    setChatPhase("executing");
+    setSuggestions([]);
+
+    try {
+      const res = await fetch("/api/stream/chat", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ projectId, message: originalMsg, phase: "execute", validatedSummary }),
       });
       if (!res.ok || !res.body) throw new Error(await res.text());
       const reader = res.body.getReader();
@@ -648,39 +708,33 @@ export default function ProjectEditor() {
         const lines = buf.split("\n");
         buf = lines.pop() || "";
         for (const line of lines) {
-          if (line.startsWith("data: ")) {
-            try {
-              const evt = JSON.parse(line.slice(6));
-              if (evt.text !== undefined) {
-                accJson += evt.text;
-                const m = accJson.match(/"reply"\s*:\s*"((?:[^"\\]|\\.)*)"/);
-                if (m) setStreamingReply(m[1].replace(/\\n/g, "\n").replace(/\\"/g, '"').replace(/\\\\/g, "\\"));
+          if (!line.startsWith("data: ")) continue;
+          try {
+            const evt = JSON.parse(line.slice(6));
+            if (evt.agent && evt.step) setAgentStep({ agent: evt.agent, step: evt.step, icon: evt.icon || "⚙️" });
+            if (evt.text !== undefined) {
+              accJson += evt.text;
+              const m = accJson.match(/"reply"\s*:\s*"((?:[^"\\]|\\.)*)"/);
+              if (m) setStreamingReply(m[1].replace(/\\n/g, "\n").replace(/\\"/g, '"').replace(/\\\\/g, "\\"));
+            }
+            if (evt.versionId) { setSelectedVersionId(evt.versionId); toast.success("Site modifié !"); }
+            if (evt.reply !== undefined) {
+              setStreamingReply("");
+              utils.projects.getChatMessages.invalidate({ projectId });
+              utils.projects.getVersions.invalidate({ projectId });
+              utils.projects.get.invalidate({ id: projectId });
+              if (evt.generatedCode) {
+                setHtmlCode(extractHtml(evt.generatedCode));
+                setCssCode(extractCss(evt.generatedCode));
+                setJsCode(extractJs(evt.generatedCode));
+              } else if (evt.action === "modify") {
+                toast.warning("Code non extrait. Réessaie.");
               }
-              if (evt.versionId) {
-                setSelectedVersionId(evt.versionId);
-                toast.success("Site modifié !");
-              }
-              if (evt.reply !== undefined) {
-                // Final done event — clear streaming bubble, refresh messages
-                console.log("[chat/done] action=", evt.action, "versionId=", evt.versionId, "hasCode=", !!evt.generatedCode);
-                setStreamingReply("");
-                utils.projects.getChatMessages.invalidate({ projectId });
-                utils.projects.getVersions.invalidate({ projectId });
-                utils.projects.get.invalidate({ id: projectId });
-                // If code was modified, update editor immediately
-                if (evt.generatedCode) {
-                  setHtmlCode(extractHtml(evt.generatedCode));
-                  setCssCode(extractCss(evt.generatedCode));
-                  setJsCode(extractJs(evt.generatedCode));
-                } else if (evt.action === "modify") {
-                  // LLM said modify but didn't return code — parse error likely
-                  toast.warning("Mar-ia a répondu mais le code n'a pas pu être extrait. Réessaie.");
-                }
-                fetchSuggestions(msg, "chat", language);
-              }
-              if (evt.message) toast.error(evt.message);
-            } catch { /* skip */ }
-          }
+              setChatPhase("idle");
+            }
+            if (evt.suggestions && Array.isArray(evt.suggestions)) setSuggestions(evt.suggestions);
+            if (evt.message) toast.error(evt.message);
+          } catch { /* skip */ }
         }
       }
     } catch (err: any) {
@@ -688,6 +742,8 @@ export default function ProjectEditor() {
     } finally {
       setStreamingReply("");
       setIsChatPending(false);
+      setAgentStep(null);
+      setChatPhase("idle");
     }
   }, [projectId]);
 
@@ -1497,42 +1553,87 @@ ${jsCode}`;
                     </div>
                   )}
 
-                  {/* ── Suggestions fluides — sous le dernier message ── */}
-                  {suggestions.length > 0 && !streamingReply && (
-                    <div className="flex flex-col gap-1 pb-1 pl-7">
-                      {suggestions.map((s, i) => (
-                        <button
-                          key={i}
-                          className="text-left text-[11px] px-2.5 py-1.5 rounded-full border border-border/40 text-muted-foreground hover:text-foreground hover:border-primary/40 hover:bg-primary/5 transition-all w-fit max-w-full leading-snug"
-                          onClick={() => { setChatMessage(s); setSuggestions([]); }}
-                        >
-                          {s}
-                        </button>
-                      ))}
+                  {/* ── Suggestions A/B/C ── */}
+                  {suggestions.length > 0 && !streamingReply && chatPhase === "idle" && (
+                    <div className="flex flex-col gap-1.5 pb-1 pl-7">
+                      {suggestions.map((s, i) => {
+                        const isObj = typeof s === "object" && s !== null;
+                        const label = isObj ? (s as any).label : String.fromCharCode(65 + i);
+                        const text = isObj ? (s as any).text : s;
+                        const colors = ["text-blue-400 border-blue-500/30 hover:border-blue-400/60 hover:bg-blue-500/5", "text-violet-400 border-violet-500/30 hover:border-violet-400/60 hover:bg-violet-500/5", "text-emerald-400 border-emerald-500/30 hover:border-emerald-400/60 hover:bg-emerald-500/5"];
+                        return (
+                          <button
+                            key={i}
+                            className={`text-left text-[11px] px-2.5 py-1.5 rounded-full border transition-all w-fit max-w-full leading-snug flex items-center gap-1.5 ${colors[i % 3]}`}
+                            onClick={() => { setChatMessage(text); setSuggestions([]); }}
+                          >
+                            <span className="font-bold text-[10px] opacity-80">{label}.</span>
+                            <span>{text}</span>
+                          </button>
+                        );
+                      })}
                     </div>
                   )}
 
                   <div ref={chatEndRef} />
                 </div>
 
-                {/* pendingAction kept for generate/debug only — chat sends directly */}
-                {pendingAction && (
-                  <div className="mx-2 mb-1.5 rounded-xl border border-primary/30 bg-primary/5 p-3 space-y-2">
+                {/* ── Carte de validation du raisonnement ── */}
+                {chatPhase === "awaiting_validation" && (
+                  <div className="mx-2 mb-1.5 rounded-xl border border-primary/40 bg-primary/5 p-3 space-y-2">
                     <div className="flex items-start gap-2">
                       <Sparkles className="w-3.5 h-3.5 text-primary mt-0.5 flex-shrink-0" />
-                      <div>
-                        <p className="text-xs font-semibold text-foreground mb-0.5">Mar-ia a compris</p>
-                        <p className="text-xs text-muted-foreground leading-relaxed">{pendingAction.summary}</p>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-xs font-semibold text-foreground mb-1">Mar-ia a compris ta demande :</p>
+                        {isSummaryEditing ? (
+                          <textarea
+                            className="w-full text-xs bg-background border border-border/60 rounded-lg px-2 py-1.5 resize-none text-foreground leading-relaxed focus:outline-none focus:border-primary/60"
+                            rows={4}
+                            value={summaryEdit}
+                            onChange={e => setSummaryEdit(e.target.value)}
+                            autoFocus
+                          />
+                        ) : (
+                          <div className="text-xs text-muted-foreground leading-relaxed whitespace-pre-wrap">{pendingSummary}</div>
+                        )}
                       </div>
                     </div>
                     <div className="flex gap-1.5">
                       <Button size="sm" className="h-7 text-xs bg-primary hover:bg-primary/90 flex-1 gap-1"
-                        onClick={() => { pendingAction.action(); setPendingAction(null); }}>
+                        onClick={() => {
+                          const validated = isSummaryEditing ? summaryEdit : pendingSummary;
+                          setChatPhase("idle");
+                          setIsSummaryEditing(false);
+                          executeChatStream(pendingOriginalMsg, validated);
+                        }}>
                         ✓ Valider
                       </Button>
                       <Button size="sm" variant="outline" className="h-7 text-xs border-border/50 flex-1"
-                        onClick={() => setPendingAction(null)}>
-                        ✎ Modifier
+                        onClick={() => { setIsSummaryEditing(v => !v); setSummaryEdit(pendingSummary); }}>
+                        {isSummaryEditing ? "✓ Ok" : "✎ Modifier"}
+                      </Button>
+                      <Button size="sm" variant="ghost" className="h-7 text-xs text-muted-foreground flex-1"
+                        onClick={() => { setChatPhase("idle"); setIsSummaryEditing(false); }}>
+                        ✕ Annuler
+                      </Button>
+                    </div>
+                  </div>
+                )}
+
+                {/* pendingAction for generate/debug only */}
+                {pendingAction && (
+                  <div className="mx-2 mb-1.5 rounded-xl border border-amber-500/30 bg-amber-500/5 p-3 space-y-2">
+                    <div className="flex items-start gap-2">
+                      <Sparkles className="w-3.5 h-3.5 text-amber-400 mt-0.5 flex-shrink-0" />
+                      <div>
+                        <p className="text-xs font-semibold text-foreground mb-0.5">Confirmer l'action</p>
+                        <p className="text-xs text-muted-foreground leading-relaxed">{pendingAction.summary}</p>
+                      </div>
+                    </div>
+                    <div className="flex gap-1.5">
+                      <Button size="sm" className="h-7 text-xs bg-amber-500 hover:bg-amber-500/90 flex-1 gap-1"
+                        onClick={() => { pendingAction.action(); setPendingAction(null); }}>
+                        ✓ Confirmer
                       </Button>
                       <Button size="sm" variant="ghost" className="h-7 text-xs text-muted-foreground flex-1"
                         onClick={() => setPendingAction(null)}>

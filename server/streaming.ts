@@ -34,6 +34,67 @@ function slugify(name: string): string {
   );
 }
 
+// ── Agent plan configuration ─────────────────────────────────────────────────
+type Provider = "openai" | "anthropic" | "qwen" | "deepseek";
+
+const PROVIDER_MODELS: Record<Provider, string> = {
+  openai:    "gpt-4o-mini",
+  anthropic: "claude-haiku-4-5",
+  qwen:      "qwen-plus",
+  deepseek:  "deepseek-chat",
+};
+
+const AGENT_NAMES: Record<Provider, string> = {
+  openai:    "GPT-4o",
+  anthropic: "Claude",
+  qwen:      "Qwen",
+  deepseek:  "DeepSeek",
+};
+
+// Fallback chain: descending capability — if primary unavailable, try next
+const FALLBACK_CHAIN: Provider[] = ["openai", "anthropic", "qwen", "deepseek"];
+
+interface PlanConfig {
+  reasoner:   Provider;   // Étape 1: comprend & reformule
+  agent:      Provider;   // Étape 2: planifie les modifications
+  executors:  Provider[]; // Étape 3: génère le code (dernier = streaming)
+  controller: Provider;   // Étape 4: teste & valide
+  suggester:  Provider;   // Étape 5: propose A/B/C
+}
+
+const PLAN_CONFIGS: Record<string, PlanConfig> = {
+  free: {
+    reasoner: "deepseek", agent: "deepseek", executors: ["deepseek"],
+    controller: "deepseek", suggester: "deepseek",
+  },
+  creator: {  // label UI: "Pro"
+    reasoner: "qwen", agent: "qwen", executors: ["deepseek"],
+    controller: "qwen", suggester: "qwen",
+  },
+  pro: {       // label UI: "Ultra Pro"
+    reasoner: "anthropic", agent: "qwen", executors: ["deepseek"],
+    controller: "anthropic", suggester: "anthropic",
+  },
+  agency: {   // label UI: "Agency"
+    reasoner: "openai", agent: "anthropic", executors: ["qwen", "deepseek"],
+    controller: "anthropic", suggester: "openai",
+  },
+};
+
+/** Resolve a provider with automatic fallback down the capability chain */
+function resolveKey(
+  desired: Provider,
+  keys: Partial<Record<Provider, string | null>>
+): { provider: Provider; model: string; key: string } | null {
+  const startIdx = FALLBACK_CHAIN.indexOf(desired);
+  for (let i = startIdx; i < FALLBACK_CHAIN.length; i++) {
+    const p = FALLBACK_CHAIN[i];
+    const k = keys[p];
+    if (k) return { provider: p, model: PROVIDER_MODELS[p], key: k };
+  }
+  return null;
+}
+
 // ── Token pricing (USD per 1 M tokens) ───────────────────────────────────────
 const COST_PER_M: Record<string, { in: number; out: number }> = {
   "gpt-4o-mini":       { in: 0.15,  out: 0.60  },
@@ -562,13 +623,17 @@ Retourne UNIQUEMENT le code HTML complet, sans explication, sans markdown, sans 
   });
 
   // ── POST /api/stream/chat ─────────────────────────────────────────────────
+  // phase="reason"  → Raisonnement seul  → SSE event awaiting_validation
+  // phase="execute" → Plan+Exec+Ctrl+Livraison+Suggestions → SSE stream
   app.post("/api/stream/chat", async (req: Request, res: Response) => {
     const user = await authenticate(req, res);
     if (!user) return;
 
-    const { projectId, message, images } = req.body as {
+    const { projectId, message, phase = "reason", validatedSummary, images } = req.body as {
       projectId: number;
       message: string;
+      phase?: "reason" | "execute";
+      validatedSummary?: string;
       images?: Array<{ base64: string; mimeType: string }>;
     };
     if (!projectId || !message) {
@@ -587,116 +652,31 @@ Retourne UNIQUEMENT le code HTML complet, sans explication, sans markdown, sans 
       .where(eq(versions.id, project[0].currentVersionId!)).limit(1);
     if (!currentVersion[0]) { res.status(400).json({ error: "Aucune version générée" }); return; }
 
-    // ── Fetch user plan + all platform keys ─────────────────────────────────
-    const userRow = await db.select().from(users).where(eq(users.id, user.id)).limit(1);
+    // Fetch user plan + all platform keys concurrently
+    const [userRow, openaiKey, claudeKey, qwenKey, deepseekKeyPlatform] = await Promise.all([
+      db.select().from(users).where(eq(users.id, user.id)).limit(1),
+      getPlatformKey("openai"),
+      getPlatformKey("anthropic"),
+      getPlatformKey("qwen"),
+      getPlatformKey("deepseek"),
+    ]);
     const u = userRow[0];
     const userPlan = u?.plan || "free";
+    const config = PLAN_CONFIGS[userPlan] || PLAN_CONFIGS.free;
 
-    const [claudeKey, openaiKey, deepseekKey, qwenKey] = await Promise.all([
-      getPlatformKey("anthropic"),
-      getPlatformKey("openai"),
-      getPlatformKey("deepseek"),
-      getPlatformKey("qwen"),
-    ]);
-
-    // ── Execution key: DeepSeek primary, fallback to user's stored key ───────
-    let apiKey: string;
-    let provider = "deepseek";
-    let modelToUse = "deepseek-chat";
-    if (deepseekKey) {
-      apiKey = deepseekKey;
-    } else {
+    // Fallback: if no platform deepseek key, try user's stored key
+    let deepseekKey = deepseekKeyPlatform;
+    if (!deepseekKey) {
       const keyRow = await db.select().from(apiKeys).where(eq(apiKeys.userId, user.id)).limit(1);
-      if (!keyRow[0]) { res.status(400).json({ error: "Aucune clé API configurée" }); return; }
-      try { apiKey = decrypt(keyRow[0].encryptedKey); }
-      catch { res.status(400).json({ error: "Clé API invalide" }); return; }
-      provider = keyRow[0].provider || "anthropic";
-      modelToUse = ["claude-3-5-sonnet-20241022", "claude-3-5-haiku-20241022", "claude-3-opus-20240229", "claude-3-5-sonnet-latest", "claude-3-5-haiku-latest"].includes(keyRow[0].model)
-        ? "claude-sonnet-4-5"
-        : (keyRow[0].model || "claude-sonnet-4-5");
+      if (keyRow[0]) {
+        try { deepseekKey = decrypt(keyRow[0].encryptedKey); } catch { /* ignore */ }
+      }
     }
+    if (!deepseekKey) { res.status(400).json({ error: "Aucune clé API configurée" }); return; }
 
-    // Save user message
-    await db.insert(chatMessages).values({
-      projectId,
-      userId: user.id,
-      role: "user",
-      content: message,
-    });
-
-    const history = await db.select().from(chatMessages)
-      .where(eq(chatMessages.projectId, projectId))
-      .orderBy(chatMessages.createdAt)
-      .limit(10);
-
-    const versionCount = await db.select({ count: count() }).from(versions).where(eq(versions.projectId, projectId));
-    const totalVersions = versionCount[0]?.count || 0;
-
-    const projectCreatedAt = project[0].createdAt
-      ? new Date(project[0].createdAt).toLocaleDateString("fr-FR", { day: "2-digit", month: "long", year: "numeric" })
-      : "date inconnue";
-
-    const systemPrompt = `Tu es Mar-ia, l'assistante IA de la plateforme Mar-ia.net. Tu travailles sur le projet **"${project[0].name || "Sans nom"}"** (${totalVersions} version(s) créée(s)).
-
-PERSONNALITÉ:
-Tu es chaleureuse, directe et experte. Tu parles comme une vraie collègue développeuse — pas comme un robot. Tu raisonnes à voix haute quand c'est utile, tu poses des questions si quelque chose est flou, tu fais des suggestions pertinentes de ta propre initiative. Tu n'es jamais froide ou mécanique.
-
-FORMAT DE RÉPONSE — OBLIGATOIRE: UN SEUL JSON BRUT, RIEN AVANT, RIEN APRÈS.
-
-Si modification/création/correction demandée (même mineure):
-{"action":"modify","reply":"[explication détaillée — voir ci-dessous]","code":"<!DOCTYPE html>...HTML complet..."}
-
-Si question, conseil, discussion sans toucher au code:
-{"action":"chat","reply":"[réponse naturelle en markdown]"}
-
-RÈGLE SUR LE CHAMP "reply" POUR action=modify:
-Le reply doit être une vraie explication humaine en 3 parties:
-1. Ce que tu as fait (concrètement: quels éléments HTML/CSS/JS tu as ajoutés ou modifiés)
-2. Comment ça fonctionne (logique technique en 1-2 phrases simples)
-3. 3 idées de suite naturelles pour l'utilisateur, présentées ainsi (toujours à la fin, sur une nouvelle ligne):
-   "💡 *Tu pourrais aussi : [idée courte 1] • [idée courte 2] • [idée courte 3]*"
-
-Exemple de reply pour une animation hamburger:
-"J'ai transformé le bouton hamburger ☰ en animation croix ✕ !\n\n**Ce que j'ai fait :** 3 spans dans le bouton nav avec transitions CSS. Au clic, la classe .open s'applique : 1ère span pivote +45°, 3ème à -45°, la span du milieu disparaît (opacity 0).\n\n**Comment ça marche :** Un addEventListener click toggle la classe .open. Transitions 0.3s ease-in-out pour un rendu fluide.\n\n💡 *Tu pourrais aussi : ajouter un overlay sombre derrière le menu ouvert • animer l'apparition des liens en cascade • changer la couleur du bouton au survol*"
-
-RÈGLES ABSOLUES:
-1. RIEN avant le JSON — pas de texte, pas de markdown, pas de \`\`\`
-2. RIEN après le JSON
-3. "reply" TOUJOURS EN PREMIER dans le JSON, avant "code"
-4. action=modify → "code" OBLIGATOIRE avec HTML 100% complet
-5. JAMAIS tronquer le code
-6. JAMAIS action=chat si une modification est demandée
-7. TOUJOURS agir directement — jamais "je vais faire X"
-8. Réponds dans la langue de l'utilisateur
-9. Données manquantes → placeholder générique
-
-RÈGLES CODE:
-- Navigation multi-pages = JS pur avec sections <section id="page-xxx"> + showPage()
-- Images = URLs Unsplash valides ou SVG inline
-- Jamais href="page.html" ou liens vers fichiers séparés
-- Boutons/formulaires = handlers JS définis
-
-CODE ACTUEL (version ${currentVersion[0].versionNumber || "?"}):
-${currentVersion[0].generatedCode || ""}`;
-
-    // Build conversation messages; inject images into last user turn if provided
-    const llmMessages: Array<{ role: "user" | "assistant"; content: any }> = history
-      .filter(m => m.content && m.content.trim())
-      .map(m => ({ role: m.role as "user" | "assistant", content: m.content || "" }));
-
-    // If images attached: build multimodal last message
-    if (images && images.length > 0) {
-      // Replace last user message (the current one) with multimodal content
-      const lastUserMsg = llmMessages.pop(); // remove the just-saved text message
-      const imageBlocks = images.map(img => ({
-        type: "image" as const,
-        source: { type: "base64" as const, media_type: img.mimeType as any, data: img.base64 },
-      }));
-      llmMessages.push({
-        role: "user",
-        content: [...imageBlocks, { type: "text", text: message }],
-      });
-    }
+    const allKeys: Partial<Record<Provider, string | null>> = {
+      openai: openaiKey, anthropic: claudeKey, qwen: qwenKey, deepseek: deepseekKey,
+    };
 
     // SSE headers
     res.setHeader("Content-Type", "text/event-stream");
@@ -704,246 +684,269 @@ ${currentVersion[0].generatedCode || ""}`;
     res.setHeader("Connection", "keep-alive");
     res.flushHeaders();
 
-    // ── Multi-LLM orchestration (pre-execution) ──────────────────────────────
-    // FREE   : DeepSeek seul
-    // CREATOR: Qwen analyse → DeepSeek exécute
-    // PRO    : Claude raisonne → DeepSeek exécute
-    // AGENCY : GPT-4o raisonne → Claude planifie → DeepSeek exécute → Claude contrôle
-    let agentContext = "";
     const codeSnippet = (currentVersion[0].generatedCode || "").slice(0, 3000);
 
-    if (userPlan === "agency") {
-      // ── Étape 1 : Raisonnement — GPT-4o ────────────────────────────────
-      if (openaiKey) {
-        sseWrite(res, "progress", { agent: "GPT-4o", step: "Raisonnement & analyse de la demande", icon: "🧠" });
-        const reasoning = await tryCallSync(
-          "openai", "gpt-4o-mini", openaiKey,
-          `Tu es un expert senior en développement web. Analyse cette demande de modification en 150 mots max:\n1. Ce qui doit changer (éléments HTML/CSS/JS)\n2. Les contraintes techniques à respecter\n3. L'approche optimale recommandée`,
-          `Demande: ${message}\nExtrait code actuel:\n${codeSnippet}`,
-          400
-        );
-        if (reasoning) agentContext += `[RAISONNEMENT GPT-4o]:\n${reasoning.text}\n\n`;
+    // ── PHASE 1: RAISONNEMENT ──────────────────────────────────────────────
+    if (phase === "reason") {
+      const reasoner = resolveKey(config.reasoner, allKeys);
+      if (!reasoner) {
+        sseWrite(res, "error", { message: "Aucun LLM disponible pour le raisonnement" });
+        res.end(); return;
       }
-      // ── Étape 2 : Agent/Planning — Claude ──────────────────────────────
-      if (claudeKey) {
-        sseWrite(res, "progress", { agent: "Claude", step: "Planification précise des modifications", icon: "🤖" });
-        const plan = await tryCallSync(
-          "anthropic", "claude-haiku-4-5", claudeKey,
-          `Tu es un agent de développement web. Produis un plan d'action technique précis en 200 mots max:\n- Sélecteurs CSS / IDs / classes à modifier ou créer\n- Logique JS à implémenter\n- Contenus HTML à ajouter ou modifier`,
-          `Demande: ${message}\n\n${agentContext}Extrait code:\n${codeSnippet}`,
-          500
-        );
-        if (plan) agentContext += `[PLAN D'ACTION Claude]:\n${plan.text}\n\n`;
-      }
-      sseWrite(res, "progress", { agent: "DeepSeek", step: "Génération du code modifié…", icon: "💻" });
+      sseWrite(res, "progress", { agent: AGENT_NAMES[reasoner.provider], step: "Analyse & compréhension de la demande…", icon: "🧠" });
+      const reasoning = await tryCallSync(
+        reasoner.provider, reasoner.model, reasoner.key,
+        `Tu es Mar-ia, assistante IA de développement web. Analyse la demande de l'utilisateur pour son site "${project[0].name}" et reformule-la en résumé structuré (80 mots max).
 
-    } else if (userPlan === "pro") {
-      // ── PRO : Raisonnement — Claude Haiku ──────────────────────────────
-      if (claudeKey) {
-        sseWrite(res, "progress", { agent: "Claude", step: "Analyse & planification", icon: "🧠" });
-        const analysis = await tryCallSync(
-          "anthropic", "claude-haiku-4-5", claudeKey,
-          `Tu es un expert en développement web. Analyse cette demande et produis un plan technique concis (150 mots max): quels éléments modifier, comment les implémenter, points d'attention.`,
-          `Demande: ${message}\nExtrait code:\n${codeSnippet}`,
-          400
-        );
-        if (analysis) agentContext += `[ANALYSE Claude]:\n${analysis.text}\n\n`;
-      }
-      sseWrite(res, "progress", { agent: "DeepSeek", step: "Génération du code modifié…", icon: "💻" });
-
-    } else if (userPlan === "creator") {
-      // ── CREATOR : Analyse UX/contenu — Qwen ────────────────────────────
-      if (qwenKey) {
-        sseWrite(res, "progress", { agent: "Qwen", step: "Analyse UX & contenu", icon: "✍️" });
-        const contentAnalysis = await tryCallSync(
-          "qwen", "qwen-plus", qwenKey,
-          `Tu es un expert UX/contenu. Donne des conseils sur le wording et l'ergonomie pour cette modification (100 mots max).`,
-          `Demande: ${message}`,
-          300
-        );
-        if (contentAnalysis) agentContext += `[ANALYSE Qwen]:\n${contentAnalysis.text}\n\n`;
-      }
+Format OBLIGATOIRE:
+**Demande :** [reformulation claire en 1-2 phrases]
+**Modifications :** [liste bullet des changements techniques prévus]
+**Périmètre :** [HTML / CSS / JS / Contenu — coche ce qui est concerné]`,
+        `Demande: ${message}\nExtrait du code actuel:\n${codeSnippet}`,
+        500
+      );
+      sseWrite(res, "awaiting_validation", {
+        summary: reasoning?.text || `**Demande :** ${message}\n**Modifications :** À définir\n**Périmètre :** HTML`,
+        originalMessage: message,
+        agent: AGENT_NAMES[reasoner.provider],
+      });
+      res.end(); return;
     }
 
-    // Inject multi-agent context into system prompt if available
-    const finalSystemPrompt = agentContext
-      ? systemPrompt + `\n\n── CONTEXTE MULTI-AGENTS (utilise ces analyses pour enrichir ta réponse) ──\n${agentContext}`
-      : systemPrompt;
+    // ── PHASE 2: EXECUTE ──────────────────────────────────────────────────
+    if (phase === "execute") {
+      const summary = validatedSummary || message;
 
-    const startTime = Date.now();
-    let fullRaw = "";
-    let inputTokens = 0;
-    let outputTokens = 0;
+      const versionCount = await db.select({ count: count() }).from(versions).where(eq(versions.projectId, projectId));
+      const totalVersions = versionCount[0]?.count || 0;
 
-    try {
-      if (provider === "anthropic") {
-        const aiRes = await fetch("https://api.anthropic.com/v1/messages", {
-          method: "POST",
-          headers: {
-            "x-api-key": apiKey,
-            "anthropic-version": "2023-06-01",
-            "anthropic-beta": "prompt-caching-2024-07-31",
-            "content-type": "application/json",
-          },
-          body: JSON.stringify({
-            model: modelToUse,
-            max_tokens: 16000,
-            temperature: 0.3,
-            stream: true,
-            system: [{ type: "text", text: finalSystemPrompt, cache_control: { type: "ephemeral" } }],
-            messages: llmMessages,
-          }),
-        });
-        if (!aiRes.ok || !aiRes.body) { sseWrite(res, "error", { message: `Erreur API: ${await aiRes.text()}` }); res.end(); return; }
-        const reader = aiRes.body.getReader();
-        const decoder = new TextDecoder();
-        let buffer = "";
-        while (true) {
-          const { done, value } = await reader.read();
-          if (done) break;
-          buffer += decoder.decode(value, { stream: true });
-          const lines = buffer.split("\n"); buffer = lines.pop() || "";
-          for (const line of lines) {
-            if (!line.startsWith("data: ")) continue;
-            const raw = line.slice(6).trim(); if (raw === "[DONE]") continue;
-            try {
-              const evt = JSON.parse(raw);
-              if (evt.type === "content_block_delta" && evt.delta?.type === "text_delta") { fullRaw += evt.delta.text; sseWrite(res, "chunk", { text: evt.delta.text }); }
-              if (evt.type === "message_delta" && evt.usage) outputTokens = evt.usage.output_tokens || 0;
-              if (evt.type === "message_start" && evt.message?.usage) inputTokens = evt.message.usage.input_tokens || 0;
-            } catch { /* skip */ }
-          }
-        }
-      } else {
-        // OpenAI-compatible providers (DeepSeek, OpenAI, Mistral, Groq…)
-        const baseUrls: Record<string, string> = {
-          deepseek: "https://api.deepseek.com/v1",
-          openai: "https://api.openai.com/v1",
-          mistral: "https://api.mistral.ai/v1",
-          groq: "https://api.groq.com/openai/v1",
-        };
-        const baseUrl = baseUrls[provider] || "https://api.openai.com/v1";
-        // Wrap assistant history messages so DeepSeek doesn't learn "plain text" style
-        const wrappedMessages = llmMessages.map(m =>
-          m.role === "assistant"
-            ? { ...m, content: `{"action":"chat","reply":${JSON.stringify(m.content)}}` }
-            : m
-        );
-        const allMessages = [{ role: "system", content: finalSystemPrompt }, ...wrappedMessages];
-        const aiRes = await fetch(`${baseUrl}/chat/completions`, {
-          method: "POST",
-          headers: { "Authorization": `Bearer ${apiKey}`, "content-type": "application/json" },
-          body: JSON.stringify({
-            model: modelToUse,
-            max_tokens: 16000,
-            temperature: 0.3,
-            stream: true,
-            response_format: { type: "json_object" },
-            messages: allMessages,
-          }),
-        });
-        if (!aiRes.ok || !aiRes.body) { sseWrite(res, "error", { message: `Erreur API ${provider}: ${await aiRes.text()}` }); res.end(); return; }
-        const reader = aiRes.body.getReader();
-        const decoder = new TextDecoder();
-        let buffer = "";
-        while (true) {
-          const { done, value } = await reader.read();
-          if (done) break;
-          buffer += decoder.decode(value, { stream: true });
-          const lines = buffer.split("\n"); buffer = lines.pop() || "";
-          for (const line of lines) {
-            if (!line.startsWith("data: ")) continue;
-            const raw = line.slice(6).trim(); if (raw === "[DONE]") continue;
-            try {
-              const evt = JSON.parse(raw);
-              const chunk = evt.choices?.[0]?.delta?.content;
-              if (chunk) { fullRaw += chunk; sseWrite(res, "chunk", { text: chunk }); }
-              if (evt.usage) { inputTokens = evt.usage.prompt_tokens || 0; outputTokens = evt.usage.completion_tokens || 0; }
-            } catch { /* skip */ }
-          }
-        }
-      }
+      await db.insert(chatMessages).values({ projectId, userId: user.id, role: "user", content: message });
 
-      const tokensUsed = inputTokens + outputTokens;
-      const durationMs = Date.now() - startTime;
+      const history = await db.select().from(chatMessages)
+        .where(eq(chatMessages.projectId, projectId))
+        .orderBy(chatMessages.createdAt).limit(10);
 
-      // Parse agent response — try pure parse first, then balanced-brace extraction
-      let agentResponse: { action: string; code?: string; reply: string };
-      console.log("[chat] fullRaw preview:", fullRaw.slice(0, 300));
       try {
-        agentResponse = JSON.parse(fullRaw.trim());
-        console.log("[chat] JSON.parse OK — action:", agentResponse.action, "hasCode:", !!agentResponse.code);
-      } catch {
-        try {
-          const extracted = extractJsonObject(fullRaw);
-          agentResponse = JSON.parse(extracted ?? fullRaw);
-          console.log("[chat] extractJsonObject OK — action:", agentResponse.action, "hasCode:", !!agentResponse.code);
-        } catch (e2) {
-          console.log("[chat] parse FAILED:", String(e2), "— fallback to chat action");
-          agentResponse = { action: "chat", reply: fullRaw };
+        // ── A : Agent / Planning ────────────────────────────────────────
+        let agentPlan = "";
+        const agentLlm = resolveKey(config.agent, allKeys);
+        if (agentLlm) {
+          sseWrite(res, "progress", { agent: AGENT_NAMES[agentLlm.provider], step: "Planification des modifications…", icon: "🤖" });
+          const plan = await tryCallSync(
+            agentLlm.provider, agentLlm.model, agentLlm.key,
+            `Tu es un agent de développement web expert. Sur base du résumé validé, produis un plan d'action technique précis (150 mots max):
+- Éléments HTML à modifier/créer (IDs, classes, balises exactes)
+- Styles CSS à ajouter/modifier (propriétés précises)
+- Logique JS à implémenter (fonctions, événements)
+Sois technique et concis.`,
+            `Résumé validé: ${summary}\nCode actuel (extrait):\n${codeSnippet}`,
+            600
+          );
+          if (plan) agentPlan = plan.text;
         }
-      }
 
-      // ── Étape 4 (Agency) : Contrôle — Claude Haiku ──────────────────────
-      if (userPlan === "agency" && claudeKey && agentResponse.action === "modify" && agentResponse.code) {
-        sseWrite(res, "progress", { agent: "Claude", step: "Contrôle qualité du code généré", icon: "✅" });
-        const review = await tryCallSync(
-          "anthropic", "claude-haiku-4-5", claudeKey,
-          `Tu es un expert QA en développement web. Vérifie ce code HTML généré et signale uniquement les problèmes critiques (balises non fermées, JS cassé, liens brisés). Si tout est correct, réponds UNIQUEMENT "OK". Sinon liste les problèmes en moins de 50 mots.`,
-          agentResponse.code.slice(0, 6000),
-          200
-        );
-        if (review && review.text.trim() !== "OK") {
-          console.log("[chat:agency:contrôle] Problèmes détectés:", review.text);
-          // Append control feedback to reply so user sees it
-          agentResponse.reply = agentResponse.reply + `\n\n⚠️ *Contrôle qualité : ${review.text.trim()}*`;
+        // ── B : Pré-exécution Qwen (Agency: 2 exécutants) ──────────────
+        let qwenDraft = "";
+        if (config.executors.length > 1) {
+          const qwenLlm = resolveKey("qwen", allKeys);
+          if (qwenLlm) {
+            sseWrite(res, "progress", { agent: AGENT_NAMES[qwenLlm.provider], step: "Préparation des modifications…", icon: "⚙️" });
+            const draft = await tryCallSync(
+              qwenLlm.provider, qwenLlm.model, qwenLlm.key,
+              `Tu es un développeur frontend expert. En te basant sur le plan fourni, génère UNIQUEMENT les snippets HTML/CSS/JS à modifier (pas le HTML complet). Indique où insérer chaque snippet.`,
+              `Plan: ${agentPlan}\nRésumé: ${summary}\nExtrait code:\n${codeSnippet}`,
+              1000
+            );
+            if (draft) qwenDraft = draft.text;
+          }
+        }
+
+        // ── C : Exécution streaming ─────────────────────────────────────
+        const execProvider = config.executors[config.executors.length - 1];
+        const execLlm = resolveKey(execProvider, allKeys);
+        if (!execLlm) { sseWrite(res, "error", { message: "Aucun LLM d'exécution disponible" }); res.end(); return; }
+
+        sseWrite(res, "progress", { agent: AGENT_NAMES[execLlm.provider], step: "Génération du code complet…", icon: "💻" });
+
+        const systemPrompt = `Tu es Mar-ia, experte en développement web. Tu travailles sur le projet "${project[0].name}".
+
+FORMAT DE RÉPONSE — OBLIGATOIRE: UN SEUL JSON BRUT, RIEN AVANT, RIEN APRÈS.
+Si modification: {"action":"modify","reply":"[explication 2-3 phrases]","code":"<!DOCTYPE html>...HTML complet..."}
+Si discussion: {"action":"chat","reply":"[réponse]"}
+
+RÈGLES: code 100% complet, jamais tronqué. Navigation = sections <section id="page-xxx"> + showPage(). Images = Unsplash/SVG.
+
+CODE ACTUEL (v${currentVersion[0].versionNumber}):
+${currentVersion[0].generatedCode || ""}
+${agentPlan ? `\n── PLAN D'ACTION ──\n${agentPlan}` : ""}${qwenDraft ? `\n\n── MODIFICATIONS PRÉPARÉES ──\n${qwenDraft}` : ""}`;
+
+        const llmMessages: Array<{ role: "user" | "assistant"; content: any }> = history
+          .filter(m => m.content?.trim())
+          .map(m => ({ role: m.role as "user" | "assistant", content: m.content || "" }));
+
+        if (images && images.length > 0) {
+          llmMessages.pop();
+          const imageBlocks = images.map(img => ({ type: "image" as const, source: { type: "base64" as const, media_type: img.mimeType as any, data: img.base64 } }));
+          llmMessages.push({ role: "user", content: [...imageBlocks, { type: "text", text: summary }] });
+        } else if (llmMessages.length > 0 && llmMessages[llmMessages.length - 1].role === "user") {
+          const last = llmMessages[llmMessages.length - 1];
+          if (typeof last.content === "string") last.content = summary;
+        }
+
+        const startTime = Date.now();
+        let fullRaw = ""; let inputTokens = 0; let outputTokens = 0;
+
+        if (execLlm.provider === "anthropic") {
+          const aiRes = await fetch("https://api.anthropic.com/v1/messages", {
+            method: "POST",
+            headers: { "x-api-key": execLlm.key, "anthropic-version": "2023-06-01", "anthropic-beta": "prompt-caching-2024-07-31", "content-type": "application/json" },
+            body: JSON.stringify({ model: execLlm.model, max_tokens: 16000, temperature: 0.3, stream: true, system: [{ type: "text", text: systemPrompt, cache_control: { type: "ephemeral" } }], messages: llmMessages }),
+          });
+          if (!aiRes.ok || !aiRes.body) { sseWrite(res, "error", { message: `Erreur API: ${await aiRes.text()}` }); res.end(); return; }
+          const reader = aiRes.body.getReader(); const dec = new TextDecoder(); let buf = "";
+          while (true) {
+            const { done, value } = await reader.read(); if (done) break;
+            buf += dec.decode(value, { stream: true });
+            const lines = buf.split("\n"); buf = lines.pop() || "";
+            for (const line of lines) {
+              if (!line.startsWith("data: ")) continue;
+              const raw = line.slice(6).trim(); if (raw === "[DONE]") continue;
+              try {
+                const evt = JSON.parse(raw);
+                if (evt.type === "content_block_delta" && evt.delta?.type === "text_delta") { fullRaw += evt.delta.text; sseWrite(res, "chunk", { text: evt.delta.text }); }
+                if (evt.type === "message_delta" && evt.usage) outputTokens = evt.usage.output_tokens || 0;
+                if (evt.type === "message_start" && evt.message?.usage) inputTokens = evt.message.usage.input_tokens || 0;
+              } catch { /* skip */ }
+            }
+          }
         } else {
-          console.log("[chat:agency:contrôle] Code validé ✅");
+          const baseUrls: Record<string, string> = { deepseek: "https://api.deepseek.com/v1", openai: "https://api.openai.com/v1", qwen: "https://dashscope.aliyuncs.com/compatible-mode/v1" };
+          const baseUrl = baseUrls[execLlm.provider] || "https://api.openai.com/v1";
+          const wrappedMessages = llmMessages.map(m => m.role === "assistant" ? { ...m, content: `{"action":"chat","reply":${JSON.stringify(m.content)}}` } : m);
+          const aiRes = await fetch(`${baseUrl}/chat/completions`, {
+            method: "POST",
+            headers: { "Authorization": `Bearer ${execLlm.key}`, "content-type": "application/json" },
+            body: JSON.stringify({ model: execLlm.model, max_tokens: 16000, temperature: 0.3, stream: true, response_format: { type: "json_object" }, messages: [{ role: "system", content: systemPrompt }, ...wrappedMessages] }),
+          });
+          if (!aiRes.ok || !aiRes.body) { sseWrite(res, "error", { message: `Erreur ${execLlm.provider}: ${await aiRes.text()}` }); res.end(); return; }
+          const reader = aiRes.body.getReader(); const dec = new TextDecoder(); let buf = "";
+          while (true) {
+            const { done, value } = await reader.read(); if (done) break;
+            buf += dec.decode(value, { stream: true });
+            const lines = buf.split("\n"); buf = lines.pop() || "";
+            for (const line of lines) {
+              if (!line.startsWith("data: ")) continue;
+              const raw = line.slice(6).trim(); if (raw === "[DONE]") continue;
+              try {
+                const evt = JSON.parse(raw);
+                const chunk = evt.choices?.[0]?.delta?.content;
+                if (chunk) { fullRaw += chunk; sseWrite(res, "chunk", { text: chunk }); }
+                if (evt.usage) { inputTokens = evt.usage.prompt_tokens || 0; outputTokens = evt.usage.completion_tokens || 0; }
+              } catch { /* skip */ }
+            }
+          }
         }
+
+        const durationMs = Date.now() - startTime;
+        const tokensUsed = inputTokens + outputTokens;
+
+        // Parse JSON response
+        let agentResponse: { action: string; code?: string; reply: string };
+        try { agentResponse = JSON.parse(fullRaw.trim()); }
+        catch {
+          try { agentResponse = JSON.parse(extractJsonObject(fullRaw) ?? fullRaw); }
+          catch { agentResponse = { action: "chat", reply: fullRaw }; }
+        }
+        console.log(`[chat:${userPlan}] action=${agentResponse.action} hasCode=${!!agentResponse.code}`);
+
+        // ── D : Contrôle ───────────────────────────────────────────────
+        if (agentResponse.action === "modify" && agentResponse.code) {
+          const controlLlm = resolveKey(config.controller, allKeys);
+          if (controlLlm) {
+            sseWrite(res, "progress", { agent: AGENT_NAMES[controlLlm.provider], step: "Test & validation du code…", icon: "🔍" });
+            const control = await tryCallSync(
+              controlLlm.provider, controlLlm.model, controlLlm.key,
+              `Expert QA web. Vérifie ce code HTML. Réponds UNIQUEMENT "OK" si correct. Sinon: problèmes critiques (balises non fermées, JS cassé, navigation brisée) en 60 mots max.`,
+              agentResponse.code.slice(0, 6000), 200
+            );
+            if (control && control.text.trim() !== "OK") {
+              console.log(`[chat:${userPlan}:ctrl] Problèmes:`, control.text);
+              sseWrite(res, "progress", { agent: AGENT_NAMES[execLlm.provider], step: "Correction (retour exécutant)…", icon: "🔄" });
+              const retry = await tryCallSync(
+                execLlm.provider, execLlm.model, execLlm.key,
+                systemPrompt + `\n\nCORRECTION REQUISE:\n${control.text}\nCorrige ces problèmes et retourne le JSON complet.`,
+                summary, 16000
+              );
+              if (retry) {
+                try {
+                  const retried = JSON.parse(extractJsonObject(retry.text) ?? retry.text);
+                  if (retried.code) agentResponse = retried;
+                } catch { /* keep original */ }
+              }
+            } else { console.log(`[chat:${userPlan}:ctrl] ✅ OK`); }
+          }
+        }
+
+        // ── E : Sauvegarde version ─────────────────────────────────────
+        let versionId: number | null = null;
+        const _allUsed = [config.agent, ...config.executors, config.controller].map(p => PROVIDER_MODELS[p]);
+        const usedModels = _allUsed.filter((v, i) => _allUsed.indexOf(v) === i).join("+");
+
+        if (agentResponse.action === "modify" && agentResponse.code) {
+          const nextVersionNumber = totalVersions + 1;
+          const [versionResult] = await db.insert(versions).values({
+            projectId, userId: user.id,
+            versionNumber: nextVersionNumber,
+            label: `Version ${nextVersionNumber} — ${message.slice(0, 50)}`,
+            prompt: message, generatedCode: agentResponse.code,
+            tokensUsed, generationTimeMs: durationMs,
+            model: usedModels || execLlm.model, status: "ready",
+          }).returning({ id: versions.id });
+          versionId = versionResult.id;
+          await db.update(projects).set({ currentVersionId: versionId }).where(eq(projects.id, projectId));
+        }
+
+        // ── F : Livraison ──────────────────────────────────────────────
+        const assistantReply = agentResponse.reply || "Modification effectuée.";
+        await db.insert(chatMessages).values({
+          projectId, userId: user.id, role: "assistant",
+          content: assistantReply, versionId: versionId || undefined, tokensUsed,
+        });
+
+        sseWrite(res, "done", {
+          versionId, tokensUsed, reply: assistantReply,
+          action: agentResponse.action, generatedCode: agentResponse.code || null,
+        });
+
+        // ── G : Suggestions A/B/C ──────────────────────────────────────
+        const suggesterLlm = resolveKey(config.suggester, allKeys);
+        if (suggesterLlm) {
+          const suggestResult = await tryCallSync(
+            suggesterLlm.provider, suggesterLlm.model, suggesterLlm.key,
+            `Tu es Mar-ia. Propose 3 évolutions pertinentes pour ce site suite à la modification. Format JSON STRICT:
+[{"label":"A","text":"..."},{"label":"B","text":"..."},{"label":"C","text":"..."}]
+Chaque suggestion: 6-10 mots, actionnable et concrète. Pas de guillemets dans le texte.`,
+            `Projet: ${project[0].name}\nModification: ${assistantReply.slice(0, 200)}`,
+            300
+          );
+          if (suggestResult) {
+            try {
+              const extracted = extractJsonObject(suggestResult.text);
+              const suggestions = JSON.parse(extracted ?? suggestResult.text);
+              if (Array.isArray(suggestions)) sseWrite(res, "suggestions", { suggestions });
+            } catch { /* skip */ }
+          }
+        }
+
+      } catch (err: any) {
+        sseWrite(res, "error", { message: err.message });
       }
 
-      let versionId: number | null = null;
-
-      if (agentResponse.action === "modify" && agentResponse.code) {
-        const nextVersionNumber = totalVersions + 1;
-        const [versionResult] = await db.insert(versions).values({
-          projectId,
-          userId: user.id,
-          versionNumber: nextVersionNumber,
-          label: `Version ${nextVersionNumber} — ${message.slice(0, 50)}`,
-          prompt: message,
-          generatedCode: agentResponse.code,
-          tokensUsed,
-          generationTimeMs: durationMs,
-          model: `${modelToUse}${userPlan === "agency" ? "+gpt4o+claude" : userPlan === "pro" ? "+claude" : userPlan === "creator" ? "+qwen" : ""}`,
-          status: "ready",
-        }).returning({ id: versions.id });
-        versionId = versionResult.id;
-        await db.update(projects).set({ currentVersionId: versionId }).where(eq(projects.id, projectId));
-      }
-
-      const assistantReply = agentResponse.reply || "Je suis là pour vous aider !";
-      await db.insert(chatMessages).values({
-        projectId,
-        userId: user.id,
-        role: "assistant",
-        content: assistantReply,
-        versionId: versionId || undefined,
-        tokensUsed,
-      });
-
-      sseWrite(res, "done", {
-        versionId,
-        tokensUsed,
-        reply: assistantReply,
-        action: agentResponse.action,
-        generatedCode: agentResponse.code || null,
-      });
-    } catch (err: any) {
-      sseWrite(res, "error", { message: err.message });
+      res.end();
+      return;
     }
 
-    res.end();
+    res.status(400).json({ error: "Phase inconnue. Utilisez 'reason' ou 'execute'." });
   });
 
   // ── POST /api/stream/debug ────────────────────────────────────────────────
