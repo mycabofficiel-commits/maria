@@ -722,9 +722,10 @@ Format OBLIGATOIRE:
 
       await db.insert(chatMessages).values({ projectId, userId: user.id, role: "user", content: message });
 
+      // Fetch only the 2 most recent messages for continuity context (limits old-session confusion)
       const history = await db.select().from(chatMessages)
         .where(eq(chatMessages.projectId, projectId))
-        .orderBy(chatMessages.createdAt).limit(6);
+        .orderBy(chatMessages.createdAt).limit(2);
 
       try {
         // ── A : Agent / Planning ────────────────────────────────────────
@@ -855,12 +856,28 @@ ${agentPlan ? `\n── PLAN D'ACTION ──\n${agentPlan}` : ""}${qwenDraft ? `
         const durationMs = Date.now() - startTime;
         const tokensUsed = inputTokens + outputTokens;
 
-        // Parse JSON response
+        // Parse JSON response — robust fallback for literal newlines/malformed JSON
         let agentResponse: { action: string; code?: string; reply: string };
         try { agentResponse = JSON.parse(fullRaw.trim()); }
         catch {
           try { agentResponse = JSON.parse(extractJsonObject(fullRaw) ?? fullRaw); }
-          catch { agentResponse = { action: "chat", reply: fullRaw }; }
+          catch {
+            // Final fallback: extract fields with regex (handles unescaped newlines in code field)
+            const actionMatch = fullRaw.match(/"action"\s*:\s*"(\w+)"/);
+            const replyMatch = fullRaw.match(/"reply"\s*:\s*"((?:[^"\\]|\\.)*)"/);
+            const htmlStart = fullRaw.search(/<!DOCTYPE html>/i);
+            let extractedCode: string | undefined;
+            if (htmlStart >= 0) {
+              const tail = fullRaw.slice(htmlStart);
+              const htmlEnd = tail.lastIndexOf('</html>');
+              extractedCode = htmlEnd >= 0 ? tail.slice(0, htmlEnd + 7) : tail.replace(/["}\s]+$/, '');
+            }
+            agentResponse = {
+              action: extractedCode ? "modify" : (actionMatch?.[1] || "chat"),
+              reply: replyMatch?.[1]?.replace(/\\n/g, '\n').replace(/\\"/g, '"') || (extractedCode ? "Modification effectuée." : fullRaw.slice(0, 300)),
+              code: extractedCode,
+            };
+          }
         }
         console.log(`[chat:${userPlan}] action=${agentResponse.action} hasCode=${!!agentResponse.code}`);
 
