@@ -1333,7 +1333,7 @@ ${jsCode}`;
               </div>
 
               {/* ── Chat zone (bottom-left, 40% height) ── */}
-              <div className="flex flex-col" style={{ flex: codeCollapsed ? '1 1 100%' : '0 0 40%', minHeight: 0, transition: isDraggingRef.current ? 'none' : 'flex 0.2s ease' }}>
+              <div className="flex flex-col" style={{ flex: codeCollapsed ? '1 1 100%' : '0 0 40%', minHeight: 0, overflow: 'hidden', transition: isDraggingRef.current ? 'none' : 'flex 0.2s ease' }}>
                 {/* Chat header */}
                 <div className="px-3 py-1.5 border-b border-border/40 flex-shrink-0 flex items-center gap-2 bg-background/60">
                   <div className="w-5 h-5 rounded-full bg-primary/20 flex items-center justify-center">
@@ -1596,50 +1596,50 @@ ${jsCode}`;
                     </div>
                   )}
 
-                  <div ref={chatEndRef} />
-                </div>
-
-                {/* ── Carte de validation du raisonnement ── */}
-                {chatPhase === "awaiting_validation" && (
-                  <div className="mx-2 mb-1.5 rounded-xl border border-primary/40 bg-primary/5 p-3 space-y-2">
-                    <div className="flex items-start gap-2">
-                      <Sparkles className="w-3.5 h-3.5 text-primary mt-0.5 flex-shrink-0" />
-                      <div className="flex-1 min-w-0">
-                        <p className="text-xs font-semibold text-foreground mb-1">Mar-ia a compris ta demande :</p>
-                        {isSummaryEditing ? (
-                          <textarea
-                            className="w-full text-xs bg-background border border-border/60 rounded-lg px-2 py-1.5 resize-none text-foreground leading-relaxed focus:outline-none focus:border-primary/60"
-                            rows={4}
-                            value={summaryEdit}
-                            onChange={e => setSummaryEdit(e.target.value)}
-                            autoFocus
-                          />
-                        ) : (
-                          <div className="text-xs text-muted-foreground leading-relaxed whitespace-pre-wrap">{pendingSummary}</div>
-                        )}
+                  {/* ── Carte de validation du raisonnement ── */}
+                  {chatPhase === "awaiting_validation" && (
+                    <div className="mx-2 mb-1.5 rounded-xl border border-primary/40 bg-primary/5 p-3 space-y-2">
+                      <div className="flex items-start gap-2">
+                        <Sparkles className="w-3.5 h-3.5 text-primary mt-0.5 flex-shrink-0" />
+                        <div className="flex-1 min-w-0">
+                          <p className="text-xs font-semibold text-foreground mb-1">Mar-ia a compris ta demande :</p>
+                          {isSummaryEditing ? (
+                            <textarea
+                              className="w-full text-xs bg-background border border-border/60 rounded-lg px-2 py-1.5 resize-none text-foreground leading-relaxed focus:outline-none focus:border-primary/60"
+                              rows={4}
+                              value={summaryEdit}
+                              onChange={e => setSummaryEdit(e.target.value)}
+                              autoFocus
+                            />
+                          ) : (
+                            <div className="text-xs text-muted-foreground leading-relaxed whitespace-pre-wrap max-h-28 overflow-y-auto pr-1">{pendingSummary}</div>
+                          )}
+                        </div>
+                      </div>
+                      <div className="flex gap-1.5">
+                        <Button size="sm" className="h-7 text-xs bg-primary hover:bg-primary/90 flex-1 gap-1"
+                          onClick={() => {
+                            const validated = isSummaryEditing ? summaryEdit : pendingSummary;
+                            setChatPhase("idle");
+                            setIsSummaryEditing(false);
+                            executeChatStream(pendingOriginalMsg, validated);
+                          }}>
+                          ✓ Valider
+                        </Button>
+                        <Button size="sm" variant="outline" className="h-7 text-xs border-border/50 flex-1"
+                          onClick={() => { setIsSummaryEditing(v => !v); setSummaryEdit(pendingSummary); }}>
+                          {isSummaryEditing ? "✓ Ok" : "✎ Modifier"}
+                        </Button>
+                        <Button size="sm" variant="ghost" className="h-7 text-xs text-muted-foreground flex-1"
+                          onClick={() => { setChatPhase("idle"); setIsSummaryEditing(false); }}>
+                          ✕ Annuler
+                        </Button>
                       </div>
                     </div>
-                    <div className="flex gap-1.5">
-                      <Button size="sm" className="h-7 text-xs bg-primary hover:bg-primary/90 flex-1 gap-1"
-                        onClick={() => {
-                          const validated = isSummaryEditing ? summaryEdit : pendingSummary;
-                          setChatPhase("idle");
-                          setIsSummaryEditing(false);
-                          executeChatStream(pendingOriginalMsg, validated);
-                        }}>
-                        ✓ Valider
-                      </Button>
-                      <Button size="sm" variant="outline" className="h-7 text-xs border-border/50 flex-1"
-                        onClick={() => { setIsSummaryEditing(v => !v); setSummaryEdit(pendingSummary); }}>
-                        {isSummaryEditing ? "✓ Ok" : "✎ Modifier"}
-                      </Button>
-                      <Button size="sm" variant="ghost" className="h-7 text-xs text-muted-foreground flex-1"
-                        onClick={() => { setChatPhase("idle"); setIsSummaryEditing(false); }}>
-                        ✕ Annuler
-                      </Button>
-                    </div>
-                  </div>
-                )}
+                  )}
+
+                  <div ref={chatEndRef} />
+                </div>
 
                 {/* pendingAction for generate/debug only */}
                 {pendingAction && (
