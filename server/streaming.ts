@@ -691,15 +691,7 @@ Retourne UNIQUEMENT le code HTML complet, sans explication, sans markdown, sans 
 
     // ── PHASE 1: RAISONNEMENT ──────────────────────────────────────────────
     if (phase === "reason") {
-      const reasoner = resolveKey(config.reasoner, allKeys);
-      if (!reasoner) {
-        sseWrite(res, "error", { message: "Aucun LLM disponible pour le raisonnement" });
-        res.end(); return;
-      }
-      sseWrite(res, "progress", { agent: AGENT_NAMES[reasoner.provider], step: "Analyse & compréhension de la demande…", icon: "🧠" });
-      const reasoning = await tryCallSync(
-        reasoner.provider, reasoner.model, reasoner.key,
-        `Tu es Mar-ia, experte en développement web. Avant de répondre, LIS ATTENTIVEMENT le code actuel du site et la demande de l'utilisateur.
+      const reasonerSystemPrompt = `Tu es Mar-ia, experte en développement web. Avant de répondre, LIS ATTENTIVEMENT le code actuel du site et la demande de l'utilisateur.
 
 ÉTAPE 1 — CLASSIFICATION de la demande :
 - Bug/Debug (affichage cassé, erreur, ne fonctionne pas) → analyser le code pour trouver les causes précises
@@ -718,14 +710,31 @@ Pour une modification : repère les sélecteurs, classes, IDs concernés.
 **Actions prévues :** [liste bullet des corrections/modifications concrètes]
 **Périmètre :** [HTML / CSS / JS / Contenu]
 
-⚠️ Ne réponds PAS à la va-vite. Prends le temps de lire le code et de diagnostiquer correctement.`,
-        `Demande utilisateur: "${message}"\n\nCode actuel du site (${project[0].name}):\n${fullCode.slice(0, 8000)}`,
-        800
-      );
+⚠️ Ne réponds PAS à la va-vite. Prends le temps de lire le code et de diagnostiquer correctement.`;
+      const reasonerUserMsg = `Demande utilisateur: "${message}"\n\nCode actuel du site (${project[0].name}):\n${fullCode.slice(0, 8000)}`;
+
+      // Try reasoner with automatic fallback if quota exceeded or error
+      let reasoning: LlmResult | null = null;
+      let usedReasoner = resolveKey(config.reasoner, allKeys);
+      if (!usedReasoner) {
+        sseWrite(res, "error", { message: "Aucun LLM disponible pour le raisonnement" });
+        res.end(); return;
+      }
+      // Walk the fallback chain until one succeeds
+      const startIdx = FALLBACK_CHAIN.indexOf(usedReasoner.provider);
+      for (let i = startIdx; i < FALLBACK_CHAIN.length; i++) {
+        const p = FALLBACK_CHAIN[i];
+        const k = allKeys[p];
+        if (!k) continue;
+        sseWrite(res, "progress", { agent: AGENT_NAMES[p], step: "Analyse & compréhension de la demande…", icon: "🧠" });
+        reasoning = await tryCallSync(p, PROVIDER_MODELS[p], k, reasonerSystemPrompt, reasonerUserMsg, 800);
+        if (reasoning?.text) { usedReasoner = { provider: p, model: PROVIDER_MODELS[p], key: k }; break; }
+      }
+
       sseWrite(res, "awaiting_validation", {
         summary: reasoning?.text || `**Demande :** ${message}\n**Modifications :** À définir\n**Périmètre :** HTML`,
         originalMessage: message,
-        agent: AGENT_NAMES[reasoner.provider],
+        agent: AGENT_NAMES[usedReasoner.provider],
       });
       res.end(); return;
     }
