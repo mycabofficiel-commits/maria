@@ -76,7 +76,8 @@ export default function AppLayout({ children, title }: AppLayoutProps) {
         <div className="flex items-center justify-center px-3 h-16 border-b border-sidebar-border overflow-hidden">
           <Link href="/">
             <LogoBrand
-              size={navCollapsed ? "sm" : "sm"}
+              size="sm"
+              showText={!navCollapsed}
               className="cursor-pointer hover:opacity-80 transition-opacity"
             />
           </Link>
