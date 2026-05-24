@@ -686,8 +686,8 @@ Retourne UNIQUEMENT le code HTML complet, sans explication, sans markdown, sans 
     res.flushHeaders();
 
     const fullCode = currentVersion[0].generatedCode || "";
-    // Reason phase gets more context for deep analysis (8000 chars), execute phase gets 3000
-    const codeSnippet = fullCode.slice(0, 3000);
+    // 6000 chars gives the agent enough context to identify existing classes/functions/variables
+    const codeSnippet = fullCode.slice(0, 6000);
 
     // ── PHASE 1: RAISONNEMENT ──────────────────────────────────────────────
     if (phase === "reason") {
@@ -768,21 +768,23 @@ Pour une modification : repère les sélecteurs, classes, IDs, onclick existants
           sseWrite(res, "progress", { agent: AGENT_NAMES[agentLlm.provider], step: "Planification des modifications…", icon: "🤖" });
           const plan = await tryCallSync(
             agentLlm.provider, agentLlm.model, agentLlm.key,
-            `Tu es un agent de développement web expert. Sur base du résumé validé, produis un plan d'action technique précis (150 mots max).
+            `Tu es un architecte web expert. Analyse le code existant et produis un plan chirurgical précis (200 mots max).
 
-RÈGLE NAVIGATION ABSOLUE — à appliquer dans chaque plan :
-- Logo/marque → onclick="showPage('accueil'); return false;" href="#"
-- Liens de navigation → onclick="showPage('page-id'); return false;" href="#"
-- JAMAIS href="#hero", href="#features" ou toute ancre — ce sont des BUGS
-- La fonction showPage() doit toujours être présente dans le <script>
+PHASE 1 — LIS le code existant et repère :
+• Variables CSS déjà définies (--color-primary, --font-main, etc.)
+• Classes CSS existantes liées à la demande (réutilise-les, ne recrée pas)
+• Fonctions JS déjà présentes (showPage, toggleMenu, etc.)
+• IDs/sections HTML existants (ne les supprime pas)
 
-Plan à produire :
-- Éléments HTML à modifier/créer (IDs, classes, balises exactes, onclick corrects)
-- Styles CSS à ajouter/modifier (propriétés précises)
-- Logique JS à implémenter (fonctions, événements, showPage si navigation)
-Sois technique et concis.`,
-            `Résumé validé: ${summary}\nCode actuel (extrait):\n${codeSnippet}`,
-            600
+PHASE 2 — PLAN CHIRURGICAL (touche UNIQUEMENT ce qui est demandé) :
+• HTML : éléments exacts à ajouter/modifier avec les bonnes classes existantes
+• CSS : propriétés précises à changer en réutilisant les variables CSS existantes
+• JS : fonctions à créer/modifier en restant cohérent avec le code existant
+
+RÈGLE ABSOLUE : Préserver toutes les features non concernées (animations, sections, formulaires…)
+RÈGLE NAVIGATION : Logo/liens → onclick="showPage('id'); return false;" href="#" — jamais href="#section"`,
+            `Résumé de la tâche: ${summary}\n\nCode actuel du site (extrait):\n${codeSnippet}`,
+            800
           );
           if (plan) agentPlan = plan.text;
         }
@@ -795,9 +797,12 @@ Sois technique et concis.`,
             sseWrite(res, "progress", { agent: AGENT_NAMES[qwenLlm.provider], step: "Préparation des modifications…", icon: "⚙️" });
             const draft = await tryCallSync(
               qwenLlm.provider, qwenLlm.model, qwenLlm.key,
-              `Tu es un développeur frontend expert. En te basant sur le plan fourni, génère UNIQUEMENT les snippets HTML/CSS/JS à modifier (pas le HTML complet). Indique où insérer chaque snippet.`,
-              `Plan: ${agentPlan}\nRésumé: ${summary}\nExtrait code:\n${codeSnippet}`,
-              1000
+              `Tu es un développeur frontend expert. Génère les snippets précis à intégrer dans le code existant (pas le HTML complet).
+Pour chaque snippet : indique l'emplacement exact (après quelle balise / dans quelle classe CSS / dans quelle fonction JS).
+Réutilise les variables CSS et classes existantes. Respecte le style du code actuel.
+NAVIGATION : onclick="showPage('id'); return false;" — jamais href="#quelquechose"`,
+              `Plan: ${agentPlan}\nTâche: ${summary}\nCode existant:\n${codeSnippet}`,
+              1200
             );
             if (draft) qwenDraft = draft.text;
           }
@@ -810,30 +815,51 @@ Sois technique et concis.`,
 
         sseWrite(res, "progress", { agent: AGENT_NAMES[execLlm.provider], step: "Génération du code complet…", icon: "💻" });
 
-        const systemPrompt = `Tu es Mar-ia, experte en développement web. Tu travailles sur le projet "${project[0].name}".
+        const systemPrompt = `Tu es Mar-ia, développeuse web senior. Tu travailles sur le projet "${project[0].name}".
 
-TÂCHE ACTUELLE: ${summary}
+TÂCHE : ${summary}
 
-FORMAT DE RÉPONSE — OBLIGATOIRE: UN SEUL JSON BRUT, RIEN AVANT, RIEN APRÈS.
-Pour toute demande de modification du site: {"action":"modify","reply":"[explication ultra-courte 1-2 phrases]","code":"<!DOCTYPE html>...HTML complet modifié..."}
-Pour une question purement conversationnelle SANS modification de code: {"action":"chat","reply":"[réponse]"}
+FORMAT DE RÉPONSE — UN SEUL JSON BRUT, RIEN AVANT, RIEN APRÈS :
+• Modification du site → {"action":"modify","reply":"[1-2 phrases max]","code":"<!DOCTYPE html>..."}
+• Question conversationnelle pure → {"action":"chat","reply":"[réponse]"}
+⚠️ Tout changement visuel, ajout, correction → action="modify" OBLIGATOIRE.
 
-⚠️ RÈGLE ABSOLUE: Si l'utilisateur demande un changement visuel, une fonctionnalité, un ajout ou une modification → action="modify" OBLIGATOIRE.
+══════════════════════════════════════════════
+RÈGLES DE QUALITÉ — SANS EXCEPTION
+══════════════════════════════════════════════
 
-RÈGLES CODE — OBLIGATOIRES SANS EXCEPTION :
-1. CODE 100% COMPLET — jamais tronqué, toutes balises </style></script></body></html> présentes
-2. NAVIGATION showPage() — CRITIQUE pour tous les liens et le logo :
-   • Logo/marque cliquable : <a href="#" onclick="showPage('accueil'); return false;">
-   • Liens de navigation : <a href="#" onclick="showPage('page-id'); return false;">
-   • Boutons CTA internes : onclick="showPage('page-id'); return false;"
-   • ❌ INTERDIT : href="#hero", href="#section", href="#features" → blanchissent la preview
-   • La fonction showPage(id) DOIT toujours exister dans le <script> du document
-3. IMAGES : URLs Unsplash valides (https://images.unsplash.com/photo-ID?w=800&q=80)
-4. FORMULAIRES : onsubmit JS avec preventDefault() et message de confirmation
+1. ANALYSE D'ABORD, CODE ENSUITE
+   Lis le CODE ACTUEL ci-dessous. Identifie :
+   • Les variables CSS déjà définies (--color-*, --font-*, etc.) → réutilise-les
+   • Les classes CSS existantes → réutilise-les, ne recrée pas
+   • Les fonctions JS existantes (showPage, toggleMenu, etc.) → réutilise-les
+   • Les sections/pages déjà présentes → ne les supprime pas
 
-CODE ACTUEL (v${currentVersion[0].versionNumber}):
+2. MODIFICATION CHIRURGICALE
+   Change UNIQUEMENT ce que la tâche demande.
+   Préserve intégralement : animations, sections, formulaires, styles, couleurs, polices, JS existant.
+   N'invente rien qui n'est pas demandé. N'efface rien qui fonctionne.
+
+3. NAVIGATION showPage() — ARCHITECTURE SPA MONO-FICHIER
+   • Logo/marque → <a href="#" onclick="showPage('accueil'); return false;">
+   • Liens nav → <a href="#" onclick="showPage('page-id'); return false;">
+   • Boutons CTA internes → onclick="showPage('page-id'); return false;"
+   • ❌ INTERDIT : href="#hero", href="#section", href="#features" → blanchit la preview
+   • showPage(id) DOIT toujours exister dans le <script>
+
+4. CODE 100% COMPLET
+   Retourne le fichier HTML entier. Jamais tronqué.
+   Toutes les balises fermées : </style> </script> </body> </html>
+
+5. MÉDIAS & FORMULAIRES
+   • Images : https://images.unsplash.com/photo-ID?w=800&q=80
+   • Formulaires : onsubmit avec e.preventDefault() + message de confirmation JS
+
+══════════════════════════════════════════════
+CODE ACTUEL (v${currentVersion[0].versionNumber}) — LIS-LE AVANT D'ÉCRIRE :
+══════════════════════════════════════════════
 ${currentVersion[0].generatedCode || ""}
-${agentPlan ? `\n── PLAN D'ACTION ──\n${agentPlan}` : ""}${qwenDraft ? `\n\n── MODIFICATIONS PRÉPARÉES ──\n${qwenDraft}` : ""}`;
+${agentPlan ? `\n══ PLAN D'ACTION ══\n${agentPlan}` : ""}${qwenDraft ? `\n\n══ SNIPPETS PRÉPARÉS ══\n${qwenDraft}` : ""}`;
 
         const llmMessages: Array<{ role: "user" | "assistant"; content: any }> = history
           .filter(m => m.content?.trim())
