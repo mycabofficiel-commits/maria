@@ -115,6 +115,55 @@ function estimateCost(model: string, inputTokens: number, outputTokens: number):
 interface LlmResult { text: string; inputTokens: number; outputTokens: number; }
 
 /**
+ * Static code validator — runs instantly, no LLM cost.
+ * Returns a list of specific issues found in the generated HTML/CSS/JS.
+ * Used BEFORE the LLM controller to give the executor precise feedback.
+ */
+function validateGeneratedCode(html: string): string[] {
+  const issues: string[] = [];
+
+  // 1. Truncation — missing closing tags
+  if (!html.includes('</html>')) issues.push('Code tronqué : </html> manquant');
+  else if (!html.includes('</body>')) issues.push('Code tronqué : </body> manquant');
+  const styleOpen  = (html.match(/<style(?:[^>]*)>/gi) || []).length;
+  const styleClose = (html.match(/<\/style>/gi) || []).length;
+  if (styleOpen > styleClose) issues.push(`${styleOpen - styleClose} balise(s) <style> non fermée(s)`);
+  const scriptOpen  = (html.match(/<script(?![^>]*src)[^>]*>/gi) || []).length;
+  const scriptClose = (html.match(/<\/script>/gi) || []).length;
+  if (scriptOpen > scriptClose) issues.push(`${scriptOpen - scriptClose} balise(s) <script> non fermée(s)`);
+
+  // 2. Navigation bugs — href="#xxx" instead of showPage()
+  const badLinks = html.match(/href="#[a-zA-Z][^"]{1,40}"/g) || [];
+  const uniqueBad = [...new Set(badLinks)];
+  if (uniqueBad.length > 0) {
+    issues.push(
+      `Liens de navigation incorrects (blanchissent la preview) : ${uniqueBad.slice(0, 4).join(' ')}. ` +
+      `Remplacer par onclick="showPage('id'); return false;" href="#"`
+    );
+  }
+
+  // 3. showPage() function missing while site has multiple sections
+  const sectionCount = (html.match(/<section/gi) || []).length;
+  if (sectionCount > 1 && !html.match(/function\s+showPage\s*\(/)) {
+    issues.push('Fonction showPage() absente du <script> alors que le site a ' + sectionCount + ' sections');
+  }
+
+  // 4. Literal \n artifacts from JSON string unescaping
+  const literalN = (html.match(/\\n/g) || []).length;
+  if (literalN > 8) issues.push(`${literalN} séquences \\n littérales dans le HTML (artéfacts JSON non désérialisés)`);
+
+  // 5. Broken image src
+  const brokenSrc = (html.match(/src=["'](?:#|"|''|\.\/img|\/img|image\.png|photo\.jpg|placeholder)/gi) || []).length;
+  if (brokenSrc > 0) issues.push(`${brokenSrc} image(s) avec src cassé (utiliser https://images.unsplash.com/...)`);
+
+  // 6. Empty onclick or javascript:void
+  const voidLinks = (html.match(/href="javascript:void/gi) || []).length;
+  if (voidLinks > 3) issues.push(`${voidLinks} liens javascript:void(0) sans onclick défini`);
+
+  return issues;
+}
+
+/**
  * Extracts the first well-balanced JSON object from a string.
  * Handles cases where the LLM wraps the JSON in markdown or adds trailing text.
  */
@@ -972,38 +1021,88 @@ ${agentPlan ? `\n══ PLAN D'ACTION ══\n${agentPlan}` : ""}${qwenDraft ? `
         }
         console.log(`[chat:${userPlan}] action=${agentResponse.action} hasCode=${!!agentResponse.code}`);
 
-        // ── D : Contrôle ───────────────────────────────────────────────
+        // ── D : Validation + boucle auto-correction (max 2 passes) ────
         if (agentResponse.action === "modify" && agentResponse.code) {
           const controlLlm = resolveKey(config.controller, allKeys);
-          if (controlLlm) {
-            sseWrite(res, "progress", { agent: AGENT_NAMES[controlLlm.provider], step: "Test & validation du code…", icon: "🔍" });
-            const control = await tryCallSync(
-              controlLlm.provider, controlLlm.model, controlLlm.key,
-              `Tu es un expert QA en développement web. Vérifie ce code HTML/CSS/JS et réponds UNIQUEMENT "OK" s'il est correct.
-Sinon, liste les problèmes CRITIQUES en 80 mots max. Vérifie notamment :
-- Balises HTML non fermées (</style>, </script>, </body>, </html> manquants)
-- Séquences \\n ou \\t littérales visibles comme texte dans le HTML (pas de vrais sauts de ligne)
-- JavaScript cassé ou incomplet (fonctions tronquées, accolades manquantes)
-- Navigation showPage() défectueuse
-- Code tronqué ou incomplet
-Si tu vois des "\\n" comme texte dans le code HTML, c'est une erreur critique.`,
-              agentResponse.code.slice(0, 8000), 300
-            );
-            if (control && control.text.trim() !== "OK") {
-              console.log(`[chat:${userPlan}:ctrl] Problèmes:`, control.text);
-              sseWrite(res, "progress", { agent: AGENT_NAMES[execLlm.provider], step: "Correction (retour exécutant)…", icon: "🔄" });
-              const retry = await tryCallSync(
-                execLlm.provider, execLlm.model, execLlm.key,
-                systemPrompt + `\n\nCORRECTION REQUISE:\n${control.text}\nCorrige ces problèmes et retourne le JSON complet.`,
-                summary, 16000
+
+          for (let pass = 1; pass <= 2; pass++) {
+            // ── D1 : Validateur statique (gratuit, instantané) ─────────
+            const staticIssues = validateGeneratedCode(agentResponse.code);
+            console.log(`[chat:${userPlan}:validate:pass${pass}] static issues:`, staticIssues);
+
+            // ── D2 : LLM contrôleur (analyse sémantique) ──────────────
+            let llmIssues = "";
+            if (controlLlm) {
+              sseWrite(res, "progress", { agent: AGENT_NAMES[controlLlm.provider], step: `Vérification qualité (passe ${pass})…`, icon: "🔍" });
+              const ctrl = await tryCallSync(
+                controlLlm.provider, controlLlm.model, controlLlm.key,
+                `Tu es un expert QA développement web. Inspecte ce code HTML/CSS/JS et liste les problèmes CONCRETS trouvés.
+Réponds UNIQUEMENT "OK" si tout est correct. Sinon, liste chaque problème sur une ligne (80 mots max total).
+
+Vérifie :
+- href="#quelquechose" sur les liens de nav/logo → doit être onclick="showPage('id'); return false;"
+- Fonction showPage() présente si plusieurs sections
+- Balises non fermées : </style> </script> </body> </html>
+- JS incomplet ou cassé (accolades manquantes, fonctions tronquées)
+- Code HTML tronqué
+- Animations/features du code original supprimées par erreur`,
+                agentResponse.code.slice(0, 10000), 400
               );
-              if (retry) {
-                try {
-                  const retried = JSON.parse(extractJsonObject(retry.text) ?? retry.text);
-                  if (retried.code) agentResponse = retried;
-                } catch { /* keep original */ }
+              if (ctrl && ctrl.text.trim() !== "OK") llmIssues = ctrl.text.trim();
+            }
+
+            // Combine all detected issues
+            const allIssues = [
+              ...staticIssues,
+              ...(llmIssues ? [llmIssues] : []),
+            ];
+
+            if (allIssues.length === 0) {
+              console.log(`[chat:${userPlan}:validate:pass${pass}] ✅ Aucun problème`);
+              break; // Code is clean, no retry needed
+            }
+
+            // ── D3 : Auto-correction avec feedback précis ─────────────
+            console.log(`[chat:${userPlan}:validate:pass${pass}] ❌ Problèmes détectés, correction…`, allIssues);
+            if (pass === 2) {
+              console.log(`[chat:${userPlan}:validate] Max retries atteint, livraison avec code actuel`);
+              break;
+            }
+
+            sseWrite(res, "progress", { agent: AGENT_NAMES[execLlm.provider], step: `Correction auto (passe ${pass})…`, icon: "🔄" });
+            const correctionPrompt = `${systemPrompt}
+
+══ PROBLÈMES DÉTECTÉS DANS TON CODE — CORRIGE-LES TOUS ══
+${allIssues.map((issue, i) => `${i + 1}. ${issue}`).join('\n')}
+
+Retourne le JSON complet corrigé {"action":"modify","reply":"...","code":"..."}`;
+
+            const retry = await tryCallSync(execLlm.provider, execLlm.model, execLlm.key, correctionPrompt, summary, 16000);
+            if (!retry) break;
+
+            // Parse corrected response
+            let corrected: { action: string; code?: string; reply: string } | null = null;
+            try { corrected = JSON.parse(retry.text.trim()); }
+            catch {
+              try { corrected = JSON.parse(extractJsonObject(retry.text) ?? retry.text); }
+              catch {
+                const htmlStart = retry.text.search(/<!DOCTYPE html>/i);
+                if (htmlStart >= 0) {
+                  const tail = retry.text.slice(htmlStart);
+                  const htmlEnd = tail.lastIndexOf('</html>');
+                  const code = (htmlEnd >= 0 ? tail.slice(0, htmlEnd + 7) : tail)
+                    .replace(/\\n/g, '\n').replace(/\\t/g, '\t').replace(/\\"/g, '"').replace(/\\\\/g, '\\');
+                  corrected = { action: "modify", reply: agentResponse.reply, code };
+                }
               }
-            } else { console.log(`[chat:${userPlan}:ctrl] ✅ OK`); }
+            }
+            if (corrected?.code) {
+              agentResponse = corrected;
+              console.log(`[chat:${userPlan}:validate:pass${pass}] Code corrigé, re-validation…`);
+            } else {
+              console.log(`[chat:${userPlan}:validate:pass${pass}] Correction parse failed, garder original`);
+              break;
+            }
           }
         }
 
