@@ -187,7 +187,7 @@ export default function CodeEditorPanel({
             <iframe
               src={previewSrc || "about:blank"}
               className="flex-1 border-0 bg-white"
-              sandbox="allow-scripts allow-same-origin"
+              sandbox="allow-scripts"
               title="Preview"
             />
           </div>

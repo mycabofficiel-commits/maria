@@ -2025,7 +2025,7 @@ ${jsCode}`;
                     onLoad={() => { if (visualEditMode) setTimeout(injectVeScript, 50); }}
                     className="w-full h-full border-0"
                     title="Preview"
-                    sandbox="allow-scripts allow-same-origin"
+                    sandbox="allow-scripts"
                   />
                 </div>
               </div>
