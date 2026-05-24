@@ -684,7 +684,9 @@ Retourne UNIQUEMENT le code HTML complet, sans explication, sans markdown, sans 
     res.setHeader("Connection", "keep-alive");
     res.flushHeaders();
 
-    const codeSnippet = (currentVersion[0].generatedCode || "").slice(0, 3000);
+    const fullCode = currentVersion[0].generatedCode || "";
+    // Reason phase gets more context for deep analysis (8000 chars), execute phase gets 3000
+    const codeSnippet = fullCode.slice(0, 3000);
 
     // ── PHASE 1: RAISONNEMENT ──────────────────────────────────────────────
     if (phase === "reason") {
@@ -696,14 +698,28 @@ Retourne UNIQUEMENT le code HTML complet, sans explication, sans markdown, sans 
       sseWrite(res, "progress", { agent: AGENT_NAMES[reasoner.provider], step: "Analyse & compréhension de la demande…", icon: "🧠" });
       const reasoning = await tryCallSync(
         reasoner.provider, reasoner.model, reasoner.key,
-        `Tu es Mar-ia, assistante IA de développement web. Analyse la demande de l'utilisateur pour son site "${project[0].name}" et reformule-la en résumé structuré (80 mots max).
+        `Tu es Mar-ia, experte en développement web. Avant de répondre, LIS ATTENTIVEMENT le code actuel du site et la demande de l'utilisateur.
 
-Format OBLIGATOIRE:
-**Demande :** [reformulation claire en 1-2 phrases]
-**Modifications :** [liste bullet des changements techniques prévus]
-**Périmètre :** [HTML / CSS / JS / Contenu — coche ce qui est concerné]`,
-        `Demande: ${message}\nExtrait du code actuel:\n${codeSnippet}`,
-        500
+ÉTAPE 1 — CLASSIFICATION de la demande :
+- Bug/Debug (affichage cassé, erreur, ne fonctionne pas) → analyser le code pour trouver les causes précises
+- Modification visuelle (couleur, layout, style) → identifier les éléments CSS/HTML concernés
+- Nouvelle fonctionnalité → comprendre le besoin exact
+- Contenu (texte, images) → repérer les blocs à modifier
+
+ÉTAPE 2 — ANALYSE DU CODE :
+Lis le code fourni et identifie les éléments directement liés à la demande.
+Pour un bug : cherche les erreurs concrètes (CSS manquant, JS cassé, balises mal fermées, responsive absent, etc.)
+Pour une modification : repère les sélecteurs, classes, IDs concernés.
+
+ÉTAPE 3 — RÉSUMÉ STRUCTURÉ (120 mots max) au format :
+**Demande :** [reformulation précise en 1-2 phrases]
+**Diagnostic :** [ce que tu as trouvé dans le code — sois spécifique, cite les problèmes réels]
+**Actions prévues :** [liste bullet des corrections/modifications concrètes]
+**Périmètre :** [HTML / CSS / JS / Contenu]
+
+⚠️ Ne réponds PAS à la va-vite. Prends le temps de lire le code et de diagnostiquer correctement.`,
+        `Demande utilisateur: "${message}"\n\nCode actuel du site (${project[0].name}):\n${fullCode.slice(0, 8000)}`,
+        800
       );
       sseWrite(res, "awaiting_validation", {
         summary: reasoning?.text || `**Demande :** ${message}\n**Modifications :** À définir\n**Périmètre :** HTML`,
