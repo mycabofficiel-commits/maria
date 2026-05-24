@@ -244,7 +244,8 @@ async function tryCallSync(
 ): Promise<LlmResult | null> {
   try {
     return await callSync(provider, model, apiKey, systemPrompt, userMessage, maxTokens);
-  } catch {
+  } catch (err) {
+    console.error(`[tryCallSync] ${provider}/${model} FAILED:`, err);
     return null;
   }
 }
