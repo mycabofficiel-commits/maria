@@ -796,7 +796,7 @@ Sois technique et concis.`,
 
         const systemPrompt = `Tu es Mar-ia, experte en développement web. Tu travailles sur le projet "${project[0].name}".
 
-TÂCHE ACTUELLE: ${message}
+TÂCHE ACTUELLE: ${summary}
 
 FORMAT DE RÉPONSE — OBLIGATOIRE: UN SEUL JSON BRUT, RIEN AVANT, RIEN APRÈS.
 Pour toute demande de modification du site: {"action":"modify","reply":"[explication ultra-courte 1-2 phrases]","code":"<!DOCTYPE html>...HTML complet modifié..."}
@@ -815,13 +815,19 @@ ${agentPlan ? `\n── PLAN D'ACTION ──\n${agentPlan}` : ""}${qwenDraft ? `
           .map(m => ({ role: m.role as "user" | "assistant", content: m.content || "" }));
 
         if (images && images.length > 0) {
-          llmMessages.pop();
+          // Remove last user message if present (will be replaced with image+text)
+          if (llmMessages.length > 0 && llmMessages[llmMessages.length - 1].role === "user") {
+            llmMessages.pop();
+          }
           const imageBlocks = images.map(img => ({ type: "image" as const, source: { type: "base64" as const, media_type: img.mimeType as any, data: img.base64 } }));
           llmMessages.push({ role: "user", content: [...imageBlocks, { type: "text", text: summary }] });
         } else if (llmMessages.length > 0 && llmMessages[llmMessages.length - 1].role === "user") {
+          // Replace last user message with validated summary
           const last = llmMessages[llmMessages.length - 1];
-          // Use the original message as the clear instruction (not the structured summary which may contain "À définir")
-          if (typeof last.content === "string") last.content = message;
+          if (typeof last.content === "string") last.content = summary;
+        } else {
+          // History is empty (most common case) — always push summary as user message
+          llmMessages.push({ role: "user", content: summary });
         }
 
         const startTime = Date.now();
