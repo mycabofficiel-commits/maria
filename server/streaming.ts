@@ -897,6 +897,15 @@ ${agentPlan ? `\n── PLAN D'ACTION ──\n${agentPlan}` : ""}${qwenDraft ? `
               const htmlEnd = tail.lastIndexOf('</html>');
               extractedCode = htmlEnd >= 0 ? tail.slice(0, htmlEnd + 7) : tail.replace(/["}\s]+$/, '');
             }
+            // Unescape JSON string sequences in extracted HTML (regex path doesn't go through JSON.parse)
+            if (extractedCode) {
+              extractedCode = extractedCode
+                .replace(/\\n/g, '\n')
+                .replace(/\\t/g, '\t')
+                .replace(/\\r/g, '')
+                .replace(/\\"/g, '"')
+                .replace(/\\\\/g, '\\');
+            }
             agentResponse = {
               action: extractedCode ? "modify" : (actionMatch?.[1] || "chat"),
               reply: replyMatch?.[1]?.replace(/\\n/g, '\n').replace(/\\"/g, '"') || (extractedCode ? "Modification effectuée." : fullRaw.slice(0, 300)),
@@ -913,8 +922,15 @@ ${agentPlan ? `\n── PLAN D'ACTION ──\n${agentPlan}` : ""}${qwenDraft ? `
             sseWrite(res, "progress", { agent: AGENT_NAMES[controlLlm.provider], step: "Test & validation du code…", icon: "🔍" });
             const control = await tryCallSync(
               controlLlm.provider, controlLlm.model, controlLlm.key,
-              `Expert QA web. Vérifie ce code HTML. Réponds UNIQUEMENT "OK" si correct. Sinon: problèmes critiques (balises non fermées, JS cassé, navigation brisée) en 60 mots max.`,
-              agentResponse.code.slice(0, 6000), 200
+              `Tu es un expert QA en développement web. Vérifie ce code HTML/CSS/JS et réponds UNIQUEMENT "OK" s'il est correct.
+Sinon, liste les problèmes CRITIQUES en 80 mots max. Vérifie notamment :
+- Balises HTML non fermées (</style>, </script>, </body>, </html> manquants)
+- Séquences \\n ou \\t littérales visibles comme texte dans le HTML (pas de vrais sauts de ligne)
+- JavaScript cassé ou incomplet (fonctions tronquées, accolades manquantes)
+- Navigation showPage() défectueuse
+- Code tronqué ou incomplet
+Si tu vois des "\\n" comme texte dans le code HTML, c'est une erreur critique.`,
+              agentResponse.code.slice(0, 8000), 300
             );
             if (control && control.text.trim() !== "OK") {
               console.log(`[chat:${userPlan}:ctrl] Problèmes:`, control.text);
