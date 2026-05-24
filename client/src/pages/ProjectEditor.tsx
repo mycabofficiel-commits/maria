@@ -362,6 +362,7 @@ export default function ProjectEditor() {
   const [streamingReply, setStreamingReply] = useState("");
   const [editorCollapsed, setEditorCollapsed] = useState(false);
   const [agentStep, setAgentStep] = useState<{ agent: string; step: string; icon: string } | null>(null);
+  const [isChatPending, setIsChatPending] = useState(false);
 
   /* ── Resizable panel ── */
   const [panelWidth, setPanelWidth] = useState(45);
@@ -545,7 +546,6 @@ export default function ProjectEditor() {
 
   /* ── Streaming generate ── */
   const [streamingCode, setStreamingCode] = useState("");
-  const [isChatPending, setIsChatPending] = useState(false);
 
   const generateSiteStream = useCallback(async () => {
     if (!prompt.trim()) { toast.error("Décrivez votre site d'abord."); return; }
