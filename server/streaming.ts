@@ -693,6 +693,14 @@ Retourne UNIQUEMENT le code HTML complet, sans explication, sans markdown, sans 
     if (phase === "reason") {
       const reasonerSystemPrompt = `Tu es Mar-ia, experte en développement web. Avant de répondre, LIS ATTENTIVEMENT le code actuel du site et la demande de l'utilisateur.
 
+ARCHITECTURE DU SITE (SPA mono-fichier HTML) — contexte obligatoire :
+- Toutes les "pages" sont des <section id="page-id"> dans un seul fichier HTML
+- Navigation inter-pages : onclick="showPage('page-id'); return false;" sur les liens ET le logo
+- La fonction showPage(id) affiche la section demandée et cache toutes les autres
+- Logo/marque → DOIT avoir onclick="showPage('accueil'); return false;" href="#"
+- Liens nav → DOIVENT avoir onclick="showPage('xxx'); return false;" href="#"
+- Un lien avec href="#hero" ou href="#features" est un BUG (blanchit la preview)
+
 ÉTAPE 1 — CLASSIFICATION de la demande :
 - Bug/Debug (affichage cassé, erreur, ne fonctionne pas) → analyser le code pour trouver les causes précises
 - Modification visuelle (couleur, layout, style) → identifier les éléments CSS/HTML concernés
@@ -701,8 +709,8 @@ Retourne UNIQUEMENT le code HTML complet, sans explication, sans markdown, sans 
 
 ÉTAPE 2 — ANALYSE DU CODE :
 Lis le code fourni et identifie les éléments directement liés à la demande.
-Pour un bug : cherche les erreurs concrètes (CSS manquant, JS cassé, balises mal fermées, responsive absent, etc.)
-Pour une modification : repère les sélecteurs, classes, IDs concernés.
+Pour un bug : cherche les erreurs concrètes (CSS manquant, JS cassé, balises mal fermées, responsive absent, liens href="#xxx" au lieu de showPage(), etc.)
+Pour une modification : repère les sélecteurs, classes, IDs, onclick existants concernés.
 
 ÉTAPE 3 — RÉSUMÉ STRUCTURÉ (120 mots max) au format :
 **Demande :** [reformulation précise en 1-2 phrases]
@@ -760,10 +768,18 @@ Pour une modification : repère les sélecteurs, classes, IDs concernés.
           sseWrite(res, "progress", { agent: AGENT_NAMES[agentLlm.provider], step: "Planification des modifications…", icon: "🤖" });
           const plan = await tryCallSync(
             agentLlm.provider, agentLlm.model, agentLlm.key,
-            `Tu es un agent de développement web expert. Sur base du résumé validé, produis un plan d'action technique précis (150 mots max):
-- Éléments HTML à modifier/créer (IDs, classes, balises exactes)
+            `Tu es un agent de développement web expert. Sur base du résumé validé, produis un plan d'action technique précis (150 mots max).
+
+RÈGLE NAVIGATION ABSOLUE — à appliquer dans chaque plan :
+- Logo/marque → onclick="showPage('accueil'); return false;" href="#"
+- Liens de navigation → onclick="showPage('page-id'); return false;" href="#"
+- JAMAIS href="#hero", href="#features" ou toute ancre — ce sont des BUGS
+- La fonction showPage() doit toujours être présente dans le <script>
+
+Plan à produire :
+- Éléments HTML à modifier/créer (IDs, classes, balises exactes, onclick corrects)
 - Styles CSS à ajouter/modifier (propriétés précises)
-- Logique JS à implémenter (fonctions, événements)
+- Logique JS à implémenter (fonctions, événements, showPage si navigation)
 Sois technique et concis.`,
             `Résumé validé: ${summary}\nCode actuel (extrait):\n${codeSnippet}`,
             600
@@ -804,7 +820,16 @@ Pour une question purement conversationnelle SANS modification de code: {"action
 
 ⚠️ RÈGLE ABSOLUE: Si l'utilisateur demande un changement visuel, une fonctionnalité, un ajout ou une modification → action="modify" OBLIGATOIRE.
 
-RÈGLES CODE: 100% complet, jamais tronqué. Navigation = showPage(). Images = Unsplash/SVG inline.
+RÈGLES CODE — OBLIGATOIRES SANS EXCEPTION :
+1. CODE 100% COMPLET — jamais tronqué, toutes balises </style></script></body></html> présentes
+2. NAVIGATION showPage() — CRITIQUE pour tous les liens et le logo :
+   • Logo/marque cliquable : <a href="#" onclick="showPage('accueil'); return false;">
+   • Liens de navigation : <a href="#" onclick="showPage('page-id'); return false;">
+   • Boutons CTA internes : onclick="showPage('page-id'); return false;"
+   • ❌ INTERDIT : href="#hero", href="#section", href="#features" → blanchissent la preview
+   • La fonction showPage(id) DOIT toujours exister dans le <script> du document
+3. IMAGES : URLs Unsplash valides (https://images.unsplash.com/photo-ID?w=800&q=80)
+4. FORMULAIRES : onsubmit JS avec preventDefault() et message de confirmation
 
 CODE ACTUEL (v${currentVersion[0].versionNumber}):
 ${currentVersion[0].generatedCode || ""}
