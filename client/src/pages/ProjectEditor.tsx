@@ -1035,6 +1035,17 @@ export default function ProjectEditor() {
           </div>
           <div className="flex items-center gap-1.5 flex-shrink-0">
             {hasCode && (
+              <Button size="sm" variant="outline"
+                className="text-xs h-8 px-2 sm:px-3 border-border/60"
+                title={codeCollapsed ? "Afficher le code" : "Réduire le code"}
+                onClick={() => setCodeCollapsed(v => !v)}>
+                {codeCollapsed
+                  ? <PanelLeftOpen className="w-3.5 h-3.5 sm:mr-1.5 rotate-90" />
+                  : <PanelLeftClose className="w-3.5 h-3.5 sm:mr-1.5 rotate-90" />}
+                <span className="hidden sm:inline">{codeCollapsed ? "Code" : "Code"}</span>
+              </Button>
+            )}
+            {hasCode && (
               <Button size="sm" variant={visualEditMode ? "default" : "outline"}
                 className={`text-xs h-8 px-2 sm:px-3 ${visualEditMode ? "bg-violet-600 hover:bg-violet-700 text-white border-0" : "border-border/60"}`}
                 onClick={() => {
@@ -1227,15 +1238,6 @@ export default function ProjectEditor() {
                     );
                   })}
                        <div className="ml-auto flex items-center gap-1">
-                    {/* Collapse/expand code panel */}
-                    <Button size="sm" variant="ghost"
-                      className="relative -top-1.5 h-7 w-7 p-0 rounded-full bg-[#2a2a2a] border border-[#3a3a3a] text-[#aaaaaa] hover:text-white hover:bg-[#3a3a3a] shadow-md"
-                      title={codeCollapsed ? "Afficher le code" : "Réduire le code"}
-                      onClick={() => setCodeCollapsed(v => !v)}>
-                      {codeCollapsed
-                        ? <PanelLeftOpen className="w-3.5 h-3.5 rotate-90" />
-                        : <PanelLeftClose className="w-3.5 h-3.5 rotate-90" />}
-                    </Button>
                     {/* Copy button */}
                     <Button size="sm" variant="ghost"
                       className="h-6 px-2 text-[10px] gap-1 text-[#858585] hover:text-white"
