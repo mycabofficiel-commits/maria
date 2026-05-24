@@ -134,7 +134,7 @@ function validateGeneratedCode(html: string): string[] {
 
   // 2. Navigation bugs — href="#xxx" instead of showPage()
   const badLinks = html.match(/href="#[a-zA-Z][^"]{1,40}"/g) || [];
-  const uniqueBad = [...new Set(badLinks)];
+  const uniqueBad = Array.from(new Set(badLinks));
   if (uniqueBad.length > 0) {
     issues.push(
       `Liens de navigation incorrects (blanchissent la preview) : ${uniqueBad.slice(0, 4).join(' ')}. ` +
@@ -187,6 +187,15 @@ function extractJsonObject(text: string): string | null {
     }
   }
   return null;
+}
+
+/** Structured pipeline logger — always visible in Render logs */
+function pipelineLog(step: string, data?: Record<string, unknown>) {
+  const ts = new Date().toISOString().slice(11, 23); // HH:mm:ss.mmm
+  const payload = data && Object.keys(data).length > 0
+    ? ' ' + Object.entries(data).map(([k, v]) => `${k}=${JSON.stringify(v)}`).join(' ')
+    : '';
+  console.log(`[maria:${ts}] ${step}${payload}`);
 }
 
 /** Send an SSE event */
@@ -291,10 +300,13 @@ async function tryCallSync(
   userMessage: string,
   maxTokens = 800
 ): Promise<LlmResult | null> {
+  const t0 = Date.now();
   try {
-    return await callSync(provider, model, apiKey, systemPrompt, userMessage, maxTokens);
-  } catch (err) {
-    console.error(`[tryCallSync] ${provider}/${model} FAILED:`, err);
+    const result = await callSync(provider, model, apiKey, systemPrompt, userMessage, maxTokens);
+    pipelineLog(`llm:ok`, { provider, model, in: result.inputTokens, out: result.outputTokens, ms: Date.now() - t0 });
+    return result;
+  } catch (err: any) {
+    pipelineLog(`llm:error`, { provider, model, ms: Date.now() - t0, error: String(err?.message || err).slice(0, 200) });
     return null;
   }
 }
@@ -679,12 +691,13 @@ Retourne UNIQUEMENT le code HTML complet, sans explication, sans markdown, sans 
     const user = await authenticate(req, res);
     if (!user) return;
 
-    const { projectId, message, phase = "reason", validatedSummary, images } = req.body as {
+    const { projectId, message, phase = "reason", validatedSummary, images, consoleErrors } = req.body as {
       projectId: number;
       message: string;
       phase?: "reason" | "execute";
       validatedSummary?: string;
       images?: Array<{ base64: string; mimeType: string }>;
+      consoleErrors?: string[];
     };
     if (!projectId || !message) {
       res.status(400).json({ error: "projectId et message requis" });
@@ -740,6 +753,7 @@ Retourne UNIQUEMENT le code HTML complet, sans explication, sans markdown, sans 
 
     // ── PHASE 1: RAISONNEMENT ──────────────────────────────────────────────
     if (phase === "reason") {
+      pipelineLog('reason:start', { project: project[0].name, plan: userPlan, consoleErrors: consoleErrors?.length || 0 });
       const reasonerSystemPrompt = `Tu es Mar-ia, experte en développement web. Avant de répondre, LIS ATTENTIVEMENT le code actuel du site et la demande de l'utilisateur.
 
 ARCHITECTURE DU SITE (SPA mono-fichier HTML) — contexte obligatoire :
@@ -768,7 +782,11 @@ Pour une modification : repère les sélecteurs, classes, IDs, onclick existants
 **Périmètre :** [HTML / CSS / JS / Contenu]
 
 ⚠️ Ne réponds PAS à la va-vite. Prends le temps de lire le code et de diagnostiquer correctement.`;
-      const reasonerUserMsg = `Demande utilisateur: "${message}"\n\nCode actuel du site (${project[0].name}):\n${fullCode.slice(0, 8000)}`;
+      // If the client captured JS errors from the preview iframe, include them as diagnostic context
+      const consoleCtxReason = consoleErrors && consoleErrors.length > 0
+        ? `\n\n⚠️ ERREURS JS DÉTECTÉES DANS LE NAVIGATEUR (console de la preview) :\n${consoleErrors.slice(0, 8).map((e, i) => `${i + 1}. ${e}`).join('\n')}\nSi ces erreurs sont liées à la demande, inclus-les dans ton diagnostic et dans les actions prévues.`
+        : '';
+      const reasonerUserMsg = `Demande utilisateur: "${message}"\n\nCode actuel du site (${project[0].name}):\n${fullCode.slice(0, 8000)}${consoleCtxReason}`;
 
       // Try reasoner with automatic fallback if quota exceeded or error
       let reasoning: LlmResult | null = null;
@@ -788,6 +806,7 @@ Pour une modification : repère les sélecteurs, classes, IDs, onclick existants
         if (reasoning?.text) { usedReasoner = { provider: p, model: PROVIDER_MODELS[p], key: k }; break; }
       }
 
+      pipelineLog('reason:done', { provider: usedReasoner.provider, tokens: reasoning?.inputTokens ? reasoning.inputTokens + reasoning.outputTokens : 0 });
       sseWrite(res, "awaiting_validation", {
         summary: reasoning?.text || `**Demande :** ${message}\n**Modifications :** À définir\n**Périmètre :** HTML`,
         originalMessage: message,
@@ -799,6 +818,7 @@ Pour une modification : repère les sélecteurs, classes, IDs, onclick existants
     // ── PHASE 2: EXECUTE ──────────────────────────────────────────────────
     if (phase === "execute") {
       const summary = validatedSummary || message;
+      pipelineLog('execute:start', { project: project[0].name, plan: userPlan, consoleErrors: consoleErrors?.length || 0, summaryLen: summary.length });
 
       const versionCount = await db.select({ count: count() }).from(versions).where(eq(versions.projectId, projectId));
       const totalVersions = versionCount[0]?.count || 0;
@@ -908,7 +928,7 @@ RÈGLES DE QUALITÉ — SANS EXCEPTION
 CODE ACTUEL (v${currentVersion[0].versionNumber}) — LIS-LE AVANT D'ÉCRIRE :
 ══════════════════════════════════════════════
 ${currentVersion[0].generatedCode || ""}
-${agentPlan ? `\n══ PLAN D'ACTION ══\n${agentPlan}` : ""}${qwenDraft ? `\n\n══ SNIPPETS PRÉPARÉS ══\n${qwenDraft}` : ""}`;
+${agentPlan ? `\n══ PLAN D'ACTION ══\n${agentPlan}` : ""}${qwenDraft ? `\n\n══ SNIPPETS PRÉPARÉS ══\n${qwenDraft}` : ""}${consoleErrors && consoleErrors.length > 0 ? `\n\n══ ERREURS JS ACTIVES DANS LE SITE (console du navigateur) ══\n${consoleErrors.slice(0, 8).map((e, i) => `${i + 1}. ${e}`).join('\n')}\n⚠️ Corrige ces erreurs JS EN PLUS de la tâche principale. Elles proviennent du code actuel.` : ""}`;
 
         const llmMessages: Array<{ role: "user" | "assistant"; content: any }> = history
           .filter(m => m.content?.trim())
@@ -1019,7 +1039,7 @@ ${agentPlan ? `\n══ PLAN D'ACTION ══\n${agentPlan}` : ""}${qwenDraft ? `
             };
           }
         }
-        console.log(`[chat:${userPlan}] action=${agentResponse.action} hasCode=${!!agentResponse.code}`);
+        pipelineLog('execute:parsed', { plan: userPlan, action: agentResponse.action, hasCode: !!agentResponse.code, codeLen: agentResponse.code?.length || 0 });
 
         // ── D : Validation + boucle auto-correction (max 2 passes) ────
         if (agentResponse.action === "modify" && agentResponse.code) {
@@ -1027,8 +1047,8 @@ ${agentPlan ? `\n══ PLAN D'ACTION ══\n${agentPlan}` : ""}${qwenDraft ? `
 
           for (let pass = 1; pass <= 2; pass++) {
             // ── D1 : Validateur statique (gratuit, instantané) ─────────
-            const staticIssues = validateGeneratedCode(agentResponse.code);
-            console.log(`[chat:${userPlan}:validate:pass${pass}] static issues:`, staticIssues);
+            const staticIssues = validateGeneratedCode(agentResponse.code!);
+            pipelineLog(`validate:static:pass${pass}`, { plan: userPlan, issues: staticIssues.length, detail: staticIssues });
 
             // ── D2 : LLM contrôleur (analyse sémantique) ──────────────
             let llmIssues = "";
@@ -1046,7 +1066,7 @@ Vérifie :
 - JS incomplet ou cassé (accolades manquantes, fonctions tronquées)
 - Code HTML tronqué
 - Animations/features du code original supprimées par erreur`,
-                agentResponse.code.slice(0, 10000), 400
+                (agentResponse.code || "").slice(0, 10000), 400
               );
               if (ctrl && ctrl.text.trim() !== "OK") llmIssues = ctrl.text.trim();
             }
@@ -1058,14 +1078,14 @@ Vérifie :
             ];
 
             if (allIssues.length === 0) {
-              console.log(`[chat:${userPlan}:validate:pass${pass}] ✅ Aucun problème`);
+              pipelineLog(`validate:pass${pass}:ok`);
               break; // Code is clean, no retry needed
             }
 
             // ── D3 : Auto-correction avec feedback précis ─────────────
-            console.log(`[chat:${userPlan}:validate:pass${pass}] ❌ Problèmes détectés, correction…`, allIssues);
+            pipelineLog(`validate:pass${pass}:issues`, { count: allIssues.length, issues: allIssues });
             if (pass === 2) {
-              console.log(`[chat:${userPlan}:validate] Max retries atteint, livraison avec code actuel`);
+              pipelineLog('validate:max_retries', { message: 'livraison avec code actuel' });
               break;
             }
 
@@ -1098,9 +1118,9 @@ Retourne le JSON complet corrigé {"action":"modify","reply":"...","code":"..."}
             }
             if (corrected?.code) {
               agentResponse = corrected;
-              console.log(`[chat:${userPlan}:validate:pass${pass}] Code corrigé, re-validation…`);
+              pipelineLog(`validate:pass${pass}:corrected`, { codeLen: corrected.code.length });
             } else {
-              console.log(`[chat:${userPlan}:validate:pass${pass}] Correction parse failed, garder original`);
+              pipelineLog(`validate:pass${pass}:correction_parse_failed`);
               break;
             }
           }
@@ -1132,6 +1152,7 @@ Retourne le JSON complet corrigé {"action":"modify","reply":"...","code":"..."}
           content: assistantReply, versionId: versionId || undefined, tokensUsed,
         });
 
+        pipelineLog('execute:done', { plan: userPlan, action: agentResponse.action, tokensUsed, durationMs, versionId });
         sseWrite(res, "done", {
           versionId, tokensUsed, reply: assistantReply,
           action: agentResponse.action, generatedCode: agentResponse.code || null,

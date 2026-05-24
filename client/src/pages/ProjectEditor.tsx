@@ -363,6 +363,8 @@ export default function ProjectEditor() {
   const [editorCollapsed, setEditorCollapsed] = useState(false);
   const [agentStep, setAgentStep] = useState<{ agent: string; step: string; icon: string } | null>(null);
   const [isChatPending, setIsChatPending] = useState(false);
+  /* ── Console errors captured from the preview iframe ── */
+  const [consoleErrors, setConsoleErrors] = useState<string[]>([]);
 
   /* ── Resizable panel ── */
   const [panelWidth, setPanelWidth] = useState(45);
@@ -478,6 +480,27 @@ export default function ProjectEditor() {
     const navInterceptor = `<script>
 (function(){document.addEventListener('click',function(e){var a=e.target.closest('a[href]');if(!a)return;var hr=a.getAttribute('href');if(!hr||hr.startsWith('javascript'))return;e.preventDefault();if(hr.startsWith('#')){var id=hr.slice(1);if(!id)return;var el=document.getElementById(id);if(el)el.scrollIntoView({behavior:'smooth'});}},true);})();
 <\/script>`;
+    // Capture JS errors / console.error from the iframe and send to parent via postMessage
+    // Parent stores them and feeds them to the LLM as additional context
+    const consoleCapture = `<script>
+(function(){
+  var _oe=window.onerror;
+  window.onerror=function(msg,src,line,col,err){
+    window.parent.postMessage({type:'CONSOLE_ERROR',message:'JS Error: '+msg+' (ligne '+line+')'},'*');
+    if(_oe)return _oe.apply(this,arguments);
+  };
+  var _ce=console.error.bind(console);
+  console.error=function(){
+    _ce.apply(console,arguments);
+    var txt=Array.from(arguments).map(function(a){try{return typeof a==='object'?JSON.stringify(a):String(a);}catch(x){return String(a);}}).join(' ');
+    window.parent.postMessage({type:'CONSOLE_ERROR',message:'[console.error] '+txt.slice(0,300)},'*');
+  };
+  window.addEventListener('unhandledrejection',function(e){
+    var reason=e.reason?(e.reason.message||String(e.reason)):'unknown';
+    window.parent.postMessage({type:'CONSOLE_ERROR',message:'Promise rejetée: '+reason.slice(0,200)},'*');
+  });
+})();
+<\/script>`;
     let full: string;
     // If h is a complete HTML document (imported), use it as-is with minimal additions
     const isFullDoc = /<!doctype|<html[\s>]/i.test(h);
@@ -487,17 +510,19 @@ export default function ProjectEditor() {
       if (!h.includes('name="viewport"') && !h.includes("name='viewport'")) {
         full = full.replace(/<head>/i, `<head>${viewportMeta}`);
       }
+      // Inject console capture first (before any user JS runs)
+      full = full.replace(/<head>/i, `<head>${consoleCapture}`);
       // Only add extra CSS/JS if not already present in the document
       if (c && !/<style/i.test(h)) full = full.replace(/<\/head>/i, `<style>${c}</style></head>`);
       if (j && !/<script/i.test(h)) full = full.replace(/<\/body>/i, `<script>${j}<\/script></body>`);
       full = full.replace(/<\/body>/i, `${navInterceptor}</body>`);
     } else if (h) {
       full = h
-        .replace(/<head>/i, `<head>${viewportMeta}`)
+        .replace(/<head>/i, `<head>${viewportMeta}${consoleCapture}`)
         .replace(/<\/head>/i, `<style>${c}</style></head>`)
         .replace(/<\/body>/i, `<script>${j}<\/script>${navInterceptor}</body>`);
     } else {
-      full = `<!DOCTYPE html><html><head>${viewportMeta}<meta charset="UTF-8"><style>${c}</style></head><body><script>${j}<\/script>${navInterceptor}</body></html>`;
+      full = `<!DOCTYPE html><html><head>${viewportMeta}${consoleCapture}<meta charset="UTF-8"><style>${c}</style></head><body><script>${j}<\/script>${navInterceptor}</body></html>`;
     }
     setPreviewSrc(full);
   }, []);
@@ -557,6 +582,7 @@ export default function ProjectEditor() {
     if (!prompt.trim()) { toast.error("Décrivez votre site d'abord."); return; }
     setIsGenerating(true);
     setAgentStep(null);
+    setConsoleErrors([]); // reset console errors on new generation
     setStreamingCode("");
     setHtmlCode("");
     setCssCode("");
@@ -656,6 +682,7 @@ export default function ProjectEditor() {
           projectId,
           message: msg || "Voici une image de référence.",
           phase: "reason",
+          consoleErrors: consoleErrors.length > 0 ? consoleErrors : undefined,
           images: sentAttachments.map((a) => ({ base64: a.base64, mimeType: a.mimeType })),
         }),
       });
@@ -706,7 +733,7 @@ export default function ProjectEditor() {
         method: "POST",
         headers: { "content-type": "application/json" },
         credentials: "include",
-        body: JSON.stringify({ projectId, message: originalMsg, phase: "execute", validatedSummary }),
+        body: JSON.stringify({ projectId, message: originalMsg, phase: "execute", validatedSummary, consoleErrors: consoleErrors.length > 0 ? consoleErrors : undefined }),
       });
       if (!res.ok || !res.body) throw new Error(await res.text());
       const reader = res.body.getReader();
@@ -925,6 +952,14 @@ export default function ProjectEditor() {
   /* visual edit: listen for messages from iframe */
   useEffect(() => {
     const handler = (e: MessageEvent) => {
+      // Capture JS errors / console.error from the preview iframe
+      if (e.data?.type === "CONSOLE_ERROR" && e.data.message) {
+        const msg = String(e.data.message).slice(0, 250);
+        setConsoleErrors(prev => {
+          if (prev.includes(msg)) return prev; // deduplicate
+          return [...prev.slice(-9), msg]; // keep last 10
+        });
+      }
       if (e.data?.type === "VISUAL_EDIT_UPDATE" && e.data.html) {
         const updatedHtml = e.data.html as string;
         setHtmlCode(extractHtml(updatedHtml) || updatedHtml);
@@ -1775,6 +1810,16 @@ ${jsCode}`;
                   <Eye className="w-3.5 h-3.5 text-muted-foreground" />
                   <span className="text-xs text-muted-foreground">Prévisualisation live</span>
                   <span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse ml-1" />
+                  {consoleErrors.length > 0 && (
+                    <button
+                      title={`${consoleErrors.length} erreur(s) JS détectée(s) :\n${consoleErrors.join('\n')}\n\nCes erreurs sont transmises au LLM lors du prochain message.\nCliquer pour effacer.`}
+                      className="flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] bg-red-500/20 text-red-400 hover:bg-red-500/30 transition-colors ml-1"
+                      onClick={() => setConsoleErrors([])}
+                    >
+                      <Bug className="w-3 h-3" />
+                      {consoleErrors.length} erreur{consoleErrors.length > 1 ? "s" : ""}
+                    </button>
+                  )}
                 </div>
                 <div className="flex items-center gap-1">
                   {(["desktop", "tablet", "mobile"] as ViewMode[]).map((mode) => {
