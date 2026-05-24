@@ -473,6 +473,11 @@ export default function ProjectEditor() {
 
   const buildPreview = useCallback((h: string, c: string, j: string) => {
     const viewportMeta = '<meta name="viewport" content="width=device-width, initial-scale=1">';
+    // Intercept all <a href> clicks in the sandboxed iframe to prevent navigation
+    // (without allow-same-origin, clicking href="#..." would blank the iframe)
+    const navInterceptor = `<script>
+(function(){document.addEventListener('click',function(e){var a=e.target.closest('a[href]');if(!a)return;var hr=a.getAttribute('href');if(!hr||hr.startsWith('javascript'))return;e.preventDefault();if(hr.startsWith('#')){var id=hr.slice(1);if(!id)return;var el=document.getElementById(id);if(el)el.scrollIntoView({behavior:'smooth'});}},true);})();
+<\/script>`;
     let full: string;
     // If h is a complete HTML document (imported), use it as-is with minimal additions
     const isFullDoc = /<!doctype|<html[\s>]/i.test(h);
@@ -485,13 +490,14 @@ export default function ProjectEditor() {
       // Only add extra CSS/JS if not already present in the document
       if (c && !/<style/i.test(h)) full = full.replace(/<\/head>/i, `<style>${c}</style></head>`);
       if (j && !/<script/i.test(h)) full = full.replace(/<\/body>/i, `<script>${j}<\/script></body>`);
+      full = full.replace(/<\/body>/i, `${navInterceptor}</body>`);
     } else if (h) {
       full = h
         .replace(/<head>/i, `<head>${viewportMeta}`)
         .replace(/<\/head>/i, `<style>${c}</style></head>`)
-        .replace(/<\/body>/i, `<script>${j}<\/script></body>`);
+        .replace(/<\/body>/i, `<script>${j}<\/script>${navInterceptor}</body>`);
     } else {
-      full = `<!DOCTYPE html><html><head>${viewportMeta}<meta charset="UTF-8"><style>${c}</style></head><body><script>${j}<\/script></body></html>`;
+      full = `<!DOCTYPE html><html><head>${viewportMeta}<meta charset="UTF-8"><style>${c}</style></head><body><script>${j}<\/script>${navInterceptor}</body></html>`;
     }
     setPreviewSrc(full);
   }, []);
