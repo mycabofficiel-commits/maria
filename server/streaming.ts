@@ -1190,11 +1190,18 @@ Chaque suggestion: 6-10 mots, actionnable et concrète. Pas de guillemets dans l
   });
 
   // ── POST /api/stream/debug ────────────────────────────────────────────────
+  // Accepts an optional base64 screenshot from the client.
+  // If present: vision LLM analyses it first → visual findings fed to executor.
+  // If absent:  falls back to static code analysis only.
   app.post("/api/stream/debug", async (req: Request, res: Response) => {
     const user = await authenticate(req, res);
     if (!user) return;
 
-    const { projectId } = req.body as { projectId: number };
+    const { projectId, screenshot, screenshotMimeType = "image/jpeg" } = req.body as {
+      projectId: number;
+      screenshot?: string;       // base64, no data: prefix
+      screenshotMimeType?: string;
+    };
     if (!projectId) { res.status(400).json({ error: "projectId requis" }); return; }
 
     const db = await getDb();
@@ -1208,41 +1215,15 @@ Chaque suggestion: 6-10 mots, actionnable et concrète. Pas de guillemets dans l
       .where(eq(versions.id, project[0].currentVersionId!)).limit(1);
     if (!currentVersion[0]?.generatedCode) { res.status(400).json({ error: "Aucune version à débugger" }); return; }
 
-    // Platform Anthropic key for debug (fall back to user key)
-    let apiKey: string;
-    let provider = "anthropic";
-    let modelToUse = "claude-haiku-4-5";
-    const platformDebugKey = await getPlatformKey("anthropic");
-    if (platformDebugKey) {
-      apiKey = platformDebugKey;
-    } else {
-      const keyRow = await db.select().from(apiKeys).where(eq(apiKeys.userId, user.id)).limit(1);
-      if (!keyRow[0]) { res.status(400).json({ error: "Aucune clé API configurée" }); return; }
-      try { apiKey = decrypt(keyRow[0].encryptedKey); }
-      catch { res.status(400).json({ error: "Clé API invalide" }); return; }
-      provider = keyRow[0].provider || "anthropic";
-      modelToUse = ["claude-3-5-sonnet-20241022", "claude-3-5-haiku-20241022", "claude-3-opus-20240229", "claude-3-5-sonnet-latest", "claude-3-5-haiku-latest"].includes(keyRow[0].model)
-        ? "claude-sonnet-4-5"
-        : (keyRow[0].model || "claude-sonnet-4-5");
-    }
+    // Keys: prefer Claude for vision (it handles images), fall back to OpenAI, then Deepseek for text-only
+    const [claudeKey, openaiKey, deepseekKey] = await Promise.all([
+      getPlatformKey("anthropic"),
+      getPlatformKey("openai"),
+      getPlatformKey("deepseek"),
+    ]);
 
     const versionCount = await db.select({ count: count() }).from(versions).where(eq(versions.projectId, projectId));
     const nextVersionNumber = (versionCount[0]?.count || 0) + 1;
-
-    const systemPrompt = `Tu es un expert en qualité web et débogage. Analyse le code HTML/CSS/JS fourni et corrige TOUS les problèmes.
-
-CORRECTIONS OBLIGATOIRES:
-1. LIENS CASSÉS: href="page.html", href="/page" → navigation JS avec sections <section id="page-xxx"> et fonction showPage()
-2. IMAGES CASSÉES: src="", src="#", chemins locaux → https://images.unsplash.com/photo-ID?w=800&q=80 (thématiques)
-3. ERREURS JS: variables/fonctions inexistantes, event listeners sans cible, console.error visibles
-4. BOUTONS SANS ACTION: chaque bouton/CTA doit avoir un onclick ou data-action défini
-5. FORMULAIRES: chaque form doit avoir un onsubmit JS affichant un message de succès
-6. CONTENU: remplace Lorem ipsum et placeholders par du vrai contenu logique et professionnel
-
-Retourne UNIQUEMENT ce JSON (rien d'autre, pas de markdown):
-{"fixed_code":"<!DOCTYPE html>...code HTML complet corrigé...","report":"• Bug 1 corrigé\\n• Bug 2 corrigé"}`;
-
-    const userMessage = `Analyse et corrige ce code:\n\n${currentVersion[0].generatedCode}`;
 
     // SSE headers
     res.setHeader("Content-Type", "text/event-stream");
@@ -1250,82 +1231,173 @@ Retourne UNIQUEMENT ce JSON (rien d'autre, pas de markdown):
     res.setHeader("Connection", "keep-alive");
     res.flushHeaders();
 
+    pipelineLog('debug:start', { project: project[0].name, hasScreenshot: !!screenshot, screenshotLen: screenshot?.length || 0 });
+
     const startTime = Date.now();
-    let fullRaw = "";
-    let inputTokens = 0;
-    let outputTokens = 0;
+    let totalTokens = 0;
 
     try {
-      if (provider === "anthropic") {
+      // ── STEP 1 : Vision analysis (only if screenshot provided) ─────────────
+      let visualFindings = "";
+
+      if (screenshot && (claudeKey || openaiKey)) {
+        const visionProvider = claudeKey ? "anthropic" : "openai";
+        const visionKey = (claudeKey || openaiKey)!;
+        const visionModel = claudeKey ? "claude-haiku-4-5" : "gpt-4o-mini";
+
+        sseWrite(res, "progress", { agent: claudeKey ? "Claude Vision" : "GPT-4o Vision", step: "Analyse visuelle de la preview…", icon: "📸" });
+
+        try {
+          let visionText = "";
+          if (visionProvider === "anthropic") {
+            const r = await fetch("https://api.anthropic.com/v1/messages", {
+              method: "POST",
+              headers: { "x-api-key": visionKey, "anthropic-version": "2023-06-01", "content-type": "application/json" },
+              body: JSON.stringify({
+                model: visionModel,
+                max_tokens: 800,
+                messages: [{
+                  role: "user",
+                  content: [
+                    { type: "image", source: { type: "base64", media_type: screenshotMimeType, data: screenshot } },
+                    { type: "text", text: `Tu es un expert QA web. Analyse cette capture d'écran du site "${project[0].name}" et liste UNIQUEMENT les problèmes visuels concrets que tu vois :
+- Éléments cassés, mal alignés ou qui débordent
+- Texte illisible, superposé ou tronqué
+- Images manquantes (case blanche ou grise)
+- Navigation non visible ou hors écran
+- Sections vides ou avec du Lorem ipsum
+- Boutons sans hover/style défini
+- Problèmes de responsive visible
+- Tout ce qui semble non-intentionnel ou cassé
+
+Réponds avec une liste numérotée précise, max 8 points.
+Si la page paraît correcte visuellement, réponds "VISUELLEMENT OK".` }
+                  ]
+                }]
+              })
+            });
+            if (r.ok) {
+              const d = await r.json() as any;
+              visionText = d.content?.[0]?.text || "";
+              totalTokens += (d.usage?.input_tokens || 0) + (d.usage?.output_tokens || 0);
+            }
+          } else {
+            // GPT-4o vision
+            const r = await fetch("https://api.openai.com/v1/chat/completions", {
+              method: "POST",
+              headers: { "Authorization": `Bearer ${visionKey}`, "content-type": "application/json" },
+              body: JSON.stringify({
+                model: "gpt-4o-mini",
+                max_tokens: 800,
+                messages: [{
+                  role: "user",
+                  content: [
+                    { type: "image_url", image_url: { url: `data:${screenshotMimeType};base64,${screenshot}`, detail: "high" } },
+                    { type: "text", text: `Analyse cette capture d'écran du site "${project[0].name}". Liste les problèmes visuels visibles (max 8). Si visuellement correct: "VISUELLEMENT OK".` }
+                  ]
+                }]
+              })
+            });
+            if (r.ok) {
+              const d = await r.json() as any;
+              visionText = d.choices?.[0]?.message?.content || "";
+              totalTokens += (d.usage?.prompt_tokens || 0) + (d.usage?.completion_tokens || 0);
+            }
+          }
+
+          if (visionText && !visionText.includes("VISUELLEMENT OK")) {
+            visualFindings = visionText;
+            pipelineLog('debug:vision', { hasIssues: true, findingsLen: visualFindings.length });
+          } else {
+            pipelineLog('debug:vision', { hasIssues: false });
+          }
+        } catch (visionErr: any) {
+          pipelineLog('debug:vision_failed', { error: String(visionErr.message) });
+          // Non-fatal — continue without visual findings
+        }
+      }
+
+      // ── STEP 2 : Code analysis + auto-fix ─────────────────────────────────
+      // Choose best available LLM for code generation (prefer Claude > DeepSeek > OpenAI)
+      let execKey = claudeKey || deepseekKey || openaiKey;
+      let execProvider: string = claudeKey ? "anthropic" : deepseekKey ? "deepseek" : "openai";
+      let execModel = claudeKey ? "claude-haiku-4-5" : deepseekKey ? "deepseek-chat" : "gpt-4o-mini";
+
+      if (!execKey) {
+        // Try user's personal stored key as last resort
+        const keyRow = await db.select().from(apiKeys).where(eq(apiKeys.userId, user.id)).limit(1);
+        if (keyRow[0]) {
+          try { execKey = decrypt(keyRow[0].encryptedKey); execProvider = keyRow[0].provider || "anthropic"; execModel = keyRow[0].model || "claude-haiku-4-5"; }
+          catch { /* ignore */ }
+        }
+      }
+      if (!execKey) { sseWrite(res, "error", { message: "Aucune clé API disponible pour le débogage" }); res.end(); return; }
+
+      const agentName = execProvider === "anthropic" ? "Claude" : execProvider === "deepseek" ? "DeepSeek" : "GPT-4o";
+      sseWrite(res, "progress", { agent: agentName, step: visualFindings ? "Correction visuelle + code…" : "Analyse et correction du code…", icon: "🔧" });
+
+      const visualSection = visualFindings
+        ? `\n\n══ PROBLÈMES VISUELS DÉTECTÉS (capture d'écran) ══\n${visualFindings}\n⚠️ Corrige ces problèmes visuels EN PRIORITÉ.`
+        : "";
+
+      const systemPrompt = `Tu es un expert en qualité web et débogage. Analyse le code HTML/CSS/JS fourni et corrige TOUS les problèmes détectés.
+
+CORRECTIONS OBLIGATOIRES:
+1. NAVIGATION CASSÉE: href="page.html", href="/page" → sections <section id="page-xxx"> + onclick="showPage('id'); return false;"
+2. IMAGES CASSÉES: src="", src="#", chemins locaux → https://images.unsplash.com/photo-ID?w=800&q=80 (images thématiques)
+3. ERREURS JS: variables/fonctions inexistantes, event listeners orphelins, console.error visibles
+4. BOUTONS SANS ACTION: chaque bouton/CTA doit avoir un onclick défini
+5. FORMULAIRES: chaque <form> doit avoir un onsubmit JS affichant un message de confirmation
+6. CONTENU: remplace Lorem ipsum par du vrai contenu cohérent avec le site
+7. RESPONSIVE: assure que le site s'affiche correctement sur mobile (meta viewport, media queries)
+8. SHOWPAGE: si le site a plusieurs <section id="page-...">, la fonction showPage() DOIT exister
+${visualSection}
+
+Retourne UNIQUEMENT ce JSON brut (pas de markdown, pas de \`\`\`):
+{"fixed_code":"<!DOCTYPE html>...code HTML complet corrigé...","report":"• Problème 1 corrigé\\n• Problème 2 corrigé"}`;
+
+      const userMessage = `Site: "${project[0].name}"\nAnalyse et corrige ce code complet:\n\n${currentVersion[0].generatedCode}`;
+
+      let fullRaw = "";
+      let inputTokens = 0;
+      let outputTokens = 0;
+
+      if (execProvider === "anthropic") {
         const aiRes = await fetch("https://api.anthropic.com/v1/messages", {
           method: "POST",
-          headers: {
-            "x-api-key": apiKey,
-            "anthropic-version": "2023-06-01",
-            "content-type": "application/json",
-          },
-          body: JSON.stringify({
-            model: modelToUse,
-            max_tokens: 8000,
-            stream: true,
-            system: systemPrompt,
-            messages: [{ role: "user", content: userMessage }],
-          }),
+          headers: { "x-api-key": execKey, "anthropic-version": "2023-06-01", "content-type": "application/json" },
+          body: JSON.stringify({ model: execModel, max_tokens: 16000, system: systemPrompt, messages: [{ role: "user", content: userMessage }] }),
         });
-        if (!aiRes.ok || !aiRes.body) {
-          const errText = await aiRes.text();
-          const errData = JSON.parse(errText).catch?.(() => ({})) || {};
-          sseWrite(res, "error", { message: `Erreur API: ${(errData as any)?.error?.message || errText}` });
-          res.end(); return;
-        }
-        const reader = aiRes.body.getReader();
-        const decoder = new TextDecoder();
-        let buffer = "";
+        if (!aiRes.ok || !aiRes.body) { sseWrite(res, "error", { message: `Erreur Claude: ${await aiRes.text()}` }); res.end(); return; }
+        const reader = aiRes.body.getReader(); const dec = new TextDecoder(); let buf = "";
         while (true) {
-          const { done, value } = await reader.read();
-          if (done) break;
-          buffer += decoder.decode(value, { stream: true });
-          const lines = buffer.split("\n"); buffer = lines.pop() || "";
+          const { done, value } = await reader.read(); if (done) break;
+          buf += dec.decode(value, { stream: true });
+          const lines = buf.split("\n"); buf = lines.pop() || "";
           for (const line of lines) {
             if (!line.startsWith("data: ")) continue;
             const raw = line.slice(6).trim(); if (raw === "[DONE]") continue;
             try {
               const evt = JSON.parse(raw);
-              if (evt.type === "content_block_delta" && evt.delta?.type === "text_delta") { fullRaw += evt.delta.text; }
+              if (evt.type === "content_block_delta" && evt.delta?.type === "text_delta") fullRaw += evt.delta.text;
               if (evt.type === "message_delta" && evt.usage) outputTokens = evt.usage.output_tokens || 0;
               if (evt.type === "message_start" && evt.message?.usage) inputTokens = evt.message.usage.input_tokens || 0;
-              if (evt.type === "error") { sseWrite(res, "error", { message: evt.error?.message || "Erreur API" }); res.end(); return; }
             } catch { /* skip */ }
           }
         }
       } else {
-        const baseUrls: Record<string, string> = {
-          deepseek: "https://api.deepseek.com/v1",
-          openai: "https://api.openai.com/v1",
-          mistral: "https://api.mistral.ai/v1",
-          groq: "https://api.groq.com/openai/v1",
-        };
-        const baseUrl = baseUrls[provider] || "https://api.openai.com/v1";
-        const aiRes = await fetch(`${baseUrl}/chat/completions`, {
+        const baseUrls: Record<string, string> = { deepseek: "https://api.deepseek.com/v1", openai: "https://api.openai.com/v1" };
+        const aiRes = await fetch(`${baseUrls[execProvider] || "https://api.openai.com/v1"}/chat/completions`, {
           method: "POST",
-          headers: { "Authorization": `Bearer ${apiKey}`, "content-type": "application/json" },
-          body: JSON.stringify({
-            model: modelToUse,
-            max_tokens: 8000,
-            temperature: 0.3,
-            stream: true,
-            messages: [{ role: "system", content: systemPrompt }, { role: "user", content: userMessage }],
-          }),
+          headers: { "Authorization": `Bearer ${execKey}`, "content-type": "application/json" },
+          body: JSON.stringify({ model: execModel, max_tokens: 16000, temperature: 0.2, response_format: { type: "json_object" }, messages: [{ role: "system", content: systemPrompt }, { role: "user", content: userMessage }] }),
         });
-        if (!aiRes.ok || !aiRes.body) { sseWrite(res, "error", { message: `Erreur API ${provider}: ${await aiRes.text()}` }); res.end(); return; }
-        const reader = aiRes.body.getReader();
-        const decoder = new TextDecoder();
-        let buffer = "";
+        if (!aiRes.ok || !aiRes.body) { sseWrite(res, "error", { message: `Erreur ${execProvider}: ${await aiRes.text()}` }); res.end(); return; }
+        const reader = aiRes.body.getReader(); const dec = new TextDecoder(); let buf = "";
         while (true) {
-          const { done, value } = await reader.read();
-          if (done) break;
-          buffer += decoder.decode(value, { stream: true });
-          const lines = buffer.split("\n"); buffer = lines.pop() || "";
+          const { done, value } = await reader.read(); if (done) break;
+          buf += dec.decode(value, { stream: true });
+          const lines = buf.split("\n"); buf = lines.pop() || "";
           for (const line of lines) {
             if (!line.startsWith("data: ")) continue;
             const raw = line.slice(6).trim(); if (raw === "[DONE]") continue;
@@ -1339,21 +1411,24 @@ Retourne UNIQUEMENT ce JSON (rien d'autre, pas de markdown):
         }
       }
 
-      const tokensUsed = inputTokens + outputTokens;
+      totalTokens += inputTokens + outputTokens;
       const durationMs = Date.now() - startTime;
 
       // Parse result
       let fixedCode = "";
       let report = "Analyse terminée.";
       try {
-        const jsonMatch = fullRaw.match(/\{[\s\S]*\}/);
-        const parsed = JSON.parse(jsonMatch ? jsonMatch[0] : fullRaw);
+        const extracted = extractJsonObject(fullRaw) ?? fullRaw;
+        const parsed = JSON.parse(extracted);
         fixedCode = parsed.fixed_code || parsed.code || "";
         report = parsed.report || "Code corrigé.";
       } catch {
-        if (fullRaw.trim().startsWith("<!DOCTYPE") || fullRaw.trim().startsWith("<html")) {
-          fixedCode = fullRaw.trim();
-          report = "Code corrigé.";
+        const htmlIdx = fullRaw.search(/<!DOCTYPE html>/i);
+        if (htmlIdx >= 0) {
+          const tail = fullRaw.slice(htmlIdx);
+          const end = tail.lastIndexOf("</html>");
+          fixedCode = end >= 0 ? tail.slice(0, end + 7) : tail;
+          report = visualFindings ? `Corrections visuelles + code appliquées.` : "Code corrigé.";
         } else {
           sseWrite(res, "error", { message: "Le modèle n'a pas retourné de code valide" });
           res.end(); return;
@@ -1362,39 +1437,42 @@ Retourne UNIQUEMENT ce JSON (rien d'autre, pas de markdown):
 
       if (!fixedCode) { sseWrite(res, "error", { message: "Aucun code corrigé reçu" }); res.end(); return; }
 
+      // Run static validation on fixed code (quick sanity check)
+      const remainingIssues = validateGeneratedCode(fixedCode);
+      const fullReport = [
+        ...(visualFindings ? [`📸 Analyse visuelle :\n${visualFindings}`] : []),
+        report,
+        ...(remainingIssues.length > 0 ? [`⚠️ Problèmes résiduels : ${remainingIssues.join(", ")}`] : []),
+      ].join("\n\n");
+
+      pipelineLog('debug:done', { tokensUsed: totalTokens, durationMs, hasVisual: !!visualFindings, residualIssues: remainingIssues.length });
+
       // Save new version
       const [versionResult] = await db.insert(versions).values({
         projectId,
         userId: user.id,
         versionNumber: nextVersionNumber,
-        label: `Debug v${nextVersionNumber}`,
+        label: `Debug v${nextVersionNumber}${visualFindings ? " (vision)" : ""}`,
         prompt: "Débogage automatique",
         generatedCode: fixedCode,
-        tokensUsed,
+        tokensUsed: totalTokens,
         generationTimeMs: durationMs,
-        model: modelToUse,
+        model: execModel,
         status: "ready",
       }).returning({ id: versions.id });
 
-      await db.update(projects).set({
-        currentVersionId: versionResult.id,
-        status: "ready",
-      }).where(eq(projects.id, projectId));
+      await db.update(projects).set({ currentVersionId: versionResult.id, status: "ready" }).where(eq(projects.id, projectId));
 
-      const debugCost = estimateCost(modelToUse, inputTokens, outputTokens);
       await db.insert(usageLogs).values({
-        userId: user.id,
-        projectId,
-        action: "debug",
-        model: modelToUse,
-        tokensUsed,
-        durationMs,
-        costEstimateUsd: Math.round(debugCost * 1_000_000),
+        userId: user.id, projectId, action: "debug", model: execModel,
+        tokensUsed: totalTokens, durationMs,
+        costEstimateUsd: Math.round(estimateCost(execModel, inputTokens, outputTokens) * 1_000_000),
         status: "success",
       }).catch(() => {});
 
-      sseWrite(res, "done", { versionId: versionResult.id, report, tokensUsed });
+      sseWrite(res, "done", { versionId: versionResult.id, report: fullReport, tokensUsed: totalTokens });
     } catch (err: any) {
+      pipelineLog('debug:error', { error: String(err.message) });
       sseWrite(res, "error", { message: err.message });
     }
 

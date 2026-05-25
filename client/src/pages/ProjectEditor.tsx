@@ -878,17 +878,115 @@ export default function ProjectEditor() {
   const [debugReport, setDebugReport] = useState<string | null>(null);
   const [isDebugging, setIsDebugging] = useState(false);
 
+  /**
+   * Inject html2canvas into a hidden iframe and return a JPEG base64 screenshot.
+   * The iframe renders the real site HTML so the LLM sees exactly what the user sees.
+   */
+  const captureScreenshot = useCallback((): Promise<{ data: string; mimeType: string }> => {
+    return new Promise((resolve, reject) => {
+      const code = currentVersionData?.generatedCode || htmlCode || "";
+      if (!code) { reject(new Error("Aucun code à capturer")); return; }
+
+      // Inject html2canvas (CDN) + capture script into the site HTML
+      const captureScript = `<script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"><\/script>
+<script>
+(function(){
+  function doCapture(){
+    if(typeof html2canvas==='undefined'){
+      window.parent.postMessage({type:'SCREENSHOT_ERROR',error:'html2canvas indisponible'},'*');
+      return;
+    }
+    html2canvas(document.documentElement,{
+      useCORS:false,allowTaint:true,scale:0.5,logging:false,
+      width:1280,height:900,windowWidth:1280,windowHeight:900
+    }).then(function(canvas){
+      window.parent.postMessage({type:'SCREENSHOT_DONE',dataUrl:canvas.toDataURL('image/jpeg',0.72)},'*');
+    }).catch(function(err){
+      window.parent.postMessage({type:'SCREENSHOT_ERROR',error:String(err)},'*');
+    });
+  }
+  // Wait for page + fonts + scripts to settle
+  if(document.readyState==='complete') setTimeout(doCapture,2200);
+  else window.addEventListener('load',function(){setTimeout(doCapture,2200);});
+})();
+<\/script>`;
+
+      // Build debug HTML (inject into <head> + before </body>)
+      let debugHtml = code;
+      if (/<\/head>/i.test(debugHtml)) {
+        debugHtml = debugHtml.replace(/<\/head>/i, `<script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"><\/script></head>`);
+      } else {
+        debugHtml = `<script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"><\/script>` + debugHtml;
+      }
+      if (/<\/body>/i.test(debugHtml)) {
+        debugHtml = debugHtml.replace(/<\/body>/i, `${captureScript}</body>`);
+      } else {
+        debugHtml += captureScript;
+      }
+
+      // Create off-screen iframe (1280×900 — desktop viewport)
+      const iframe = document.createElement("iframe");
+      (iframe as any).sandbox = "allow-scripts allow-same-origin";
+      iframe.style.cssText = "position:fixed;left:-9999px;top:-9999px;width:1280px;height:900px;opacity:0;pointer-events:none;";
+      iframe.srcdoc = debugHtml;
+      document.body.appendChild(iframe);
+
+      const tid = setTimeout(() => {
+        window.removeEventListener("message", handler);
+        if (document.body.contains(iframe)) document.body.removeChild(iframe);
+        reject(new Error("Screenshot timeout (15s)"));
+      }, 15000);
+
+      const handler = (e: MessageEvent) => {
+        if (e.data?.type === "SCREENSHOT_DONE") {
+          clearTimeout(tid);
+          window.removeEventListener("message", handler);
+          if (document.body.contains(iframe)) document.body.removeChild(iframe);
+          const raw = (e.data.dataUrl as string).replace(/^data:[^;]+;base64,/, "");
+          resolve({ data: raw, mimeType: "image/jpeg" });
+        }
+        if (e.data?.type === "SCREENSHOT_ERROR") {
+          clearTimeout(tid);
+          window.removeEventListener("message", handler);
+          if (document.body.contains(iframe)) document.body.removeChild(iframe);
+          reject(new Error(e.data.error || "Erreur screenshot"));
+        }
+      };
+      window.addEventListener("message", handler);
+    });
+  }, [currentVersionData?.generatedCode, htmlCode]);
+
   const runDebug = useCallback(async () => {
     setIsDebugging(true);
     setDebugReport(null);
+    let screenshot: { data: string; mimeType: string } | null = null;
     try {
+      // ── Step 1: capture screenshot (best-effort — debug still runs without it)
+      toast.info("📸 Capture de la preview en cours…", { id: "debug-snap", duration: 10000 });
+      try {
+        screenshot = await captureScreenshot();
+        toast.dismiss("debug-snap");
+        toast.info("🔍 Analyse visuelle + code par l'IA…", { id: "debug-analyze", duration: 30000 });
+      } catch (snapErr: any) {
+        toast.dismiss("debug-snap");
+        toast.info("🔍 Analyse du code par l'IA (sans screenshot)…", { id: "debug-analyze", duration: 30000 });
+        console.warn("[debug] screenshot failed:", snapErr.message);
+      }
+
+      // ── Step 2: send to server (screenshot is optional)
       const res = await fetch("/api/stream/debug", {
         method: "POST",
         headers: { "content-type": "application/json" },
         credentials: "include",
-        body: JSON.stringify({ projectId }),
+        body: JSON.stringify({
+          projectId,
+          screenshot: screenshot?.data,
+          screenshotMimeType: screenshot?.mimeType,
+        }),
       });
+      toast.dismiss("debug-analyze");
       if (!res.ok || !res.body) throw new Error(await res.text());
+
       const reader = res.body.getReader();
       const dec = new TextDecoder();
       let buf = "";
@@ -901,11 +999,15 @@ export default function ProjectEditor() {
           if (!line.startsWith("data: ")) continue;
           try {
             const evt = JSON.parse(line.slice(6));
+            if (evt.agent && evt.step) setAgentStep({ agent: evt.agent, step: evt.step, icon: evt.icon || "🔍" });
             if (evt.versionId) {
+              setAgentStep(null);
               setDebugReport(evt.report || "Code corrigé.");
+              setSelectedVersionId(evt.versionId);
               utils.projects.getVersions.invalidate({ projectId });
               utils.projects.get.invalidate({ id: projectId });
-              toast.success("Débogage terminé — nouvelle version créée", { duration: 5000 });
+              utils.projects.getVersionCode.invalidate({ versionId: evt.versionId });
+              toast.success("✅ Débogage terminé — nouvelle version créée", { duration: 5000 });
               fetchSuggestions("débogage automatique du site", "debug", language);
             }
             if (evt.message) throw new Error(evt.message);
@@ -915,11 +1017,14 @@ export default function ProjectEditor() {
         }
       }
     } catch (err: any) {
+      toast.dismiss("debug-snap");
+      toast.dismiss("debug-analyze");
       toast.error(err.message);
     } finally {
       setIsDebugging(false);
+      setAgentStep(null);
     }
-  }, [projectId]);
+  }, [projectId, captureScreenshot]);
 
   /* inspect: listen to messages from iframe */
   useEffect(() => {
