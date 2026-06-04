@@ -8,6 +8,7 @@ import { getDb } from "./db";
 import { projects, versions, chatMessages, apiKeys, users, usageLogs, platformApiKeys } from "../drizzle/schema";
 import { eq, and, desc, count, sum, gte } from "drizzle-orm";
 import crypto from "crypto";
+import { buildInspirationContext } from "./inspiration";
 
 const ENCRYPTION_KEY =
   process.env.JWT_SECRET?.slice(0, 32).padEnd(32, "0") ||
@@ -617,6 +618,9 @@ export function registerStreamingRoutes(app: Express) {
       );
     } catch { /* orchestration failed — continue with original prompt */ }
 
+    // ── Inspiration URLs — scrape before building prompt ──────────────────
+    const { cleanPrompt: finalPrompt, context: inspirationCtx } = await buildInspirationContext(enrichedPrompt).catch(() => ({ cleanPrompt: enrichedPrompt, context: "" }));
+
     // ── Final execution: DeepSeek streams the HTML ─────────────────────────
     sseWrite(res, "progress", { agent: "DeepSeek", step: "Génération du code HTML…", icon: "💻" });
 
@@ -691,9 +695,9 @@ Adapte le thème à la demande. Portrait carré : w=400&h=400
 • Stats : UNIQUEMENT si fournies par l'utilisateur. Sinon → PAS de statistiques.
 • Prix : uniquement si précisés — sinon "Sur devis" ou "À partir de X€"
 
-TYPE: ${siteType || "landing page"} | STYLE: ${style || "moderne"} | LANGUE: ${language || "fr"} | PALETTE: ${colorPalette || "bleu/violet moderne"}`;
+TYPE: ${siteType || "landing page"} | STYLE: ${style || "moderne"} | LANGUE: ${language || "fr"} | PALETTE: ${colorPalette || "bleu/violet moderne"}${inspirationCtx}`;
 
-    const userMessage = `Crée un site web COMPLET et PREMIUM pour : ${enrichedPrompt}
+    const userMessage = `Crée un site web COMPLET et PREMIUM pour : ${finalPrompt}
 
 STRUCTURE MINIMALE OBLIGATOIRE :
 1. <head> complet : charset, viewport, title SEO, description, OG tags, Google Fonts

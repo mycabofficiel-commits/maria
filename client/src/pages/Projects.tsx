@@ -15,7 +15,8 @@ import { toast } from "sonner";
 import { useLocation } from "wouter";
 import {
   Plus, FolderOpen, Globe, Clock, CheckCircle2, AlertCircle,
-  Loader2, Sparkles, Users, Eye, LayoutTemplate, ArrowLeft, ArrowRight
+  Loader2, Sparkles, Users, Eye, LayoutTemplate, ArrowLeft, ArrowRight,
+  Link, X
 } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 import { fr } from "date-fns/locale";
@@ -88,6 +89,7 @@ export default function Projects() {
     colorPalette: "Bleu/Violet",
     customColors: ["#6366f1", "#8b5cf6", "#a78bfa"] as string[],
     useCustomColors: false,
+    inspirationUrls: [""] as string[],
     framework: "html" as "html" | "react" | "nextjs" | "expo",
   });
 
@@ -111,7 +113,7 @@ export default function Projects() {
     setSelectedTpl(null);
     setTplProjectName("");
     setActiveCategory("Tous");
-    setForm({ name: "", description: "", siteType: "Landing page", style: "Moderne", languages: ["fr"], colorPalette: "Bleu/Violet", customColors: ["#6366f1", "#8b5cf6", "#a78bfa"], useCustomColors: false, framework: "html" });
+    setForm({ name: "", description: "", siteType: "Landing page", style: "Moderne", languages: ["fr"], colorPalette: "Bleu/Violet", customColors: ["#6366f1", "#8b5cf6", "#a78bfa"], useCustomColors: false, inspirationUrls: [""], framework: "html" });
   };
 
   const handleCreate = () => {
@@ -120,11 +122,17 @@ export default function Projects() {
       ? form.customColors.filter(Boolean).join(",")
       : form.colorPalette;
     // "expo" n'est pas une valeur DB valide (pgEnum html/react/nextjs)
-    // Pour Application mobile : on stocke "react" mais siteType="Application mobile" guide le LLM
     const dbFramework = form.framework === "expo" ? "react" : form.framework;
+
+    // Append valid inspiration URLs to the description so the generator can scrape them
+    const validUrls = form.inspirationUrls.filter((u) => u.trim().match(/^https?:\/\/.+/));
+    const finalDescription = validUrls.length > 0
+      ? `${form.description}\n\n[INSPIRATION_URLS: ${validUrls.join(" ")}]`
+      : form.description;
+
     createProject.mutate({
       name: form.name,
-      description: form.description,
+      description: finalDescription,
       siteType: form.siteType,
       style: form.style,
       language: form.languages.join(","),
@@ -230,6 +238,51 @@ export default function Projects() {
                       className="w-full rounded-md border border-border/60 bg-input px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground resize-none focus:outline-none focus:ring-1 focus:ring-primary"
                     />
                   </div>
+                  {/* ── Inspiration URLs ── */}
+                  <div>
+                    <Label className="text-sm text-foreground mb-1.5 flex items-center gap-1.5">
+                      <Link className="w-3.5 h-3.5 text-primary" />
+                      Inspiration <span className="text-muted-foreground font-normal text-xs">(optionnel — jusqu'à 4 sites)</span>
+                    </Label>
+                    <div className="space-y-1.5">
+                      {form.inspirationUrls.map((url, i) => (
+                        <div key={i} className="flex gap-1.5">
+                          <Input
+                            placeholder="https://exemple.com"
+                            value={url}
+                            onChange={(e) => {
+                              const next = [...form.inspirationUrls];
+                              next[i] = e.target.value;
+                              setForm({ ...form, inspirationUrls: next });
+                            }}
+                            className="bg-input border-border/60 text-sm h-8"
+                          />
+                          {form.inspirationUrls.length > 1 && (
+                            <button
+                              type="button"
+                              onClick={() => setForm({ ...form, inspirationUrls: form.inspirationUrls.filter((_, j) => j !== i) })}
+                              className="text-muted-foreground hover:text-destructive transition-colors flex-shrink-0"
+                            >
+                              <X className="w-4 h-4" />
+                            </button>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                    {form.inspirationUrls.length < 4 && (
+                      <button
+                        type="button"
+                        onClick={() => setForm({ ...form, inspirationUrls: [...form.inspirationUrls, ""] })}
+                        className="mt-1.5 text-xs text-primary hover:text-primary/80 flex items-center gap-1 transition-colors"
+                      >
+                        <Plus className="w-3 h-3" /> Ajouter un site
+                      </button>
+                    )}
+                    {form.inspirationUrls.some((u) => u.trim().match(/^https?:\/\/.+/)) && (
+                      <p className="text-[10px] text-emerald-400 mt-1">✦ Mar-ia analysera ces sites avant de générer</p>
+                    )}
+                  </div>
+
                   <div className="grid grid-cols-2 gap-3">
                     <div>
                       <Label className="text-sm text-foreground mb-1.5 block">Type de site</Label>

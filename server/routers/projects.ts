@@ -4,6 +4,7 @@ import { getDb } from "../db";
 import { projects, versions, chatMessages, projectFiles, usageLogs, users, apiKeys } from "../../drizzle/schema";
 import { eq, desc, and, count, sum } from "drizzle-orm";
 import crypto from "crypto";
+import { buildInspirationContext } from "../inspiration";
 
 const ENCRYPTION_KEY = process.env.JWT_SECRET?.slice(0, 32).padEnd(32, "0") || "maria-default-key-32-chars-long!";
 
@@ -19,6 +20,7 @@ function decrypt(encryptedText: string): string {
 function slugify(name: string): string {
   return name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") + "-" + Math.random().toString(36).slice(2, 7);
 }
+
 
 export const projectsRouter = router({
   // List projects
@@ -157,6 +159,9 @@ export const projectsRouter = router({
         ? "claude-sonnet-4-5"
         : keyRow[0].model;
 
+      // Parse & scrape inspiration URLs embedded in the prompt
+      const { cleanPrompt, context: inspirationContext } = await buildInspirationContext(input.prompt);
+
       const systemPrompt = `Tu es un expert en développement web. Tu génères du code HTML/CSS/JS de haute qualité, professionnel, responsive et optimisé SEO.
 
 RÈGLES IMPORTANTES:
@@ -186,9 +191,9 @@ NAVIGATION MULTI-PAGES (CRITIQUE):
 TYPE DE SITE: ${input.siteType || "landing page"}
 STYLE: ${input.style || "moderne"}
 LANGUE: ${input.language}
-PALETTE: ${input.colorPalette || "bleu/violet moderne"}`;
+PALETTE: ${input.colorPalette || "bleu/violet moderne"}${inspirationContext}`;
 
-      const userMessage = `Crée un site web complet pour: ${input.prompt}
+      const userMessage = `Crée un site web complet pour: ${cleanPrompt}
 
 Génère un code HTML/CSS/JS complet, professionnel et prêt à l'emploi. Inclus:
 - Un header avec navigation
