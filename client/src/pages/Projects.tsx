@@ -19,10 +19,11 @@ import { useLocation } from "wouter";
 import {
   Plus, FolderOpen, Globe, Clock, CheckCircle2, AlertCircle,
   Loader2, MoreVertical, Trash2, ExternalLink, Sparkles, Edit3,
-  Share2, Users, Eye
+  Share2, Users, Eye, LayoutTemplate, ArrowLeft, ArrowRight
 } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 import { fr } from "date-fns/locale";
+import { TEMPLATES, TEMPLATE_CATEGORIES, type Template, type TemplateCategory } from "@/data/templates";
 
 const SITE_TYPES = [
   "Landing page", "Site vitrine", "Portfolio", "Restaurant",
@@ -35,6 +36,13 @@ const FRAMEWORKS = [
   { value: "nextjs", label: "Next.js" },
 ];
 
+const CATEGORY_COLORS: Record<string, string> = {
+  Business: "bg-blue-500/10 text-blue-400 border-blue-500/20",
+  Créatif: "bg-violet-500/10 text-violet-400 border-violet-500/20",
+  Services: "bg-emerald-500/10 text-emerald-400 border-emerald-500/20",
+  Tech: "bg-amber-500/10 text-amber-400 border-amber-500/20",
+};
+
 const STATUS_CONFIG: Record<string, { label: string; color: string; icon: any }> = {
   draft: { label: "Brouillon", color: "text-muted-foreground", icon: Clock },
   generating: { label: "Génération…", color: "text-amber-400", icon: Loader2 },
@@ -44,9 +52,15 @@ const STATUS_CONFIG: Record<string, { label: string; color: string; icon: any }>
   error: { label: "Erreur", color: "text-destructive", icon: AlertCircle },
 };
 
+type DialogTab = "blank" | "template" | "tpl-confirm";
+
 export default function Projects() {
   const [, navigate] = useLocation();
   const [open, setOpen] = useState(false);
+  const [tab, setTab] = useState<DialogTab>("blank");
+  const [activeCategory, setActiveCategory] = useState<TemplateCategory>("Tous");
+  const [selectedTpl, setSelectedTpl] = useState<Template | null>(null);
+  const [tplProjectName, setTplProjectName] = useState("");
   const [form, setForm] = useState({
     name: "",
     description: "",
@@ -63,7 +77,7 @@ export default function Projects() {
   const createProject = trpc.projects.create.useMutation({
     onSuccess: (data) => {
       toast.success("Projet créé !");
-      setOpen(false);
+      resetDialog();
       utils.projects.list.invalidate();
       navigate(`/projects/${data.id}`);
     },
@@ -78,10 +92,42 @@ export default function Projects() {
     onError: (err: any) => toast.error(err.message),
   });
 
+  const resetDialog = () => {
+    setOpen(false);
+    setTab("blank");
+    setSelectedTpl(null);
+    setTplProjectName("");
+    setActiveCategory("Tous");
+    setForm({ name: "", description: "", siteType: "Landing page", style: "Moderne", language: "fr", framework: "html" });
+  };
+
   const handleCreate = () => {
     if (!form.name.trim()) return toast.error("Donnez un nom à votre projet");
     createProject.mutate(form);
   };
+
+  const handleSelectTemplate = (tpl: Template) => {
+    setSelectedTpl(tpl);
+    setTplProjectName(tpl.name);
+    setTab("tpl-confirm");
+  };
+
+  const handleCreateFromTemplate = () => {
+    if (!selectedTpl) return;
+    createProject.mutate({
+      name: tplProjectName.trim() || selectedTpl.name,
+      description: selectedTpl.prompt,
+      siteType: selectedTpl.siteType,
+      style: selectedTpl.style,
+      colorPalette: selectedTpl.colorPalette,
+      language: selectedTpl.language,
+      framework: selectedTpl.framework,
+    });
+  };
+
+  const filteredTpls = activeCategory === "Tous"
+    ? TEMPLATES
+    : TEMPLATES.filter((t) => t.category === activeCategory);
 
   return (
     <AppLayout title="Projets">
@@ -91,96 +137,191 @@ export default function Projects() {
             <h2 className="text-2xl font-display font-bold text-foreground">Mes projets</h2>
             <p className="text-muted-foreground mt-1">{projects?.length || 0} projet{(projects?.length || 0) > 1 ? "s" : ""}</p>
           </div>
-          <Dialog open={open} onOpenChange={setOpen}>
+          <Dialog open={open} onOpenChange={(o) => { if (!o) resetDialog(); else setOpen(true); }}>
             <DialogTrigger asChild>
               <Button className="bg-primary hover:bg-primary/90 text-primary-foreground">
                 <Plus className="w-4 h-4 mr-2" />
                 Nouveau projet
               </Button>
             </DialogTrigger>
-            <DialogContent className="bg-card border-border/60 max-w-lg">
+            <DialogContent className={`bg-card border-border/60 transition-all ${tab === "template" ? "max-w-4xl" : "max-w-lg"}`}>
               <DialogHeader>
-                <DialogTitle className="font-display text-foreground">Créer un projet</DialogTitle>
+                <DialogTitle className="font-display text-foreground flex items-center gap-2">
+                  {tab === "tpl-confirm" && (
+                    <button onClick={() => setTab("template")} className="text-muted-foreground hover:text-foreground">
+                      <ArrowLeft className="w-4 h-4" />
+                    </button>
+                  )}
+                  {tab === "tpl-confirm" ? (
+                    <><span className="text-xl">{selectedTpl?.emoji}</span> {selectedTpl?.name}</>
+                  ) : "Nouveau projet"}
+                </DialogTitle>
               </DialogHeader>
-              <div className="space-y-4 pt-2">
-                <div>
-                  <Label className="text-sm text-foreground mb-1.5 block">Nom du projet *</Label>
-                  <Input
-                    placeholder="Mon site web"
-                    value={form.name}
-                    onChange={(e) => setForm({ ...form, name: e.target.value })}
-                    className="bg-input border-border/60"
-                  />
+
+              {/* Tabs */}
+              {tab !== "tpl-confirm" && (
+                <div className="flex gap-1 p-1 rounded-lg bg-muted/30 border border-border/40">
+                  <button
+                    onClick={() => setTab("blank")}
+                    className={`flex-1 flex items-center justify-center gap-2 py-2 rounded-md text-sm font-medium transition-colors ${
+                      tab === "blank" ? "bg-card text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"
+                    }`}
+                  >
+                    <Plus className="w-3.5 h-3.5" /> Projet vide
+                  </button>
+                  <button
+                    onClick={() => setTab("template")}
+                    className={`flex-1 flex items-center justify-center gap-2 py-2 rounded-md text-sm font-medium transition-colors ${
+                      tab === "template" ? "bg-card text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"
+                    }`}
+                  >
+                    <LayoutTemplate className="w-3.5 h-3.5" /> Templates
+                  </button>
                 </div>
-                <div>
-                  <Label className="text-sm text-foreground mb-1.5 block">Description</Label>
-                  <Input
-                    placeholder="Décrivez brièvement votre projet"
-                    value={form.description}
-                    onChange={(e) => setForm({ ...form, description: e.target.value })}
-                    className="bg-input border-border/60"
-                  />
-                </div>
-                <div className="grid grid-cols-2 gap-3">
+              )}
+
+              {/* ── Tab: Projet vide ── */}
+              {tab === "blank" && (
+                <div className="space-y-4 pt-1">
                   <div>
-                    <Label className="text-sm text-foreground mb-1.5 block">Type de site</Label>
-                    <Select value={form.siteType} onValueChange={(v) => setForm({ ...form, siteType: v })}>
-                      <SelectTrigger className="bg-input border-border/60">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {SITE_TYPES.map((t) => <SelectItem key={t} value={t}>{t}</SelectItem>)}
-                      </SelectContent>
-                    </Select>
+                    <Label className="text-sm text-foreground mb-1.5 block">Nom du projet *</Label>
+                    <Input
+                      placeholder="Mon site web"
+                      value={form.name}
+                      onChange={(e) => setForm({ ...form, name: e.target.value })}
+                      className="bg-input border-border/60"
+                      autoFocus
+                    />
                   </div>
                   <div>
-                    <Label className="text-sm text-foreground mb-1.5 block">Style</Label>
-                    <Select value={form.style} onValueChange={(v) => setForm({ ...form, style: v })}>
-                      <SelectTrigger className="bg-input border-border/60">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {STYLES.map((s) => <SelectItem key={s} value={s}>{s}</SelectItem>)}
-                      </SelectContent>
-                    </Select>
+                    <Label className="text-sm text-foreground mb-1.5 block">Description</Label>
+                    <Input
+                      placeholder="Décrivez brièvement votre projet"
+                      value={form.description}
+                      onChange={(e) => setForm({ ...form, description: e.target.value })}
+                      className="bg-input border-border/60"
+                    />
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <Label className="text-sm text-foreground mb-1.5 block">Type de site</Label>
+                      <Select value={form.siteType} onValueChange={(v) => setForm({ ...form, siteType: v })}>
+                        <SelectTrigger className="bg-input border-border/60"><SelectValue /></SelectTrigger>
+                        <SelectContent>{SITE_TYPES.map((t) => <SelectItem key={t} value={t}>{t}</SelectItem>)}</SelectContent>
+                      </Select>
+                    </div>
+                    <div>
+                      <Label className="text-sm text-foreground mb-1.5 block">Style</Label>
+                      <Select value={form.style} onValueChange={(v) => setForm({ ...form, style: v })}>
+                        <SelectTrigger className="bg-input border-border/60"><SelectValue /></SelectTrigger>
+                        <SelectContent>{STYLES.map((s) => <SelectItem key={s} value={s}>{s}</SelectItem>)}</SelectContent>
+                      </Select>
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <Label className="text-sm text-foreground mb-1.5 block">Langue</Label>
+                      <Select value={form.language} onValueChange={(v) => setForm({ ...form, language: v })}>
+                        <SelectTrigger className="bg-input border-border/60"><SelectValue /></SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="fr">Français</SelectItem>
+                          <SelectItem value="en">English</SelectItem>
+                          <SelectItem value="es">Español</SelectItem>
+                          <SelectItem value="de">Deutsch</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div>
+                      <Label className="text-sm text-foreground mb-1.5 block">Framework</Label>
+                      <Select value={form.framework} onValueChange={(v: any) => setForm({ ...form, framework: v })}>
+                        <SelectTrigger className="bg-input border-border/60"><SelectValue /></SelectTrigger>
+                        <SelectContent>{FRAMEWORKS.map((f) => <SelectItem key={f.value} value={f.value}>{f.label}</SelectItem>)}</SelectContent>
+                      </Select>
+                    </div>
+                  </div>
+                  <Button className="w-full bg-primary hover:bg-primary/90 text-primary-foreground" onClick={handleCreate} disabled={createProject.isPending}>
+                    {createProject.isPending ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Sparkles className="w-4 h-4 mr-2" />}
+                    Créer le projet
+                  </Button>
+                </div>
+              )}
+
+              {/* ── Tab: Templates ── */}
+              {tab === "template" && (
+                <div className="space-y-4 pt-1">
+                  {/* Category filter */}
+                  <div className="flex flex-wrap gap-1.5">
+                    {TEMPLATE_CATEGORIES.map((cat) => (
+                      <button
+                        key={cat}
+                        onClick={() => setActiveCategory(cat)}
+                        className={`px-3 py-1 rounded-full text-xs font-medium transition-colors border ${
+                          activeCategory === cat
+                            ? "bg-primary text-primary-foreground border-primary"
+                            : "border-border/60 text-muted-foreground hover:text-foreground hover:border-border"
+                        }`}
+                      >
+                        {cat}
+                        {cat !== "Tous" && (
+                          <span className="ml-1 opacity-60">{TEMPLATES.filter((t) => t.category === cat).length}</span>
+                        )}
+                      </button>
+                    ))}
+                  </div>
+                  {/* Grid */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 max-h-[60vh] overflow-y-auto pr-1">
+                    {filteredTpls.map((tpl) => (
+                      <div
+                        key={tpl.id}
+                        className="group p-4 rounded-xl border border-border/60 bg-card/50 hover:border-primary/30 hover:bg-card transition-all flex flex-col gap-2 cursor-pointer"
+                        onClick={() => handleSelectTemplate(tpl)}
+                      >
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="w-9 h-9 rounded-lg bg-primary/10 flex items-center justify-center text-xl flex-shrink-0">{tpl.emoji}</div>
+                          <Badge variant="outline" className={`text-[10px] font-medium flex-shrink-0 ${CATEGORY_COLORS[tpl.category]}`}>{tpl.category}</Badge>
+                        </div>
+                        <div className="flex-1">
+                          <h3 className="font-semibold text-foreground text-sm mb-0.5">{tpl.name}</h3>
+                          <p className="text-xs text-muted-foreground line-clamp-2 leading-relaxed">{tpl.description}</p>
+                        </div>
+                        <div className="flex items-center justify-between pt-1 border-t border-border/30">
+                          <span className="text-[10px] text-muted-foreground uppercase tracking-wide">{tpl.framework.toUpperCase()} · {tpl.style}</span>
+                          <ArrowRight className="w-3.5 h-3.5 text-muted-foreground opacity-0 group-hover:opacity-100 group-hover:text-primary transition-all" />
+                        </div>
+                      </div>
+                    ))}
                   </div>
                 </div>
-                <div className="grid grid-cols-2 gap-3">
+              )}
+
+              {/* ── Tab: Confirm template ── */}
+              {tab === "tpl-confirm" && selectedTpl && (
+                <div className="space-y-4 pt-1">
+                  <p className="text-sm text-muted-foreground">
+                    Mar-ia va générer ce site en partant de ce template. Tu peux modifier le nom du projet.
+                  </p>
                   <div>
-                    <Label className="text-sm text-foreground mb-1.5 block">Langue</Label>
-                    <Select value={form.language} onValueChange={(v) => setForm({ ...form, language: v })}>
-                      <SelectTrigger className="bg-input border-border/60">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="fr">Français</SelectItem>
-                        <SelectItem value="en">English</SelectItem>
-                        <SelectItem value="es">Español</SelectItem>
-                        <SelectItem value="de">Deutsch</SelectItem>
-                      </SelectContent>
-                    </Select>
+                    <Label className="text-sm text-foreground mb-1.5 block">Nom du projet</Label>
+                    <Input
+                      placeholder={selectedTpl.name}
+                      value={tplProjectName}
+                      onChange={(e) => setTplProjectName(e.target.value)}
+                      onKeyDown={(e) => e.key === "Enter" && handleCreateFromTemplate()}
+                      className="bg-input border-border/60"
+                      autoFocus
+                    />
                   </div>
-                  <div>
-                    <Label className="text-sm text-foreground mb-1.5 block">Framework</Label>
-                    <Select value={form.framework} onValueChange={(v: any) => setForm({ ...form, framework: v })}>
-                      <SelectTrigger className="bg-input border-border/60">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {FRAMEWORKS.map((f) => <SelectItem key={f.value} value={f.value}>{f.label}</SelectItem>)}
-                      </SelectContent>
-                    </Select>
+                  <div className="flex gap-2">
+                    <Button variant="outline" className="flex-1 border-border/60" onClick={() => setTab("template")}>
+                      <ArrowLeft className="w-3.5 h-3.5 mr-1.5" /> Retour
+                    </Button>
+                    <Button className="flex-1 bg-primary hover:bg-primary/90 text-primary-foreground" onClick={handleCreateFromTemplate} disabled={createProject.isPending}>
+                      {createProject.isPending ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Sparkles className="w-4 h-4 mr-2" />}
+                      Créer le projet
+                    </Button>
                   </div>
                 </div>
-                <Button
-                  className="w-full bg-primary hover:bg-primary/90 text-primary-foreground"
-                  onClick={handleCreate}
-                  disabled={createProject.isPending}
-                >
-                  {createProject.isPending ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Sparkles className="w-4 h-4 mr-2" />}
-                  Créer le projet
-                </Button>
-              </div>
+              )}
             </DialogContent>
           </Dialog>
         </div>
@@ -194,7 +335,7 @@ export default function Projects() {
             <FolderOpen className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
             <h3 className="text-lg font-display font-semibold text-foreground mb-2">Aucun projet</h3>
             <p className="text-muted-foreground mb-6">Créez votre premier site web avec l'IA.</p>
-            <Button onClick={() => setOpen(true)} className="bg-primary hover:bg-primary/90 text-primary-foreground">
+            <Button onClick={() => { resetDialog(); setOpen(true); }} className="bg-primary hover:bg-primary/90 text-primary-foreground">
               <Plus className="w-4 h-4 mr-2" />
               Créer mon premier projet
             </Button>
@@ -270,7 +411,7 @@ export default function Projects() {
             {/* New project card */}
             <div
               className="p-5 rounded-xl border border-dashed border-border/60 flex flex-col items-center justify-center gap-3 cursor-pointer hover:border-primary/40 hover:bg-primary/5 transition-all min-h-[160px]"
-              onClick={() => setOpen(true)}
+              onClick={() => { resetDialog(); setOpen(true); }}
             >
               <div className="w-10 h-10 rounded-lg bg-muted flex items-center justify-center">
                 <Plus className="w-5 h-5 text-muted-foreground" />

@@ -12,19 +12,21 @@ import {
 } from "@/components/ui/dropdown-menu";
 import {
   LayoutDashboard, FolderOpen, Key, CreditCard,
-  User, LogOut, ChevronRight, Menu, X, Shield, Crown, Zap, LayoutTemplate,
+  User, LogOut, ChevronRight, Menu, X, Shield, Crown, Zap,
   PanelLeftClose, PanelLeftOpen, Sparkles
 } from "lucide-react";
 import LogoBrand from "@/components/LogoBrand";
 import { useState } from "react";
 import { Loader2 } from "lucide-react";
 
-const NAV_ITEMS = [
+const NAV_ITEMS_BASE = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
   { href: "/projects", label: "Projets", icon: FolderOpen },
-  { href: "/templates", label: "Templates", icon: LayoutTemplate },
-  { href: "/api-keys", label: "Clés API", icon: Key, adminOnly: true },
   { href: "/billing", label: "Billing", icon: CreditCard },
+];
+
+const NAV_ITEMS_ADMIN = [
+  { href: "/api-keys", label: "Clés API", icon: Key },
 ];
 
 interface AppLayoutProps {
@@ -85,7 +87,10 @@ export default function AppLayout({ children, title }: AppLayoutProps) {
 
         {/* Nav */}
         <nav className="flex-1 px-2 py-4 space-y-1 overflow-y-auto overflow-x-hidden">
-          {NAV_ITEMS.filter(item => !item.adminOnly || isUltra || (user as any)?.role === "admin").map((item) => {
+          {[
+            ...NAV_ITEMS_BASE,
+            ...(isUltra || (user as any)?.role === "admin" ? NAV_ITEMS_ADMIN : []),
+          ].map((item) => {
             const active = location === item.href || location.startsWith(item.href + "/");
             return (
               <Link key={item.href} href={item.href}>
