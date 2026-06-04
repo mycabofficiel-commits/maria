@@ -333,6 +333,37 @@ async function callSync(
   }
 }
 
+/**
+ * Vision-capable sync call — only for Anthropic (Claude) which supports images.
+ * Used in the reasoner when the user attaches screenshots or photos.
+ */
+async function callSyncVision(
+  apiKey: string,
+  model: string,
+  systemPrompt: string,
+  userMessage: string,
+  images: Array<{ base64: string; mimeType: string }>,
+  maxTokens = 1000
+): Promise<LlmResult> {
+  const imageBlocks = images.map(img => ({
+    type: "image" as const,
+    source: { type: "base64" as const, media_type: img.mimeType as any, data: img.base64 },
+  }));
+  const userContent = [...imageBlocks, { type: "text" as const, text: userMessage }];
+  const r = await fetch("https://api.anthropic.com/v1/messages", {
+    method: "POST",
+    headers: { "x-api-key": apiKey, "anthropic-version": "2023-06-01", "content-type": "application/json" },
+    body: JSON.stringify({ model, max_tokens: maxTokens, temperature: 0.2, system: systemPrompt, messages: [{ role: "user", content: userContent }] }),
+  });
+  if (!r.ok) throw new Error(`vision sync error: ${await r.text()}`);
+  const d = await r.json() as any;
+  return {
+    text: d.content?.[0]?.text || "",
+    inputTokens: d.usage?.input_tokens || 0,
+    outputTokens: d.usage?.output_tokens || 0,
+  };
+}
+
 /** callSync with fault tolerance — returns null on error instead of throwing */
 async function tryCallSync(
   provider: "anthropic" | "openai" | "deepseek" | "qwen",
@@ -885,15 +916,44 @@ ARCHITECTURE DU SITE (SPA mono-fichier) :
         sseWrite(res, "error", { message: "Aucun LLM disponible pour le raisonnement" });
         res.end(); return;
       }
-      // Walk the fallback chain until one succeeds
-      const startIdx = FALLBACK_CHAIN.indexOf(usedReasoner.provider);
-      for (let i = startIdx; i < FALLBACK_CHAIN.length; i++) {
-        const p = FALLBACK_CHAIN[i];
-        const k = allKeys[p];
-        if (!k) continue;
-        sseWrite(res, "progress", { agent: AGENT_NAMES[p], step: "Analyse & compréhension de la demande…", icon: "🧠" });
-        reasoning = await tryCallSync(p, PROVIDER_MODELS[p], k, reasonerSystemPrompt, reasonerUserMsg, 800);
-        if (reasoning?.text) { usedReasoner = { provider: p, model: PROVIDER_MODELS[p], key: k }; break; }
+
+      // ── Vision path: if images are attached, use Claude vision for reasoning ──
+      // Claude is the only provider that reliably supports images in the reasoner.
+      // When images are present, the reasoner MUST enumerate every visible element
+      // so the executor gets a precise checklist (not a vague "create pages").
+      if (images && images.length > 0 && claudeKey) {
+        pipelineLog('reason:vision', { images: images.length });
+        sseWrite(res, "progress", { agent: "Claude", step: "Analyse de l'image…", icon: "👁️" });
+        const visionSystemPrompt = reasonerSystemPrompt + `
+
+SI UNE IMAGE EST JOINTE (priorité absolue) :
+1. Décris ce que tu vois dans l'image (menu, footer, liste de liens, design, etc.)
+2. Liste TOUS les éléments visibles qui doivent être créés/modifiés, UN PAR UN :
+   Ex: si l'image montre un footer avec 9 liens → liste les 9 liens numérotés
+3. Dans "Actions prévues", numérote CHAQUE page/section à créer :
+   • 1. Créer <section id="support"> avec page Support complète
+   • 2. Créer <section id="faq"> avec page FAQ complète
+   • [une ligne par page, sans exception]
+⚠️ L'exécuteur créera EXACTEMENT ce que tu listes ici. N'oublie aucun élément visible.`;
+        try {
+          reasoning = await callSyncVision(claudeKey, "claude-haiku-4-5", visionSystemPrompt, reasonerUserMsg, images, 1000);
+          if (reasoning?.text) usedReasoner = { provider: "anthropic", model: "claude-haiku-4-5", key: claudeKey };
+        } catch (e) {
+          pipelineLog('reason:vision:error', { error: String(e).slice(0, 100) });
+        }
+      }
+
+      // ── Text-only path (no images, or vision failed) ──
+      if (!reasoning?.text) {
+        const startIdx = FALLBACK_CHAIN.indexOf(usedReasoner.provider);
+        for (let i = startIdx; i < FALLBACK_CHAIN.length; i++) {
+          const p = FALLBACK_CHAIN[i];
+          const k = allKeys[p];
+          if (!k) continue;
+          sseWrite(res, "progress", { agent: AGENT_NAMES[p], step: "Analyse & compréhension de la demande…", icon: "🧠" });
+          reasoning = await tryCallSync(p, PROVIDER_MODELS[p], k, reasonerSystemPrompt, reasonerUserMsg, 800);
+          if (reasoning?.text) { usedReasoner = { provider: p, model: PROVIDER_MODELS[p], key: k }; break; }
+        }
       }
 
       pipelineLog('reason:done', { provider: usedReasoner.provider, tokens: reasoning?.inputTokens ? reasoning.inputTokens + reasoning.outputTokens : 0 });
@@ -1023,6 +1083,14 @@ Si le code actuel fait 15 000 caractères, ta réponse doit faire au moins autan
 • Formulaires : onsubmit="e.preventDefault(); [masque form, affiche message succès]"
 • Responsive : mobile-first, breakpoints @media (min-width: 640px) et @media (min-width: 1024px)
 • Nouvelles sections ajoutées : appliquer le même style que les sections existantes (même variables CSS, même typographie)
+
+══ RÈGLE 6 — IMAGES JOINTES PAR L'UTILISATEUR ══
+Si une image est jointe ET que le plan d'action liste des éléments numérotés à créer :
+• Crée une <section id="..."> complète pour CHAQUE élément listé, dans l'ordre
+• Ne passe à la section suivante qu'après avoir terminé la précédente
+• Chaque section doit avoir du VRAI contenu (titre, texte, éléments HTML) — pas de placeholder
+• Après avoir créé toutes les sections, vérifie que chaque showPage('id') a bien sa section correspondante
+• Si tu manques de place (token limit) : réduis le CSS et le contenu des sections existantes pour faire tenir toutes les nouvelles
 
 ══ CODE ACTUEL (v${currentVersion[0].versionNumber}) — LIS ATTENTIVEMENT AVANT D'ÉCRIRE ══
 ${currentVersion[0].generatedCode || ""}
