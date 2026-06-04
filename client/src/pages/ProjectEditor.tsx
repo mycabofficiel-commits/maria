@@ -141,7 +141,7 @@ const VE_SCRIPT = `(function(){
     var r=el.getBoundingClientRect();
     overlay=document.createElement('div');
     overlay.id='__ve_ov__';
-    overlay.style.cssText='position:fixed;pointer-events:none;z-index:99998;box-sizing:border-box;left:'+r.left+'px;top:'+r.top+'px;width:'+r.width+'px;height:'+r.height+'px;';
+    overlay.style.cssText='position:fixed;pointer-events:none;z-index:99998;box-sizing:border-box;outline:2px solid #6366f1;left:'+r.left+'px;top:'+r.top+'px;width:'+r.width+'px;height:'+r.height+'px;';
     var handles=[
       {t:'-4px',l:'-4px',c:'nw'},{t:'-4px',l:'calc(50% - 4px)',c:'n'},{t:'-4px',r:'-4px',c:'ne'},
       {t:'calc(50% - 4px)',l:'-4px',c:'w'},{t:'calc(50% - 4px)',r:'-4px',c:'e'},
@@ -155,6 +155,12 @@ const VE_SCRIPT = `(function(){
       if(p.l)h.style.left=p.l;if(p.r)h.style.right=p.r;
       overlay.appendChild(h);
     });
+    // Dimension badge — shows W × H at top-left of overlay
+    var dim=document.createElement('div');
+    dim.id='__ve_dim__';
+    dim.style.cssText='position:absolute;top:-22px;left:0;background:#6366f1;color:#fff;font:bold 11px/1 monospace;padding:2px 6px;border-radius:4px 4px 0 0;white-space:nowrap;pointer-events:none;';
+    dim.textContent=Math.round(r.width)+'×'+Math.round(r.height)+' px';
+    overlay.appendChild(dim);
     document.body.appendChild(overlay);
   }
 
@@ -163,6 +169,10 @@ const VE_SCRIPT = `(function(){
     var r=sel.getBoundingClientRect();
     overlay.style.left=r.left+'px';overlay.style.top=r.top+'px';
     overlay.style.width=r.width+'px';overlay.style.height=r.height+'px';
+    var dim=overlay.querySelector('#__ve_dim__');
+    if(dim)dim.textContent=Math.round(r.width)+'×'+Math.round(r.height)+' px';
+    // Also notify parent of new dimensions (for toolbar update during resize)
+    window.parent.postMessage({type:'VE_RESIZE',w:Math.round(r.width),h:Math.round(r.height)},'*');
   }
 
   function removeOverlay(){
@@ -213,12 +223,32 @@ const VE_SCRIPT = `(function(){
     sendLayers();
   }
 
+  // Hover dimension tooltip
+  var hoverTip=document.createElement('div');
+  hoverTip.id='__ve_htip__';
+  hoverTip.style.cssText='position:fixed;pointer-events:none;z-index:100000;background:rgba(30,30,46,.92);color:#a5b4fc;font:bold 10px/1.4 monospace;padding:3px 7px;border-radius:4px;border:1px solid #6366f1;white-space:nowrap;display:none;transition:none;';
+  document.body.appendChild(hoverTip);
+
   document.addEventListener('mouseover',function(e){
     var t=e.target;
-    if(t&&t.setAttribute&&t!==document.body&&t!==document.documentElement&&t!==sel&&!(t.getAttribute&&t.getAttribute('data-vehandle')))
+    if(t&&t.setAttribute&&t!==document.body&&t!==document.documentElement&&t!==sel&&!(t.getAttribute&&t.getAttribute('data-vehandle'))){
       t.setAttribute('data-veh','1');
+      var r=t.getBoundingClientRect();
+      hoverTip.textContent=Math.round(r.width)+'×'+Math.round(r.height)+' px';
+      hoverTip.style.display='block';
+    }
   },true);
-  document.addEventListener('mouseout',function(e){var t=e.target;if(t&&t.removeAttribute)t.removeAttribute('data-veh');},true);
+  document.addEventListener('mouseout',function(e){
+    var t=e.target;
+    if(t&&t.removeAttribute)t.removeAttribute('data-veh');
+    hoverTip.style.display='none';
+  },true);
+  document.addEventListener('mousemove',function(e){
+    if(hoverTip.style.display==='block'){
+      hoverTip.style.left=(e.clientX+14)+'px';
+      hoverTip.style.top=(e.clientY-24)+'px';
+    }
+  },true);
 
   document.addEventListener('click',function(e){
     if(e.target&&e.target.getAttribute&&e.target.getAttribute('data-vehandle'))return;
@@ -413,6 +443,8 @@ export default function ProjectEditor() {
   const [veTextInput, setVeTextInput] = useState("");
   const [showLayers, setShowLayers] = useState(false);
   const [veLayers, setVeLayers] = useState<Array<{ idx: number; tag: string; text: string; zIndex: string; selected: boolean }>>([]);
+  const [veLiveDims, setVeLiveDims] = useState<{ w: number; h: number } | null>(null);
+  const [dimCopied, setDimCopied] = useState(false);
   const veOriginalHtmlRef = useRef<string>("");
   const [veDirty, setVeDirty] = useState(false);
   const imageUploadRef = useRef<HTMLInputElement>(null);
@@ -1127,6 +1159,11 @@ export default function ProjectEditor() {
       }
       if (e.data?.type === "VE_DESELECT") {
         setVeSelection(null);
+        setVeLiveDims(null);
+      }
+      // Live resize dimensions update
+      if (e.data?.type === "VE_RESIZE") {
+        setVeLiveDims({ w: e.data.w, h: e.data.h });
       }
     };
     window.addEventListener("message", handler);
@@ -2069,7 +2106,36 @@ ${jsCode}`;
                       Calques
                     </button>
 
-                    <div className="ml-auto text-[10px] text-white/40 px-1">{veSelection ? `<${veSelection.tag.toLowerCase()}>` : 'Cliquez un élément'}</div>
+                    {/* Dimensions display */}
+                    {veSelection && (() => {
+                      const w = veLiveDims?.w ?? Math.round(veSelection.rect.width);
+                      const h = veLiveDims?.h ?? Math.round(veSelection.rect.height);
+                      const unsplashUrl = `https://images.unsplash.com/photo-PHOTO_ID?w=${w}&h=${h}&fit=crop&q=80`;
+                      return (
+                        <div className="ml-auto flex items-center gap-1.5">
+                          {/* Tag label */}
+                          <span className="text-[10px] text-white/40">&lt;{veSelection.tag.toLowerCase()}&gt;</span>
+                          <div className="w-px h-4 bg-white/20" />
+                          {/* Dimensions badge */}
+                          <span className="font-mono text-[11px] font-bold text-violet-300 bg-violet-500/20 px-2 py-0.5 rounded">
+                            {w} × {h} px
+                          </span>
+                          {/* Copy Unsplash URL */}
+                          <button
+                            title={`Copier l'URL Unsplash à ${w}×${h}px\n${unsplashUrl}`}
+                            className={`flex items-center gap-1 px-2 h-6 rounded text-[10px] transition-colors ${dimCopied ? 'bg-emerald-500/30 text-emerald-300' : 'bg-white/10 hover:bg-violet-500/30 text-white/60 hover:text-violet-300'}`}
+                            onClick={() => {
+                              navigator.clipboard.writeText(unsplashUrl).catch(() => {});
+                              setDimCopied(true);
+                              setTimeout(() => setDimCopied(false), 2000);
+                            }}>
+                            {dimCopied ? <Check className="w-3 h-3" /> : <ImageIcon className="w-3 h-3" />}
+                            {dimCopied ? 'Copié !' : `Unsplash ${w}×${h}`}
+                          </button>
+                        </div>
+                      );
+                    })()}
+                    {!veSelection && <div className="ml-auto text-[10px] text-white/40 px-1">Survolez pour voir les dimensions — cliquez pour sélectionner</div>}
                   </div>
 
                   {/* Row 2: text input (texte sélectionné) */}
