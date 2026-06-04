@@ -255,11 +255,18 @@ function UserApiKeys() {
 // ── Main ───────────────────────────────────────────────────────────────────────
 export default function ApiKeys() {
   const { user } = useAuth();
+  const [, navigate] = useLocation();
   const isAdmin = user?.role === "ultra" || user?.role === "admin";
+
+  // Redirect non-admins who land here directly
+  if (user && !isAdmin) {
+    navigate("/dashboard");
+    return null;
+  }
 
   return (
     <AppLayout title="Clés API">
-      {isAdmin ? <AdminApiKeys /> : <UserApiKeys />}
+      <AdminApiKeys />
     </AppLayout>
   );
 }
