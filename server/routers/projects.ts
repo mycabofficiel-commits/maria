@@ -52,7 +52,7 @@ export const projectsRouter = router({
       style: z.string().optional(),
       language: z.string().default("fr"),
       colorPalette: z.string().optional(),
-      framework: z.enum(["html", "react", "nextjs", "expo"]).default("html"),
+      framework: z.enum(["html", "react", "nextjs"]).default("html"),
     }))
     .mutation(async ({ ctx, input }) => {
       const db = await getDb();
@@ -118,7 +118,7 @@ export const projectsRouter = router({
       style: z.string().optional(),
       language: z.string().default("fr"),
       colorPalette: z.string().optional(),
-      framework: z.enum(["html", "react", "nextjs", "expo"]).default("html"),
+      framework: z.enum(["html", "react", "nextjs"]).default("html"),
     }))
     .mutation(async ({ ctx, input }) => {
       const db = await getDb();

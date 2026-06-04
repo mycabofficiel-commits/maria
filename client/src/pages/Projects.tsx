@@ -119,6 +119,9 @@ export default function Projects() {
     const palette = form.useCustomColors
       ? form.customColors.filter(Boolean).join(",")
       : form.colorPalette;
+    // "expo" n'est pas une valeur DB valide (pgEnum html/react/nextjs)
+    // Pour Application mobile : on stocke "react" mais siteType="Application mobile" guide le LLM
+    const dbFramework = form.framework === "expo" ? "react" : form.framework;
     createProject.mutate({
       name: form.name,
       description: form.description,
@@ -126,7 +129,7 @@ export default function Projects() {
       style: form.style,
       language: form.languages.join(","),
       colorPalette: palette,
-      framework: form.framework,
+      framework: dbFramework,
     });
   };
 
