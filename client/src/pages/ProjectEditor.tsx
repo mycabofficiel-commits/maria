@@ -307,7 +307,21 @@ const VE_SCRIPT = `(function(){
     push();
     if(sel&&sel.contentEditable==='true')window.parent.postMessage({type:'VE_TEXT_SYNC',text:sel.innerText||''},'*');
   });
-  document.addEventListener('keydown',function(e){if(e.key==='Escape')selectEl(null);});
+  document.addEventListener('keydown',function(e){
+    if(e.key==='Escape'){selectEl(null);return;}
+    // Delete/Backspace supprime l'élément sélectionné (sauf si on édite du texte)
+    if((e.key==='Delete'||e.key==='Backspace')&&sel&&sel.contentEditable!=='true'){
+      var activeTag=document.activeElement&&document.activeElement.tagName;
+      if(activeTag==='INPUT'||activeTag==='TEXTAREA'||activeTag==='SELECT')return;
+      e.preventDefault();e.stopPropagation();
+      var parent=sel.parentElement;
+      removeOverlay();
+      sel.remove();
+      sel=null;
+      window.parent.postMessage({type:'VE_DESELECT'},'*');
+      push();sendLayers();
+    }
+  });
 
   window.addEventListener('message',function(e){
     if(!e.data||!e.data.type)return;
@@ -316,6 +330,7 @@ const VE_SCRIPT = `(function(){
     if(e.data.type==='VE_IMG_SRC'&&sel&&sel.tagName==='IMG'){sel.src=e.data.value;push();}
     if(e.data.type==='VE_MOVE_UP'&&sel&&sel.previousElementSibling){sel.parentElement.insertBefore(sel,sel.previousElementSibling);updateOverlay();push();sendLayers();}
     if(e.data.type==='VE_MOVE_DOWN'&&sel&&sel.nextElementSibling){sel.parentElement.insertBefore(sel.nextElementSibling,sel);updateOverlay();push();sendLayers();}
+    if(e.data.type==='VE_DELETE'&&sel){removeOverlay();sel.remove();sel=null;window.parent.postMessage({type:'VE_DESELECT'},'*');push();sendLayers();}
     if(e.data.type==='VE_INSERT_IMG'){
       var img=document.createElement('img');img.src=e.data.src;img.style.maxWidth='100%';
       if(sel)sel.appendChild(img);else document.body.appendChild(img);
@@ -445,6 +460,7 @@ export default function ProjectEditor() {
   const [veLayers, setVeLayers] = useState<Array<{ idx: number; tag: string; text: string; zIndex: string; selected: boolean }>>([]);
   const [veLiveDims, setVeLiveDims] = useState<{ w: number; h: number } | null>(null);
   const [dimCopied, setDimCopied] = useState(false);
+  const [veDeleteConfirm, setVeDeleteConfirm] = useState(false);
   const veOriginalHtmlRef = useRef<string>("");
   const [veDirty, setVeDirty] = useState(false);
   const imageUploadRef = useRef<HTMLInputElement>(null);
@@ -1175,6 +1191,7 @@ export default function ProjectEditor() {
           imgOH: e.data.imgOH || 0,
         };
         setVeSelection(s);
+        setVeDeleteConfirm(false);
         if (s.isText) setVeTextInput(s.textContent);
       }
       if (e.data?.type === "VE_TEXT_SYNC") {
@@ -1187,6 +1204,7 @@ export default function ProjectEditor() {
       if (e.data?.type === "VE_DESELECT") {
         setVeSelection(null);
         setVeLiveDims(null);
+        setVeDeleteConfirm(false);
       }
       // Live resize dimensions update
       if (e.data?.type === "VE_RESIZE") {
@@ -2102,6 +2120,39 @@ ${jsCode}`;
                         className="w-7 h-7 rounded hover:bg-white/10 flex items-center justify-center text-white/70 text-sm">▲</button>
                       <button title="Descendre le bloc" onClick={() => sendToIframe({ type: 'VE_MOVE_DOWN' })}
                         className="w-7 h-7 rounded hover:bg-white/10 flex items-center justify-center text-white/70 text-sm">▼</button>
+                    </>}
+
+                    {/* Delete block */}
+                    {veSelection && <>
+                      <div className="w-px h-5 bg-white/20" />
+                      {veDeleteConfirm ? (
+                        <div className="flex items-center gap-1">
+                          <span className="text-[10px] text-red-400">Supprimer ?</span>
+                          <button
+                            title="Confirmer la suppression"
+                            onClick={() => {
+                              sendToIframe({ type: 'VE_DELETE' });
+                              setVeDeleteConfirm(false);
+                              setVeSelection(null);
+                            }}
+                            className="px-2 h-7 rounded bg-red-500/80 hover:bg-red-500 text-white text-[11px] font-medium transition-colors">
+                            Oui
+                          </button>
+                          <button
+                            title="Annuler"
+                            onClick={() => setVeDeleteConfirm(false)}
+                            className="px-2 h-7 rounded hover:bg-white/10 text-white/60 text-[11px]">
+                            Non
+                          </button>
+                        </div>
+                      ) : (
+                        <button
+                          title="Supprimer cet élément (Delete)"
+                          onClick={() => setVeDeleteConfirm(true)}
+                          className="flex items-center gap-1 px-2 h-7 rounded hover:bg-red-500/20 text-white/50 hover:text-red-400 transition-colors text-[11px]">
+                          <Trash2 className="w-3 h-3" /> Supprimer
+                        </button>
+                      )}
                     </>}
 
                     {/* Z-index / calques */}
