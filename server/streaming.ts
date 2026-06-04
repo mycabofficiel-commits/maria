@@ -1318,10 +1318,11 @@ Si la page paraît correcte visuellement, réponds "VISUELLEMENT OK".` }
       }
 
       // ── STEP 2 : Code analysis + auto-fix ─────────────────────────────────
-      // Choose best available LLM for code generation (prefer Claude > DeepSeek > OpenAI)
-      let execKey = claudeKey || deepseekKey || openaiKey;
-      let execProvider: string = claudeKey ? "anthropic" : deepseekKey ? "deepseek" : "openai";
-      let execModel = claudeKey ? "claude-haiku-4-5" : deepseekKey ? "deepseek-chat" : "gpt-4o-mini";
+      // Choose best available LLM for code generation (prefer DeepSeek > Claude > OpenAI)
+      // Note: Claude is reserved for vision only; DeepSeek is the workhorse for code generation
+      let execKey = deepseekKey || claudeKey || openaiKey;
+      let execProvider: string = deepseekKey ? "deepseek" : claudeKey ? "anthropic" : "openai";
+      let execModel = deepseekKey ? "deepseek-chat" : claudeKey ? "claude-haiku-4-5" : "gpt-4o-mini";
 
       if (!execKey) {
         // Try user's personal stored key as last resort
