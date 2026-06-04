@@ -215,14 +215,6 @@ export default function AppLayout({ children, title }: AppLayoutProps) {
               <h1 className="font-display font-semibold text-foreground">{title}</h1>
             )}
           </div>
-          <div className="flex items-center gap-2">
-            <Link href="/projects">
-              <Button size="sm" className="bg-primary hover:bg-primary/90 text-primary-foreground hidden sm:flex">
-                <Sparkles className="w-3.5 h-3.5 mr-1.5" />
-                Nouveau site
-              </Button>
-            </Link>
-          </div>
         </header>
 
         {/* Content */}
