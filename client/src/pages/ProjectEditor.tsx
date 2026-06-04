@@ -853,9 +853,32 @@ export default function ProjectEditor() {
   const injectVeScript = useCallback(() => {
     try {
       const iframeDoc = previewRef.current?.contentDocument;
-      if (!iframeDoc?.body) { setTimeout(() => injectVeScript(), 150); return; }
-      iframeDoc.getElementById('__ve__')?.remove();
-      iframeDoc.getElementById('__ve_s__')?.remove();
+      // Guard: if contentDocument is null/inaccessible (cross-origin or not ready),
+      // retry once — but cap retries to avoid infinite loop
+      if (!iframeDoc) {
+        console.warn('[VE] contentDocument null — sandbox may be missing allow-same-origin');
+        return;
+      }
+      if (!iframeDoc.body) {
+        // Not ready yet — retry once after 200ms (but not infinitely)
+        setTimeout(() => {
+          const doc = previewRef.current?.contentDocument;
+          if (doc?.body) {
+            doc.getElementById('__ve__')?.remove();
+            doc.getElementById('__ve_preload__')?.remove();
+            const s = doc.createElement('script');
+            s.id = '__ve__';
+            s.textContent = VE_SCRIPT;
+            doc.body.appendChild(s);
+          }
+        }, 200);
+        return;
+      }
+      // VE script already embedded via srcDoc (getPreviewSrc), skip re-injection
+      // unless it's missing (e.g. after a preview rebuild)
+      if (iframeDoc.getElementById('__ve_preload__') || iframeDoc.getElementById('__ve__')) {
+        return; // already running
+      }
       iframeDoc.getElementById('__ve_ov__')?.remove();
       const s = iframeDoc.createElement('script');
       s.id = '__ve__';
@@ -1128,12 +1151,24 @@ export default function ProjectEditor() {
   /* inject inspect/visual-edit script into preview */
   const getPreviewSrc = () => {
     if (!inspectMode && !visualEditMode) return previewSrc;
-    const code = currentVersionData?.generatedCode || "";
+    // For VE mode: base on current previewSrc (reflects unsaved editor changes)
+    // For inspect mode: base on saved version code
+    const code = visualEditMode
+      ? (previewSrc || currentVersionData?.generatedCode || "")
+      : (currentVersionData?.generatedCode || "");
     if (!code) return previewSrc;
     let injected = code;
     if (inspectMode) {
       const script = `<script>document.addEventListener('click',function(e){e.preventDefault();e.stopPropagation();window.parent.postMessage({type:'INSPECT_ELEMENT',tag:e.target.tagName,id:e.target.id,cls:e.target.className},'*');},true);<\/script>`;
       injected = injected.replace(/<\/body>/i, `${script}</body>`);
+    }
+    if (visualEditMode) {
+      // Embed VE script directly — avoids contentDocument cross-origin issues when
+      // sandbox is loaded fresh. injectVeScript also fires via onLoad as a backup.
+      const veTag = `<script id="__ve_preload__">${VE_SCRIPT.replace(/<\/script>/gi, '<\\/script>')}<\/script>`;
+      injected = injected.includes('</body>')
+        ? injected.replace(/<\/body>/i, `${veTag}</body>`)
+        : injected + veTag;
     }
     return injected;
   };
@@ -1190,15 +1225,15 @@ export default function ProjectEditor() {
                 className={`text-xs h-8 px-2 sm:px-3 ${visualEditMode ? "bg-violet-600 hover:bg-violet-700 text-white border-0" : "border-border/60"}`}
                 onClick={() => {
                   if (!visualEditMode) {
-                    // Enter VE mode
+                    // Enter VE mode — the iframe key changes which remounts it with
+                    // allow-same-origin sandbox + VE script embedded in srcDoc.
+                    // onLoad then calls injectVeScript as a backup.
                     veOriginalHtmlRef.current = htmlCode;
                     veCurrentHtmlRef.current = "";
                     setVeDirty(false);
                     setVeSelection(null);
                     setInspectMode(false);
                     setVisualEditMode(true);
-                    // Inject script after React re-renders (iframe already has previewSrc loaded)
-                    requestAnimationFrame(() => setTimeout(injectVeScript, 50));
                   } else {
                     // Exit VE mode without saving
                     if (veDirty) {
@@ -2178,12 +2213,13 @@ ${jsCode}`;
                 <div className="h-full overflow-hidden rounded-lg border border-border/60 shadow-xl transition-all duration-300 bg-white"
                   style={{ width: VIEW_SIZES[viewMode], maxWidth: "100%" }}>
                   <iframe
+                    key={visualEditMode ? "ve-mode" : (inspectMode ? "inspect-mode" : "preview-mode")}
                     ref={previewRef}
-                    srcDoc={inspectMode ? getPreviewSrc() : previewSrc}
+                    srcDoc={(inspectMode || visualEditMode) ? getPreviewSrc() : previewSrc}
                     onLoad={() => { if (visualEditMode) setTimeout(injectVeScript, 50); }}
                     className="w-full h-full border-0"
                     title="Preview"
-                    sandbox="allow-scripts"
+                    sandbox={visualEditMode ? "allow-scripts allow-same-origin" : "allow-scripts"}
                   />
                 </div>
               </div>
