@@ -24,7 +24,28 @@ import { TEMPLATES, TEMPLATE_CATEGORIES, type Template, type TemplateCategory } 
 
 const SITE_TYPES = [
   "Landing page", "Site vitrine", "Portfolio", "Restaurant",
-  "Artisan", "Agence", "SaaS", "E-commerce simple", "Blog"
+  "Artisan", "Agence", "SaaS", "E-commerce simple", "Blog", "Application mobile"
+];
+
+const PALETTE_PRESETS = [
+  { label: "Bleu/Violet",     colors: ["#6366f1", "#8b5cf6", "#a78bfa"] },
+  { label: "Vert/Émeraude",   colors: ["#10b981", "#059669", "#34d399"] },
+  { label: "Orange/Ambre",    colors: ["#f59e0b", "#f97316", "#ef4444"] },
+  { label: "Rose/Rouge",      colors: ["#ec4899", "#f43f5e", "#fb7185"] },
+  { label: "Gris/Noir",       colors: ["#6b7280", "#374151", "#111827"] },
+  { label: "Multicolore",     colors: ["#6366f1", "#10b981", "#f59e0b"] },
+];
+
+const LANGUAGES = [
+  { code: "fr", label: "FR", full: "Français" },
+  { code: "en", label: "EN", full: "English" },
+  { code: "es", label: "ES", full: "Español" },
+  { code: "de", label: "DE", full: "Deutsch" },
+  { code: "it", label: "IT", full: "Italiano" },
+  { code: "pt", label: "PT", full: "Português" },
+  { code: "ar", label: "AR", full: "العربية" },
+  { code: "zh", label: "ZH", full: "中文" },
+  { code: "ja", label: "JA", full: "日本語" },
 ];
 const STYLES = ["Moderne", "Minimaliste", "Luxe", "Corporate", "Startup", "Premium"];
 const FRAMEWORKS = [
@@ -63,9 +84,11 @@ export default function Projects() {
     description: "",
     siteType: "Landing page",
     style: "Moderne",
-    language: "fr",
+    languages: ["fr"] as string[],
     colorPalette: "Bleu/Violet",
-    framework: "html" as "html" | "react" | "nextjs",
+    customColors: ["#6366f1", "#8b5cf6", "#a78bfa"] as string[],
+    useCustomColors: false,
+    framework: "html" as "html" | "react" | "nextjs" | "expo",
   });
 
   const utils = trpc.useUtils();
@@ -88,12 +111,23 @@ export default function Projects() {
     setSelectedTpl(null);
     setTplProjectName("");
     setActiveCategory("Tous");
-    setForm({ name: "", description: "", siteType: "Landing page", style: "Moderne", language: "fr", colorPalette: "Bleu/Violet", framework: "html" });
+    setForm({ name: "", description: "", siteType: "Landing page", style: "Moderne", languages: ["fr"], colorPalette: "Bleu/Violet", customColors: ["#6366f1", "#8b5cf6", "#a78bfa"], useCustomColors: false, framework: "html" });
   };
 
   const handleCreate = () => {
     if (!form.name.trim()) return toast.error("Donnez un nom à votre projet");
-    createProject.mutate(form);
+    const palette = form.useCustomColors
+      ? form.customColors.filter(Boolean).join(",")
+      : form.colorPalette;
+    createProject.mutate({
+      name: form.name,
+      description: form.description,
+      siteType: form.siteType,
+      style: form.style,
+      language: form.languages.join(","),
+      colorPalette: palette,
+      framework: form.framework,
+    });
   };
 
   const handleSelectTemplate = (tpl: Template) => {
@@ -196,10 +230,23 @@ export default function Projects() {
                   <div className="grid grid-cols-2 gap-3">
                     <div>
                       <Label className="text-sm text-foreground mb-1.5 block">Type de site</Label>
-                      <Select value={form.siteType} onValueChange={(v) => setForm({ ...form, siteType: v })}>
+                      <Select
+                        value={form.siteType}
+                        onValueChange={(v) => {
+                          const isMobile = v === "Application mobile";
+                          setForm({
+                            ...form,
+                            siteType: v,
+                            framework: isMobile ? "expo" : (form.framework === "expo" ? "html" : form.framework),
+                          });
+                        }}
+                      >
                         <SelectTrigger className="bg-input border-border/60"><SelectValue /></SelectTrigger>
-                        <SelectContent>{SITE_TYPES.map((t) => <SelectItem key={t} value={t}>{t}</SelectItem>)}</SelectContent>
+                        <SelectContent>{SITE_TYPES.map((t) => <SelectItem key={t} value={t}>{t === "Application mobile" ? "📱 Application mobile" : t}</SelectItem>)}</SelectContent>
                       </Select>
+                      {form.siteType === "Application mobile" && (
+                        <p className="text-[10px] text-amber-400 mt-1">⚡ Génération Expo (iOS &amp; Android)</p>
+                      )}
                     </div>
                     <div>
                       <Label className="text-sm text-foreground mb-1.5 block">Style</Label>
@@ -208,25 +255,98 @@ export default function Projects() {
                         <SelectContent>{STYLES.map((s) => <SelectItem key={s} value={s}>{s}</SelectItem>)}</SelectContent>
                       </Select>
                     </div>
-                    <div>
-                      <Label className="text-sm text-foreground mb-1.5 block">Langue</Label>
-                      <Select value={form.language} onValueChange={(v) => setForm({ ...form, language: v })}>
-                        <SelectTrigger className="bg-input border-border/60"><SelectValue /></SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="fr">Français</SelectItem>
-                          <SelectItem value="en">English</SelectItem>
-                          <SelectItem value="es">Español</SelectItem>
-                          <SelectItem value="de">Deutsch</SelectItem>
-                        </SelectContent>
-                      </Select>
+                  </div>
+
+                  {/* Langue(s) — multi-select pills */}
+                  <div>
+                    <Label className="text-sm text-foreground mb-1.5 block">Langue(s)</Label>
+                    <div className="flex flex-wrap gap-1.5">
+                      {LANGUAGES.map(({ code, label, full }) => {
+                        const selected = form.languages.includes(code);
+                        return (
+                          <button
+                            key={code}
+                            type="button"
+                            title={full}
+                            onClick={() => {
+                              if (selected) {
+                                if (form.languages.length === 1) return; // keep at least 1
+                                setForm({ ...form, languages: form.languages.filter((l) => l !== code) });
+                              } else {
+                                setForm({ ...form, languages: [...form.languages, code] });
+                              }
+                            }}
+                            className={`px-2.5 py-1 rounded-md text-xs font-medium border transition-colors ${
+                              selected
+                                ? "bg-primary text-primary-foreground border-primary"
+                                : "border-border/60 text-muted-foreground hover:text-foreground hover:border-border"
+                            }`}
+                          >
+                            {label}
+                          </button>
+                        );
+                      })}
                     </div>
-                    <div>
-                      <Label className="text-sm text-foreground mb-1.5 block">Palette</Label>
-                      <Select value={form.colorPalette} onValueChange={(v) => setForm({ ...form, colorPalette: v })}>
-                        <SelectTrigger className="bg-input border-border/60"><SelectValue /></SelectTrigger>
-                        <SelectContent>{["Bleu/Violet","Vert/Émeraude","Orange/Ambre","Rose/Rouge","Gris/Noir","Multicolore"].map((c) => <SelectItem key={c} value={c}>{c}</SelectItem>)}</SelectContent>
-                      </Select>
+                    {form.languages.length > 1 && (
+                      <p className="text-[10px] text-muted-foreground mt-1">Site multilingue : {form.languages.map(l => LANGUAGES.find(x => x.code === l)?.full).join(", ")}</p>
+                    )}
+                  </div>
+
+                  {/* Palette — presets + personnalisée */}
+                  <div>
+                    <Label className="text-sm text-foreground mb-1.5 block">Palette de couleurs</Label>
+                    <div className="flex flex-wrap gap-2">
+                      {PALETTE_PRESETS.map((preset) => (
+                        <button
+                          key={preset.label}
+                          type="button"
+                          title={preset.label}
+                          onClick={() => setForm({ ...form, colorPalette: preset.label, useCustomColors: false })}
+                          className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border text-xs transition-all ${
+                            !form.useCustomColors && form.colorPalette === preset.label
+                              ? "border-primary bg-primary/10 text-foreground"
+                              : "border-border/50 text-muted-foreground hover:border-border hover:text-foreground"
+                          }`}
+                        >
+                          <span className="flex gap-0.5">
+                            {preset.colors.map((c) => (
+                              <span key={c} className="w-3 h-3 rounded-full inline-block" style={{ backgroundColor: c }} />
+                            ))}
+                          </span>
+                          <span className="hidden sm:inline">{preset.label}</span>
+                        </button>
+                      ))}
+                      <button
+                        type="button"
+                        onClick={() => setForm({ ...form, useCustomColors: true })}
+                        className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border text-xs transition-all ${
+                          form.useCustomColors
+                            ? "border-primary bg-primary/10 text-foreground"
+                            : "border-border/50 text-muted-foreground hover:border-border hover:text-foreground"
+                        }`}
+                      >
+                        🎨 Personnalisée
+                      </button>
                     </div>
+                    {form.useCustomColors && (
+                      <div className="flex gap-2 mt-2">
+                        {form.customColors.map((color, i) => (
+                          <div key={i} className="flex-1 flex flex-col items-center gap-1">
+                            <input
+                              type="color"
+                              value={color}
+                              onChange={(e) => {
+                                const next = [...form.customColors];
+                                next[i] = e.target.value;
+                                setForm({ ...form, customColors: next });
+                              }}
+                              className="w-full h-8 rounded cursor-pointer border border-border/60 bg-transparent p-0.5"
+                            />
+                            <span className="text-[10px] text-muted-foreground font-mono">{color.toUpperCase()}</span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
                   </div>
                   <Button
                     className="w-full bg-primary hover:bg-primary/90 text-primary-foreground"
