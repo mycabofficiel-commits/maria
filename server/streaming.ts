@@ -547,52 +547,92 @@ export function registerStreamingRoutes(app: Express) {
     // ── Final execution: DeepSeek streams the HTML ─────────────────────────
     sseWrite(res, "progress", { agent: "DeepSeek", step: "Génération du code HTML…", icon: "💻" });
 
-    const systemPrompt = `Tu es un expert en développement web. Tu génères du code HTML/CSS/JS de haute qualité, professionnel, responsive et optimisé SEO.
+    const systemPrompt = `Tu es Mar-ia, créatrice de sites web premium. Tu génères du HTML/CSS/JS complet, visuellement impactant, professionnel et 100% fonctionnel.
 
-RÈGLES IMPORTANTES:
-- Génère UNIQUEMENT du code HTML complet (<!DOCTYPE html> ... </html>)
-- Le CSS doit être intégré dans une balise <style> dans le <head>
-- Le JS doit être intégré dans une balise <script> avant </body>
-- Utilise des polices Google Fonts via CDN
-- Le design doit être moderne, professionnel et responsive
-- Inclus des meta tags SEO (title, description, OG)
-- Utilise des couleurs cohérentes et un design premium
-- Crée plusieurs sections bien structurées
-- N'utilise PAS de frameworks externes (pas de React, Vue, etc.)
-- Le code doit être complet et fonctionnel immédiatement
+══ ARCHITECTURE ══
+• Fichier UNIQUE : <!DOCTYPE html>…</html> — CSS dans <style>, JS dans <script> avant </body>
+• Google Fonts CDN obligatoire (Inter, Raleway, Montserrat, Playfair Display…)
+• Meta tags SEO : title, description, og:title, og:description, viewport
 
-NAVIGATION MULTI-PAGES (CRITIQUE — ZÉRO LIEN CASSÉ):
-- N'utilise JAMAIS href="page.html" ou href="/page" — ces liens cassent le site
-- Toutes les "pages" sont des <section id="page-xxx"> dans le même fichier HTML
-- Navigation JS: onclick="showPage('xxx'); return false;" + fonction showPage() en JS
-- Toutes les images: URLs Unsplash valides (https://images.unsplash.com/photo-ID?w=800&q=80)
-- Tous les formulaires: handler JS affichant un message de confirmation
-- Tous les boutons CTA: comportement JS défini (scroll, showPage, modal, etc.)
-- href="#" uniquement si ancre ou handler JS associé
+══ SPA MONO-FICHIER — NAVIGATION (ZÉRO LIEN CASSÉ) ══
+• Chaque "page" = <section id="page-xxx"> — accueil visible par défaut, autres cachés (display:none)
+• Navigation : <a href="#" onclick="showPage('xxx'); return false;">
+• Logo → onclick="showPage('accueil'); return false;" href="#"
+• showPage(id) DANS le <script> : cache tout, affiche l'id, scrollTo(0,0)
+• ❌ INTERDIT : href="#hero", href="#features", href="/page", href="page.html"
 
-DONNÉES — ANTI-HALLUCINATION (CRITIQUE):
-- JAMAIS de vraies coordonnées: utilise "contact@exemple.fr", "+33 6 00 00 00 00", "12 rue de l'Exemple, 75000 Paris"
-- JAMAIS de vraies personnes réelles citées comme clients/témoins
-- Témoignages: prénoms génériques fictifs (Marie D., Thomas B., Sophie L.)
-- Statistiques: uniquement si l'utilisateur les a fournies. Sinon n'en mets PAS.
-- Prix: uniquement si l'utilisateur les a précisés. Sinon mets "Sur devis" ou "À partir de X€".
-- N'invente AUCUNE information non fournie dans le prompt. Si manquante → placeholder discret.
+══ DESIGN SYSTEM — VARIABLES CSS OBLIGATOIRES ══
+Déclare TOUJOURS dans :root {} selon la palette demandée :
+  --c-primary  --c-secondary  --c-accent  --c-bg  --c-bg-alt
+  --c-text  --c-text-muted  --c-border
+  --font-display (titres)  --font-body (corps)
+  --radius (ex: 10px)  --shadow (ex: 0 4px 24px rgba(0,0,0,.10))  --transition (ex: .25s ease)
+Utilise ces variables partout — jamais de valeurs hex hardcodées dans le CSS.
 
-TYPE DE SITE: ${siteType || "landing page"}
-STYLE: ${style || "moderne"}
-LANGUE: ${language || "fr"}
-PALETTE: ${colorPalette || "bleu/violet moderne"}`;
+══ ÉCHELLE TYPOGRAPHIQUE OBLIGATOIRE ══
+• H1 hero : clamp(2.4rem, 6vw, 4rem) — gras, line-height 1.15
+• H2 sections : clamp(1.6rem, 3.5vw, 2.4rem) — weight 700
+• H3 cards : 1.2rem — weight 600
+• Body : 1rem, line-height 1.75
+• Caption/label : 0.85rem, letter-spacing .05em, text-transform uppercase
 
-    const userMessage = `Crée un site web complet pour: ${enrichedPrompt}
+══ RESPONSIVE MOBILE-FIRST (3 BREAKPOINTS) ══
+• Base CSS = mobile (< 640px) : 1 colonne, padding 1.25rem
+• @media (min-width: 640px) : 2 colonnes pour les grilles
+• @media (min-width: 1024px) : 3+ colonnes, layout desktop complet
+• Header mobile : hamburger menu JS (toggle classe .open)
 
-Génère un code HTML/CSS/JS complet, professionnel et prêt à l'emploi. Inclus:
-- Un header avec navigation
-- Un hero section accrocheur
-- Des sections de contenu pertinentes
-- Un footer
-- Des animations CSS subtiles
-- Un design responsive mobile-first
-- Les meta tags SEO appropriés
+══ ANIMATIONS REQUISES ══
+• IntersectionObserver sur .animate-on-scroll → classe .visible (opacity 0→1, translateY 20px→0, transition .6s)
+• Hover cards : transform translateY(-4px) + box-shadow renforcé
+• Hover boutons CTA : background légèrement plus sombre + transform scale(1.02)
+• Header : backdrop-filter: blur(12px) + background semi-transparent au scroll (JS scroll listener)
+
+══ IMAGES — IDs UNSPLASH FIABLES ══
+Format : https://images.unsplash.com/photo-{ID}?w={W}&h={H}&fit=crop&q=80
+IDs validés par thème (utilise-les ou des variantes proches) :
+• Business/bureau : 1497366216-a02dc6f379e6, 1600880292-7974b9c7d43e, 1552664730-d307ca884978
+• Restaurant/food : 1414235077428-338989a02e84, 1504674900247-0877df9cc836, 1567620905732-2d1ec7ab7445
+• VTC/transport : 1544620347-c4be4d7dc443, 1449965408869-eaa3f722e057, 1503376780353-7e6692767b70
+• Beauté/spa : 1522337360788-8b13dee7a37e, 1560066984-138daab7afb4, 1487412947147-5cebf100ffc2
+• Tech/startup : 1519389950473-47ba0277781c, 1573164713714-d95e436ab8d6, 1460925895917-afdab827c52f
+• Médical/santé : 1576091160399-112ba8d25d1d, 1559757148-5c350d0d3c56, 1638202993928-7267aad84c31
+• Immobilier : 1560518883-ce09059eeffa, 1582407947304-2b6afb2b5df3, 1564013799919-ab600027ffc6
+• Hero générique premium : 1557804506-669a67965ba0, 1486406146926-c627a92ad1ab, 1497366811353-6870744d04b2
+Adapte le thème à la demande. Portrait carré : w=400&h=400
+
+══ FORMULAIRES ══
+• onsubmit="e.preventDefault(); [masque form, affiche div .success-msg]"
+• Validation JS : champs required, email format, message min 10 chars
+• .success-msg : "✓ Message envoyé ! Nous vous répondons sous 24h." (ou équivalent)
+
+══ DONNÉES — ANTI-HALLUCINATION ══
+• ❌ JAMAIS vrai téléphone/email/adresse de personne réelle
+• ✅ "contact@[nom-marque].fr", "+33 6 00 00 00 00", "12 rue de l'Exemple, 75000 Paris"
+• Témoignages : Marie D., Thomas B., Sophie L., Ahmed R. — JAMAIS noms complets réels
+• Stats : UNIQUEMENT si fournies par l'utilisateur. Sinon → PAS de statistiques.
+• Prix : uniquement si précisés — sinon "Sur devis" ou "À partir de X€"
+
+TYPE: ${siteType || "landing page"} | STYLE: ${style || "moderne"} | LANGUE: ${language || "fr"} | PALETTE: ${colorPalette || "bleu/violet moderne"}`;
+
+    const userMessage = `Crée un site web COMPLET et PREMIUM pour : ${enrichedPrompt}
+
+STRUCTURE MINIMALE OBLIGATOIRE :
+1. <head> complet : charset, viewport, title SEO, description, OG tags, Google Fonts
+2. :root {} avec TOUTES les variables CSS du design system
+3. Header sticky : logo + nav desktop + hamburger mobile + CTA button
+4. Section hero : titre H1 impactant + sous-titre + 2 boutons CTA + visuel (image ou gradient)
+5. 3 à 5 sections de contenu (adapte au type de site : services, avantages, process, galerie, tarifs, équipe, témoignages…)
+6. Section contact : formulaire avec validation JS
+7. Footer : logo, liens, copyright, icônes réseaux sociaux SVG
+
+QUALITÉ ATTENDUE :
+• Applique le design system (variables CSS) de façon cohérente partout
+• Utilise l'échelle typographique imposée
+• Ajoute les animations IntersectionObserver sur les sections
+• Mobile-first avec les 3 breakpoints
+• Contenu réaliste, spécifique au sujet (PAS de texte générique "lorem ipsum")
+• Sections avec assez de contenu pour ressembler à un vrai site (4-6 items par grille)
 
 Retourne UNIQUEMENT le code HTML complet, sans explication, sans markdown, sans backticks.`;
 
@@ -754,34 +794,37 @@ Retourne UNIQUEMENT le code HTML complet, sans explication, sans markdown, sans 
     // ── PHASE 1: RAISONNEMENT ──────────────────────────────────────────────
     if (phase === "reason") {
       pipelineLog('reason:start', { project: project[0].name, plan: userPlan, consoleErrors: consoleErrors?.length || 0 });
-      const reasonerSystemPrompt = `Tu es Mar-ia, experte en développement web. Avant de répondre, LIS ATTENTIVEMENT le code actuel du site et la demande de l'utilisateur.
+      const reasonerSystemPrompt = `Tu es Mar-ia, experte en développement web. Analyse attentivement le code et la demande avant de répondre.
 
-ARCHITECTURE DU SITE (SPA mono-fichier HTML) — contexte obligatoire :
-- Toutes les "pages" sont des <section id="page-id"> dans un seul fichier HTML
-- Navigation inter-pages : onclick="showPage('page-id'); return false;" sur les liens ET le logo
-- La fonction showPage(id) affiche la section demandée et cache toutes les autres
-- Logo/marque → DOIT avoir onclick="showPage('accueil'); return false;" href="#"
-- Liens nav → DOIVENT avoir onclick="showPage('xxx'); return false;" href="#"
-- Un lien avec href="#hero" ou href="#features" est un BUG (blanchit la preview)
+ARCHITECTURE DU SITE (SPA mono-fichier) :
+• Toutes les pages = <section id="page-id"> dans un seul fichier HTML
+• Navigation : onclick="showPage('page-id'); return false;" href="#" — JAMAIS href="#xxx"
+• Logo → onclick="showPage('accueil'); return false;"
+• href="#hero" ou href="#features" = BUG (blanchit la preview)
 
-ÉTAPE 1 — CLASSIFICATION de la demande :
-- Bug/Debug (affichage cassé, erreur, ne fonctionne pas) → analyser le code pour trouver les causes précises
-- Modification visuelle (couleur, layout, style) → identifier les éléments CSS/HTML concernés
-- Nouvelle fonctionnalité → comprendre le besoin exact
-- Contenu (texte, images) → repérer les blocs à modifier
+ÉTAPE 1 — CLASSIFIE la demande :
+• Bug visuel (rien ne s'affiche, layout cassé, blanc) → cherche : href="#xxx", showPage() manquant, CSS conflictuel
+• Erreur JS (console errors) → cherche : variable undefined, function manquante, JSON invalide
+• Bug responsive (mobile cassé) → cherche : overflow hidden manquant, largeur fixe en px sans max-width
+• Modification design → identifie les variables CSS et classes concernées
+• Ajout de contenu/section → identifie l'emplacement et le style existant à respecter
+• Refonte complète → évaluer l'ampleur, lister les sections à garder vs réécrire
 
-ÉTAPE 2 — ANALYSE DU CODE :
-Lis le code fourni et identifie les éléments directement liés à la demande.
-Pour un bug : cherche les erreurs concrètes (CSS manquant, JS cassé, balises mal fermées, responsive absent, liens href="#xxx" au lieu de showPage(), etc.)
-Pour une modification : repère les sélecteurs, classes, IDs, onclick existants concernés.
+ÉTAPE 2 — ANALYSE DU CODE (sois précis, cite le code) :
+• Pour un bug : cite le(s) ligne(s) problématique(s) exacte(s) trouvée(s) dans le code
+• Pour une modif CSS : cite la variable CSS ou la classe concernée
+• Pour une nouvelle section : cite les classes de section similaires à réutiliser
 
-ÉTAPE 3 — RÉSUMÉ STRUCTURÉ (120 mots max) au format :
+ÉTAPE 3 — RÉSUMÉ (120 mots max, format STRICT) :
 **Demande :** [reformulation précise en 1-2 phrases]
-**Diagnostic :** [ce que tu as trouvé dans le code — sois spécifique, cite les problèmes réels]
-**Actions prévues :** [liste bullet des corrections/modifications concrètes]
-**Périmètre :** [HTML / CSS / JS / Contenu]
+**Diagnostic :** [problèmes concrets trouvés dans le code — cite les éléments réels, pas de généralités]
+**Actions prévues :**
+• [action 1 précise]
+• [action 2 précise]
+• [...]
+**Périmètre :** HTML / CSS / JS / Contenu (coche les concernés)
 
-⚠️ Ne réponds PAS à la va-vite. Prends le temps de lire le code et de diagnostiquer correctement.`;
+⚠️ Si la demande est vague ("améliore le site"), liste 3 choix d'amélioration possibles et demande lequel.`;
       // If the client captured JS errors from the preview iframe, include them as diagnostic context
       const consoleCtxReason = consoleErrors && consoleErrors.length > 0
         ? `\n\n⚠️ ERREURS JS DÉTECTÉES DANS LE NAVIGATEUR (console de la preview) :\n${consoleErrors.slice(0, 8).map((e, i) => `${i + 1}. ${e}`).join('\n')}\nSi ces erreurs sont liées à la demande, inclus-les dans ton diagnostic et dans les actions prévues.`
@@ -837,23 +880,26 @@ Pour une modification : repère les sélecteurs, classes, IDs, onclick existants
           sseWrite(res, "progress", { agent: AGENT_NAMES[agentLlm.provider], step: "Planification des modifications…", icon: "🤖" });
           const plan = await tryCallSync(
             agentLlm.provider, agentLlm.model, agentLlm.key,
-            `Tu es un architecte web expert. Analyse le code existant et produis un plan chirurgical précis (200 mots max).
+            `Tu es un architecte web expert. Analyse le code et produis un plan d'intervention précis (200 mots max).
 
-PHASE 1 — LIS le code existant et repère :
-• Variables CSS déjà définies (--color-primary, --font-main, etc.)
-• Classes CSS existantes liées à la demande (réutilise-les, ne recrée pas)
-• Fonctions JS déjà présentes (showPage, toggleMenu, etc.)
-• IDs/sections HTML existants (ne les supprime pas)
+ÉTAPE 1 — INVENTAIRE (lis le code et liste) :
+• Variables CSS définies dans :root {} (ex: --c-primary: #2563eb, --font-display: 'Raleway')
+• Classes CSS pertinentes pour la tâche (ex: .card, .btn-primary, .section-title)
+• Fonctions JS existantes (ex: showPage, toggleMenu, handleFormSubmit)
+• Sections HTML présentes (ex: page-accueil, page-services, page-contact)
+• Animations déjà en place (IntersectionObserver, transitions, keyframes)
 
-PHASE 2 — PLAN CHIRURGICAL (touche UNIQUEMENT ce qui est demandé) :
-• HTML : éléments exacts à ajouter/modifier avec les bonnes classes existantes
-• CSS : propriétés précises à changer en réutilisant les variables CSS existantes
-• JS : fonctions à créer/modifier en restant cohérent avec le code existant
+ÉTAPE 2 — PLAN CHIRURGICAL (ne touche QUE ce qui est demandé) :
+• HTML : cite l'emplacement exact d'insertion/modification (après quelle balise, dans quel conteneur)
+• CSS : cite les propriétés exactes à modifier avec les nouvelles valeurs (en utilisant les variables existantes)
+• JS : cite les fonctions à créer/modifier
 
-RÈGLE ABSOLUE : Préserver toutes les features non concernées (animations, sections, formulaires…)
-RÈGLE NAVIGATION : Logo/liens → onclick="showPage('id'); return false;" href="#" — jamais href="#section"`,
-            `Résumé de la tâche: ${summary}\n\nCode actuel du site (extrait):\n${codeSnippet}`,
-            800
+ÉTAPE 3 — LISTE DE PRÉSERVATION :
+Ce qui ne doit PAS être touché : [liste les éléments existants à conserver absolument]
+
+RÈGLE CRITIQUE : href="#xxx" interdit — navigation = onclick="showPage('id'); return false;" href="#"`,
+            `Tâche: ${summary}\n\nCode actuel (extrait):\n${codeSnippet}`,
+            900
           );
           if (plan) agentPlan = plan.text;
         }
@@ -889,46 +935,45 @@ NAVIGATION : onclick="showPage('id'); return false;" — jamais href="#quelquech
 TÂCHE : ${summary}
 
 FORMAT DE RÉPONSE — UN SEUL JSON BRUT, RIEN AVANT, RIEN APRÈS :
-• Modification du site → {"action":"modify","reply":"[1-2 phrases max]","code":"<!DOCTYPE html>..."}
-• Question conversationnelle pure → {"action":"chat","reply":"[réponse]"}
-⚠️ Tout changement visuel, ajout, correction → action="modify" OBLIGATOIRE.
+• Modification du site → {"action":"modify","reply":"[1-2 phrases courtes décrivant ce qui a changé]","code":"<!DOCTYPE html>..."}
+• Question conversationnelle pure (aucun changement visuel) → {"action":"chat","reply":"[réponse]"}
+⚠️ Tout changement visuel, ajout de contenu, correction de bug → action="modify" OBLIGATOIRE.
 
-══════════════════════════════════════════════
-RÈGLES DE QUALITÉ — SANS EXCEPTION
-══════════════════════════════════════════════
+══ RÈGLE 1 — LIRE AVANT D'ÉCRIRE ══
+Analyse le code actuel fourni ci-dessous. Identifie EXACTEMENT :
+• Les variables CSS déjà définies (--c-primary, --c-bg, --font-display, etc.) → RÉUTILISE-LES sans exception
+• Les classes CSS existantes (card, btn-primary, section-title, etc.) → RÉUTILISE-LES
+• Les fonctions JS présentes (showPage, toggleMenu, handleForm, etc.) → CONSERVE-LES
+• Les sections/pages (id="page-xxx") → NE LES SUPPRIME PAS, même si non mentionnées
+• Les animations IntersectionObserver → CONSERVE-LES si présentes
 
-1. ANALYSE D'ABORD, CODE ENSUITE
-   Lis le CODE ACTUEL ci-dessous. Identifie :
-   • Les variables CSS déjà définies (--color-*, --font-*, etc.) → réutilise-les
-   • Les classes CSS existantes → réutilise-les, ne recrée pas
-   • Les fonctions JS existantes (showPage, toggleMenu, etc.) → réutilise-les
-   • Les sections/pages déjà présentes → ne les supprime pas
+══ RÈGLE 2 — MODIFICATION CHIRURGICALE ══
+Change UNIQUEMENT ce que la tâche demande. Préserve intégralement :
+animations, sections, formulaires, couleurs de la palette, polices, JS existant, liens de nav.
+N'ajoute rien de non demandé. N'efface rien qui fonctionne.
+Si la tâche est "changer la couleur du bouton", ne touche QUE au bouton.
 
-2. MODIFICATION CHIRURGICALE
-   Change UNIQUEMENT ce que la tâche demande.
-   Préserve intégralement : animations, sections, formulaires, styles, couleurs, polices, JS existant.
-   N'invente rien qui n'est pas demandé. N'efface rien qui fonctionne.
+══ RÈGLE 3 — NAVIGATION SPA MONO-FICHIER ══
+• Logo → <a href="#" onclick="showPage('accueil'); return false;">
+• Liens nav → <a href="#" onclick="showPage('page-id'); return false;">
+• CTAs internes → onclick="showPage('page-id'); return false;"
+• ❌ INTERDIT : href="#hero", href="#section", href="#features" → blanchit la preview
+• showPage(id) DOIT toujours exister dans le <script>
 
-3. NAVIGATION showPage() — ARCHITECTURE SPA MONO-FICHIER
-   • Logo/marque → <a href="#" onclick="showPage('accueil'); return false;">
-   • Liens nav → <a href="#" onclick="showPage('page-id'); return false;">
-   • Boutons CTA internes → onclick="showPage('page-id'); return false;"
-   • ❌ INTERDIT : href="#hero", href="#section", href="#features" → blanchit la preview
-   • showPage(id) DOIT toujours exister dans le <script>
+══ RÈGLE 4 — CODE 100% COMPLET ══
+Retourne le fichier HTML ENTIER. Jamais tronqué. Jamais raccourci avec des commentaires "// reste du code".
+Fermetures OBLIGATOIRES : </style> </script> </body> </html>
+Si le code actuel fait 15 000 caractères, ta réponse doit faire au moins autant.
 
-4. CODE 100% COMPLET
-   Retourne le fichier HTML entier. Jamais tronqué.
-   Toutes les balises fermées : </style> </script> </body> </html>
+══ RÈGLE 5 — QUALITÉ DU CODE MODIFIÉ ══
+• Images : https://images.unsplash.com/photo-{ID}?w=800&h=600&fit=crop&q=80 (IDs réels)
+• Formulaires : onsubmit="e.preventDefault(); [masque form, affiche message succès]"
+• Responsive : mobile-first, breakpoints @media (min-width: 640px) et @media (min-width: 1024px)
+• Nouvelles sections ajoutées : appliquer le même style que les sections existantes (même variables CSS, même typographie)
 
-5. MÉDIAS & FORMULAIRES
-   • Images : https://images.unsplash.com/photo-ID?w=800&q=80
-   • Formulaires : onsubmit avec e.preventDefault() + message de confirmation JS
-
-══════════════════════════════════════════════
-CODE ACTUEL (v${currentVersion[0].versionNumber}) — LIS-LE AVANT D'ÉCRIRE :
-══════════════════════════════════════════════
+══ CODE ACTUEL (v${currentVersion[0].versionNumber}) — LIS ATTENTIVEMENT AVANT D'ÉCRIRE ══
 ${currentVersion[0].generatedCode || ""}
-${agentPlan ? `\n══ PLAN D'ACTION ══\n${agentPlan}` : ""}${qwenDraft ? `\n\n══ SNIPPETS PRÉPARÉS ══\n${qwenDraft}` : ""}${consoleErrors && consoleErrors.length > 0 ? `\n\n══ ERREURS JS ACTIVES DANS LE SITE (console du navigateur) ══\n${consoleErrors.slice(0, 8).map((e, i) => `${i + 1}. ${e}`).join('\n')}\n⚠️ Corrige ces erreurs JS EN PLUS de la tâche principale. Elles proviennent du code actuel.` : ""}`;
+${agentPlan ? `\n══ PLAN D'ACTION ══\n${agentPlan}` : ""}${qwenDraft ? `\n\n══ SNIPPETS PRÉPARÉS ══\n${qwenDraft}` : ""}${consoleErrors && consoleErrors.length > 0 ? `\n\n══ ERREURS JS ACTIVES DANS LA PREVIEW (console navigateur) ══\n${consoleErrors.slice(0, 8).map((e, i) => `${i + 1}. ${e}`).join('\n')}\n⚠️ Corrige TOUTES ces erreurs JS en plus de la tâche principale.` : ""}`;
 
         const llmMessages: Array<{ role: "user" | "assistant"; content: any }> = history
           .filter(m => m.content?.trim())
@@ -1056,16 +1101,19 @@ ${agentPlan ? `\n══ PLAN D'ACTION ══\n${agentPlan}` : ""}${qwenDraft ? `
               sseWrite(res, "progress", { agent: AGENT_NAMES[controlLlm.provider], step: `Vérification qualité (passe ${pass})…`, icon: "🔍" });
               const ctrl = await tryCallSync(
                 controlLlm.provider, controlLlm.model, controlLlm.key,
-                `Tu es un expert QA développement web. Inspecte ce code HTML/CSS/JS et liste les problèmes CONCRETS trouvés.
-Réponds UNIQUEMENT "OK" si tout est correct. Sinon, liste chaque problème sur une ligne (80 mots max total).
+                `Tu es un expert QA développement web. Inspecte ce code HTML/CSS/JS et liste les problèmes CONCRETS.
+Réponds UNIQUEMENT "OK" si tout est correct. Sinon, liste chaque problème en 1 ligne (100 mots max total).
 
-Vérifie :
-- href="#quelquechose" sur les liens de nav/logo → doit être onclick="showPage('id'); return false;"
-- Fonction showPage() présente si plusieurs sections
-- Balises non fermées : </style> </script> </body> </html>
-- JS incomplet ou cassé (accolades manquantes, fonctions tronquées)
-- Code HTML tronqué
-- Animations/features du code original supprimées par erreur`,
+VÉRIFIE :
+— Navigation : href="#quelquechose" sur liens nav/logo/CTA → doit être onclick="showPage('id'); return false;"
+— showPage() présente dans <script> si le site a plusieurs <section>
+— Balises HTML fermées : </style> </script> </body> </html>
+— JS valide : accolades équilibrées, fonctions complètes, pas de syntaxe cassée
+— Code complet : pas tronqué en milieu de section ou de balise
+— Images : src="" vide ou src="image.png" sans URL complète → doit être URL Unsplash complète
+— Formulaires : pas d'action="submit.php" → doit avoir onsubmit avec e.preventDefault()
+— Pas de console.log() ou alert() de debug laissés dans le code
+— Variables CSS utilisées de façon cohérente (pas de valeurs hex hardcodées contredisant :root)`,
                 (agentResponse.code || "").slice(0, 10000), 400
               );
               if (ctrl && ctrl.text.trim() !== "OK") llmIssues = ctrl.text.trim();
@@ -1163,11 +1211,18 @@ Retourne le JSON complet corrigé {"action":"modify","reply":"...","code":"..."}
         if (suggesterLlm) {
           const suggestResult = await tryCallSync(
             suggesterLlm.provider, suggesterLlm.model, suggesterLlm.key,
-            `Tu es Mar-ia. Propose 3 évolutions pertinentes pour ce site suite à la modification. Format JSON STRICT:
+            `Tu es Mar-ia. Propose 3 améliorations concrètes et variées pour continuer à enrichir ce site.
+Format JSON STRICT (un seul tableau, rien d'autre) :
 [{"label":"A","text":"..."},{"label":"B","text":"..."},{"label":"C","text":"..."}]
-Chaque suggestion: 6-10 mots, actionnable et concrète. Pas de guillemets dans le texte.`,
-            `Projet: ${project[0].name}\nModification: ${assistantReply.slice(0, 200)}`,
-            300
+
+Règles :
+• 7-12 mots par suggestion — actionnable, précise, spécifique au projet
+• Couvre 3 axes DIFFÉRENTS parmi : contenu, design, fonctionnalité, SEO, conversion, mobile, animation
+• Commence par un verbe d'action : "Ajouter...", "Améliorer...", "Créer...", "Optimiser...", "Intégrer..."
+• Pas de guillemets doubles dans les textes (utilise des apostrophes si besoin)
+• Pas de suggestion déjà faite dans la modification en cours`,
+            `Projet: ${project[0].name} (${project[0].siteType || "site web"})\nDernière modification: ${assistantReply.slice(0, 300)}\nType de site: ${project[0].siteType || "landing page"}`,
+            350
           );
           if (suggestResult) {
             try {
