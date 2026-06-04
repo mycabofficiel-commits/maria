@@ -81,7 +81,7 @@ export default function ProjectCardMenu({ project, onDeleted, onRenamed }: Proje
           <Button
             variant="ghost"
             size="icon"
-            className="w-7 h-7 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0"
+            className="w-7 h-7 flex-shrink-0"
             onClick={(e) => e.stopPropagation()}
           >
             <MoreVertical className="w-3.5 h-3.5" />
