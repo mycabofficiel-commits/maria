@@ -11,18 +11,15 @@ import {
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue
 } from "@/components/ui/select";
-import {
-  DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger
-} from "@/components/ui/dropdown-menu";
 import { toast } from "sonner";
 import { useLocation } from "wouter";
 import {
   Plus, FolderOpen, Globe, Clock, CheckCircle2, AlertCircle,
-  Loader2, MoreVertical, Trash2, ExternalLink, Sparkles, Edit3,
-  Share2, Users, Eye, LayoutTemplate, ArrowLeft, ArrowRight
+  Loader2, Sparkles, Users, Eye, LayoutTemplate, ArrowLeft, ArrowRight
 } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 import { fr } from "date-fns/locale";
+import ProjectCardMenu from "@/components/ProjectCardMenu";
 import { TEMPLATES, TEMPLATE_CATEGORIES, type Template, type TemplateCategory } from "@/data/templates";
 
 const SITE_TYPES = [
@@ -84,13 +81,6 @@ export default function Projects() {
     onError: (err: any) => toast.error(err.message),
   });
 
-  const deleteProject = trpc.projects.delete.useMutation({
-    onSuccess: () => {
-      toast.success("Projet supprimé");
-      utils.projects.list.invalidate();
-    },
-    onError: (err: any) => toast.error(err.message),
-  });
 
   const resetDialog = () => {
     setOpen(false);
@@ -353,39 +343,11 @@ export default function Projects() {
                   className="group p-5 rounded-xl border border-border/60 bg-card card-hover cursor-pointer relative"
                   onClick={() => navigate(`/projects/${project.id}`)}
                 >
-                  {/* Actions */}
-                  <div
-                    className="absolute top-3 right-3 opacity-0 group-hover:opacity-100 transition-opacity"
-                    onClick={(e) => e.stopPropagation()}
-                  >
-                    <DropdownMenu>
-                      <DropdownMenuTrigger asChild>
-                        <Button variant="ghost" size="icon" className="w-7 h-7">
-                          <MoreVertical className="w-3.5 h-3.5" />
-                        </Button>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent align="end">
-                        <DropdownMenuItem onClick={() => navigate(`/projects/${project.id}`)}>
-                          <Edit3 className="w-3.5 h-3.5 mr-2" /> Ouvrir l'éditeur
-                        </DropdownMenuItem>
-                        {project.isPublished && (project as any).deployedUrl && (
-                           <DropdownMenuItem asChild>
-                             <a href={(project as any).deployedUrl} target="_blank" rel="noopener noreferrer" className="flex items-center">
-                               <ExternalLink className="w-3.5 h-3.5 mr-2" /> Voir en ligne
-                             </a>
-                           </DropdownMenuItem>
-                         )}
-                        <DropdownMenuItem onClick={() => navigate(`/projects/${project.id}/share`)}>
-                          <Share2 className="w-3.5 h-3.5 mr-2" /> Partager
-                        </DropdownMenuItem>
-                        <DropdownMenuItem
-                          className="text-destructive focus:text-destructive"
-                          onClick={() => deleteProject.mutate({ id: project.id })}
-                        >
-                          <Trash2 className="w-3.5 h-3.5 mr-2" /> Supprimer
-                        </DropdownMenuItem>
-                      </DropdownMenuContent>
-                    </DropdownMenu>
+                  {/* Actions — 3-dot menu */}
+                  <div className="absolute top-3 right-3">
+                    <ProjectCardMenu
+                      project={{ id: project.id, name: project.name, isPublished: project.isPublished, deployedUrl: (project as any).deployedUrl }}
+                    />
                   </div>
 
                   {/* Icon */}

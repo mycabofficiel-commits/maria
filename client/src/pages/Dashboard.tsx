@@ -12,6 +12,7 @@ import {
   Globe, Clock, CheckCircle2, AlertCircle, Loader2, LayoutTemplate,
   Upload, FileArchive
 } from "lucide-react";
+import ProjectCardMenu from "@/components/ProjectCardMenu";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription
 } from "@/components/ui/dialog";
@@ -298,18 +299,23 @@ export default function Dashboard() {
                 return (
                   <div
                     key={project.id}
-                    className="p-5 rounded-xl border border-border/60 bg-card card-hover cursor-pointer"
+                    className="group p-5 rounded-xl border border-border/60 bg-card card-hover cursor-pointer relative"
                     onClick={() => navigate(`/projects/${project.id}`)}
                   >
                     <div className="flex items-start justify-between mb-3">
-                      <div className="flex-1 min-w-0">
+                      <div className="flex-1 min-w-0 pr-2">
                         <h4 className="font-semibold text-foreground truncate">{project.name}</h4>
                         <p className="text-xs text-muted-foreground mt-0.5 truncate">{project.description || project.siteType || "Site web"}</p>
                       </div>
-                      <Badge variant="outline" className={`ml-2 flex-shrink-0 text-xs ${statusConf.color} border-current/20`}>
-                        <statusConf.icon className="w-3 h-3 mr-1" />
-                        {statusConf.label}
-                      </Badge>
+                      <div className="flex items-center gap-1 flex-shrink-0">
+                        <Badge variant="outline" className={`text-xs ${statusConf.color} border-current/20`}>
+                          <statusConf.icon className="w-3 h-3 mr-1" />
+                          {statusConf.label}
+                        </Badge>
+                        <ProjectCardMenu
+                          project={{ id: project.id, name: project.name, isPublished: project.isPublished, deployedUrl: project.deployedUrl }}
+                        />
+                      </div>
                     </div>
                     <div className="flex items-center justify-between text-xs text-muted-foreground">
                       <span className="capitalize">{project.framework || "html"}</span>

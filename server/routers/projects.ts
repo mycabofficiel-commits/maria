@@ -2,7 +2,7 @@ import { z } from "zod";
 import { protectedProcedure, router } from "../_core/trpc";
 import { getDb } from "../db";
 import { projects, versions, chatMessages, projectFiles, usageLogs, users, apiKeys } from "../../drizzle/schema";
-import { eq, desc, and, count } from "drizzle-orm";
+import { eq, desc, and, count, sum } from "drizzle-orm";
 import crypto from "crypto";
 
 const ENCRYPTION_KEY = process.env.JWT_SECRET?.slice(0, 32).padEnd(32, "0") || "maria-default-key-32-chars-long!";
@@ -680,5 +680,51 @@ Réponds UNIQUEMENT avec ce JSON (code HTML complet corrigé):
       }).catch(() => {});
 
       return { versionId: versionResult.id, report, tokensUsed };
+    }),
+
+  // Get project details (code size, total tokens, version count)
+  getDetails: protectedProcedure
+    .input(z.object({ id: z.number() }))
+    .query(async ({ ctx, input }) => {
+      const db = await getDb();
+      if (!db) throw new Error("DB unavailable");
+      const project = await db.select().from(projects)
+        .where(and(eq(projects.id, input.id), eq(projects.userId, ctx.user.id)))
+        .limit(1);
+      if (!project[0]) throw new Error("Projet introuvable");
+
+      const [latestVersion, tokenRow, versionCountRow] = await Promise.all([
+        db.select({ generatedCode: versions.generatedCode, tokensUsed: versions.tokensUsed })
+          .from(versions).where(eq(versions.projectId, input.id))
+          .orderBy(desc(versions.createdAt)).limit(1),
+        db.select({ total: sum(usageLogs.tokensUsed) }).from(usageLogs)
+          .where(and(eq(usageLogs.projectId, input.id), eq(usageLogs.userId, ctx.user.id))),
+        db.select({ count: count() }).from(versions).where(eq(versions.projectId, input.id)),
+      ]);
+
+      return {
+        id: project[0].id,
+        createdAt: project[0].createdAt,
+        updatedAt: project[0].updatedAt,
+        siteType: project[0].siteType,
+        style: project[0].style,
+        colorPalette: project[0].colorPalette,
+        framework: project[0].framework,
+        codeSizeBytes: latestVersion[0]?.generatedCode?.length || 0,
+        totalTokens: Number(tokenRow[0]?.total || 0),
+        versionsCount: versionCountRow[0]?.count || 0,
+      };
+    }),
+
+  // Rename project
+  rename: protectedProcedure
+    .input(z.object({ id: z.number(), name: z.string().min(1).max(255) }))
+    .mutation(async ({ ctx, input }) => {
+      const db = await getDb();
+      if (!db) throw new Error("DB unavailable");
+      await db.update(projects)
+        .set({ name: input.name, updatedAt: new Date() })
+        .where(and(eq(projects.id, input.id), eq(projects.userId, ctx.user.id)));
+      return { success: true };
     }),
 });
