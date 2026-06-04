@@ -39,7 +39,7 @@ function slugify(name: string): string {
 type Provider = "openai" | "anthropic" | "qwen" | "deepseek";
 
 const PROVIDER_MODELS: Record<Provider, string> = {
-  openai:    "gpt-4o-mini",
+  openai:    "gpt-4o",           // upgraded from gpt-4o-mini — quality reasoning
   anthropic: "claude-haiku-4-5",
   qwen:      "qwen-plus",
   deepseek:  "deepseek-chat",
@@ -473,11 +473,21 @@ async function orchestrateGenerate(
   // ── CREATOR: Qwen stratégie de contenu → DeepSeek HTML ───────────────────
   if (plan === "creator") {
     const brief = await runStep(
-      { provider: "qwen",      model: "qwen-plus",       key: qwenKey,   agent: "Qwen",   step: "Analyse & stratégie de contenu", icon: "🧠" },
+      { provider: "qwen",      model: "qwen-plus",        key: qwenKey,   agent: "Qwen",   step: "Analyse & stratégie de contenu", icon: "🧠" },
       { provider: "anthropic", model: "claude-haiku-4-5", key: claudeKey, agent: "Claude", step: "Stratégie de contenu (relais)",  icon: "🧠" },
-      `Tu es un expert en stratégie web. Produis un brief structuré: sections, proposition de valeur, mots-clés SEO. 150 mots max. Langue: ${language}.`,
+      `Tu es un expert en stratégie web et UX. Analyse la demande et produis un brief ACTIONNABLE pour le développeur.
+
+FORMAT OBLIGATOIRE :
+SECTIONS: [liste toutes les sections/pages du site, ex: Accueil | Services | Tarifs | Contact]
+TITRE_H1: [titre accrocheur pour le héros]
+SOUS_TITRE: [sous-titre du héros, 1 phrase valeur unique]
+COULEURS: [précise comment utiliser la palette ${colorPalette}]
+CTA_PRINCIPAL: [texte du bouton d'appel à l'action]
+MOTS_CLES: [5 mots-clés SEO principaux]
+CONTENU_SPECIFIQUE: [3-5 points de contenu spécifiques au domaine métier, avec exemples concrets]
+Langue finale: ${language}.`,
       `Demande: ${prompt}\nType: ${siteType}\nStyle: ${style}\nPalette: ${colorPalette}`,
-      600
+      1000
     );
     if (brief) enriched = `${prompt}\n\n[BRIEF STRATÉGIQUE]:\n${brief.text}`;
 
@@ -486,49 +496,126 @@ async function orchestrateGenerate(
     const architecture = await runStep(
       { provider: "anthropic", model: "claude-haiku-4-5", key: claudeKey, agent: "Claude", step: "Architecture & structure du site", icon: "🏗️" },
       { provider: "qwen",      model: "qwen-plus",        key: qwenKey,   agent: "Qwen",   step: "Architecture (relais)",            icon: "🏗️" },
-      `Tu es un architecte web senior. Définis la structure optimale: sections, UX flow, points de conversion. 200 mots max. Langue: ${language}.`,
+      `Tu es un architecte web senior. Analyse la demande et produis un plan DÉTAILLÉ et ACTIONNABLE.
+
+FORMAT OBLIGATOIRE :
+PAGES: [liste toutes les pages/sections avec leur id HTML, ex: accueil | services | processus | tarifs | avis | contact]
+HERO: [titre H1 + sous-titre + 2 CTAs pour la section héros]
+SECTIONS_DETAIL: [pour chaque section, liste 3-4 éléments de contenu spécifiques au domaine]
+FONCTIONNALITES_JS: [liste les interactions JS nécessaires : accordion, slider, formulaire, etc.]
+DESIGN_SYSTEM: [variables CSS recommandées selon palette ${colorPalette} : couleur primaire, secondaire, accent, bg]
+SEO: [meta-title + meta-description optimisés]
+Langue: ${language}.`,
       `Demande: ${prompt}\nType: ${siteType}\nStyle: ${style}`,
-      800
+      1400
     );
     if (architecture) enriched = `${prompt}\n\n[ARCHITECTURE]:\n${architecture.text}`;
 
     const seo = await runStep(
-      { provider: "qwen",      model: "qwen-plus",        key: qwenKey,   agent: "Qwen",   step: "Optimisation contenu & SEO",    icon: "📈" },
-      { provider: "anthropic", model: "claude-haiku-4-5", key: claudeKey, agent: "Claude", step: "Optimisation SEO (relais)",      icon: "📈" },
-      `Tu es un expert SEO et copywriting. Propose textes optimisés, titres accrocheurs, CTAs, méta-descriptions. 250 mots max. Langue: ${language}.`,
+      { provider: "qwen",      model: "qwen-plus",        key: qwenKey,   agent: "Qwen",   step: "Copywriting & SEO",             icon: "📈" },
+      { provider: "anthropic", model: "claude-haiku-4-5", key: claudeKey, agent: "Claude", step: "Copywriting SEO (relais)",       icon: "📈" },
+      `Tu es un expert SEO et copywriter. Génère les textes FINAUX prêts à intégrer dans le HTML (pas de suggestions, du vrai contenu).
+
+Pour chaque section identifiée dans le plan, fournis :
+• Titre H2 accrocheur
+• Texte de description (2-3 phrases, ton ${style.toLowerCase()})
+• Contenu spécifique au domaine (PAS de texte générique)
+• CTA si applicable
+Langue: ${language}. Adapte le vocabulaire au secteur d'activité précis.`,
       enriched,
-      900
+      1500
     );
     if (seo) enriched = `${enriched}\n\n[COPY & SEO]:\n${seo.text}`;
 
-  // ── AGENCY: GPT-4o stratégie → Claude architecture → Qwen copy → DeepSeek
+  // ── AGENCY: GPT-4o stratégie → Claude architecture → Qwen copy → synthèse
   } else if (plan === "agency") {
     const strategy = await runStep(
-      { provider: "openai",    model: "gpt-4o-mini",      key: openaiKey, agent: "GPT-4o", step: "Stratégie business & positionnement", icon: "🎯" },
-      { provider: "anthropic", model: "claude-haiku-4-5", key: claudeKey, agent: "Claude", step: "Stratégie business (relais)",          icon: "🎯" },
-      `Tu es un consultant business senior. Définis: positionnement, audience cible, proposition de valeur, messages clés. 200 mots max. Langue: ${language}.`,
+      { provider: "openai",    model: "gpt-4o",            key: openaiKey, agent: "GPT-4o", step: "Stratégie business & positionnement", icon: "🎯" },
+      { provider: "anthropic", model: "claude-haiku-4-5",  key: claudeKey, agent: "Claude", step: "Stratégie business (relais)",          icon: "🎯" },
+      `Tu es un consultant business senior spécialisé dans le digital. Analyse ce projet et produis une stratégie PRÉCISE et OPÉRATIONNELLE.
+
+FORMAT OBLIGATOIRE :
+POSITIONNEMENT: [en 1 phrase claire: qui est le client, ce qu'il offre, pourquoi choisir ce service]
+AUDIENCE_CIBLE: [profil client précis : âge, besoin, comportement, zone géographique si pertinent]
+PROPOSITION_VALEUR: [3 arguments clés de différenciation, spécifiques au secteur]
+MESSAGES_CLES: [3 messages marketing percutants à répéter sur le site]
+SECTIONS_PRIORITAIRES: [liste ordonnée des 6-8 sections/pages indispensables avec leur rôle business]
+POINTS_CONVERSION: [où placer les CTAs et lesquels pour maximiser les conversions]
+CREDIBILITE: [éléments de preuve sociale à inclure : témoignages, chiffres, certifications, partenaires]
+Langue finale: ${language}.`,
       `Projet: ${prompt}\nType: ${siteType}\nStyle: ${style}\nPalette: ${colorPalette}`,
-      800
+      1500
     );
     if (strategy) enriched = `${prompt}\n\n[STRATÉGIE BUSINESS]:\n${strategy.text}`;
 
     const architecture = await runStep(
       { provider: "anthropic", model: "claude-haiku-4-5", key: claudeKey, agent: "Claude", step: "Architecture & design system", icon: "🏗️" },
       { provider: "qwen",      model: "qwen-plus",        key: qwenKey,   agent: "Qwen",   step: "Architecture (relais)",        icon: "🏗️" },
-      `Tu es un architecte web et designer senior. Définis: structure des sections, hiérarchie visuelle, composants clés. 250 mots max. Langue: ${language}.`,
+      `Tu es un architecte web et designer UI/UX senior. À partir de la stratégie fournie, définis l'architecture technique et visuelle COMPLÈTE.
+
+FORMAT OBLIGATOIRE :
+PAGES_HTML: [liste avec id HTML exact pour chaque page/section, ex: accueil, services, processus, tarifs, avis, contact]
+HERO_CONTENU: [titre H1 exact + sous-titre + bouton CTA1 + bouton CTA2]
+DESIGN_SYSTEM:
+  --c-primary: [hex de la couleur principale selon palette ${colorPalette}]
+  --c-secondary: [hex secondaire]
+  --c-accent: [hex accent]
+  --c-bg: [hex fond]
+  --font-display: [police titres Google Fonts]
+  --font-body: [police corps Google Fonts]
+SECTIONS_DETAIL: [pour chaque page, liste 4-6 composants HTML concrets à créer]
+IMAGES_SUGGESTIONS: [thème Unsplash pour chaque section visuelle]
+JS_INTERACTIONS: [liste toutes les interactions nécessaires : menu mobile, accordion, slider, formulaire, animations]
+Langue: ${language}.`,
       enriched,
-      1000
+      1800
     );
     if (architecture) enriched = `${enriched}\n\n[ARCHITECTURE & DESIGN]:\n${architecture.text}`;
 
     const copy = await runStep(
-      { provider: "qwen",      model: "qwen-plus",        key: qwenKey,   agent: "Qwen",   step: "Copywriting & optimisation SEO", icon: "✍️" },
-      { provider: "anthropic", model: "claude-haiku-4-5", key: claudeKey, agent: "Claude", step: "Copywriting (relais)",            icon: "✍️" },
-      `Tu es un expert SEO et copywriter senior. Génère les textes finaux: titres H1/H2, CTAs, méta-title/description. 300 mots max. Langue: ${language}.`,
+      { provider: "qwen",      model: "qwen-plus",        key: qwenKey,   agent: "Qwen",   step: "Copywriting & SEO final", icon: "✍️" },
+      { provider: "anthropic", model: "claude-haiku-4-5", key: claudeKey, agent: "Claude", step: "Copywriting (relais)",     icon: "✍️" },
+      `Tu es un copywriter expert et consultant SEO. Génère TOUS les textes finaux du site, prêts à coller dans le HTML.
+
+Pour chaque section/page identifiée dans l'architecture, fournis :
+• Titre H2 exact (accrocheur, avec mots-clés SEO)
+• Corps de texte (2-4 phrases percutantes, ton ${style.toLowerCase()}, contenu 100% spécifique au domaine — JAMAIS de lorem ipsum)
+• Contenu spécifique : liste de services, étapes d'un processus, FAQ, témoignages fictifs réalistes, etc.
+• CTA si la section en a besoin
+
+ÉGALEMENT :
+META_TITLE: [60 caractères max, avec mot-clé principal]
+META_DESCRIPTION: [155 caractères max, accrocheur]
+OG_TITLE: [pour réseaux sociaux]
+Langue: ${language}. Vocabulaire professionnel et spécifique au secteur.`,
       enriched,
-      1000
+      2000
     );
     if (copy) enriched = `${enriched}\n\n[COPY & SEO FINAL]:\n${copy.text}`;
+
+    // ── SYNTHÈSE FINALE : Claude fusionne tous les briefs en 1 master brief ─
+    const synthesis = await runStep(
+      { provider: "anthropic", model: "claude-haiku-4-5", key: claudeKey, agent: "Claude", step: "Synthèse finale du brief…", icon: "📋" },
+      { provider: "qwen",      model: "qwen-plus",        key: qwenKey,   agent: "Qwen",   step: "Synthèse (relais)",         icon: "📋" },
+      `Tu es Mar-ia, cheffe de projet web. Tu reçois plusieurs briefs d'experts (stratégie, architecture, copy).
+Ton rôle : fusionner ces briefs en UN SEUL document clair et structuré pour le développeur final.
+
+Le document de synthèse DOIT contenir dans l'ordre :
+1. DESCRIPTION_PROJET: [1 paragraphe résumant le projet, son audience, son positionnement]
+2. PAGES_A_CREER: [liste complète des sections HTML avec leur id et leur rôle]
+3. DESIGN_SYSTEM: [variables CSS finales --c-primary --c-secondary --c-accent --c-bg --font-display --font-body]
+4. CONTENU_SECTION_PAR_SECTION: [pour chaque section : titre H2, texte, éléments, CTA]
+5. META_SEO: [meta-title, meta-description, og:title]
+6. JS_REQUIS: [liste des interactions JS à implémenter]
+
+Sois PRÉCIS et COMPLET. Ce document sera utilisé directement pour générer le HTML final.`,
+      enriched,
+      2500
+    );
+    if (synthesis?.text && synthesis.text.length > 500) {
+      // Replace all intermediate briefs with the synthesis — cleaner for DeepSeek
+      enriched = `${prompt}\n\n[MASTER BRIEF — SYNTHÈSE COMPLÈTE]:\n${synthesis.text}`;
+    }
   }
 
   return enriched;
@@ -729,7 +816,7 @@ Retourne UNIQUEMENT le code HTML complet, sans explication, sans markdown, sans 
         headers: { "Authorization": `Bearer ${deepseekKey}`, "content-type": "application/json" },
         body: JSON.stringify({
           model: "deepseek-chat",
-          max_tokens: 8000,
+          max_tokens: 14000,
           temperature: 0.3,
           stream: true,
           messages: [{ role: "system", content: systemPrompt }, { role: "user", content: userMessage }],
@@ -756,8 +843,90 @@ Retourne UNIQUEMENT le code HTML complet, sans explication, sans markdown, sans 
         }
       }
 
-      const tokensUsed = inputTokens + outputTokens;
+      let tokensUsed = inputTokens + outputTokens;
       const durationMs = Date.now() - startTime;
+
+      // ── POST-GENERATION AUDIT + AUTO-CORRECTION ────────────────────────────
+      // Same validation loop as in the chat pipeline — ensures the initial site
+      // is correct before being saved. Without this, DeepSeek can deliver broken
+      // code that the user sees immediately with no chance of correction.
+      if (fullCode.length > 1000) {
+        for (let pass = 1; pass <= 2; pass++) {
+          const staticIssues = validateGeneratedCode(fullCode);
+          pipelineLog(`generate:validate:pass${pass}`, { issues: staticIssues.length, detail: staticIssues });
+
+          let llmIssues = "";
+          if (claudeKey && staticIssues.length > 0) {
+            sseWrite(res, "progress", { agent: "Claude", step: `Audit qualité (passe ${pass})…`, icon: "🔍" });
+            const ctrl = await tryCallSync(
+              "anthropic", "claude-haiku-4-5", claudeKey,
+              `Tu es un expert QA développement web. Inspecte ce code HTML/CSS/JS et liste les problèmes CONCRETS.
+Réponds UNIQUEMENT "OK" si tout est correct. Sinon, liste chaque problème en 1 ligne (150 mots max total).
+
+VÉRIFIE :
+— Navigation : href="#quelquechose" sur liens nav/logo/CTA → doit être onclick="showPage('id'); return false;"
+— showPage() présente dans <script> si plusieurs <section>
+— Balises HTML fermées : </style> </script> </body> </html>
+— JS valide : accolades équilibrées, fonctions complètes
+— Code complet : pas tronqué
+— Images : src vide ou relatif → doit être URL Unsplash complète
+— Pages fantômes : chaque showPage('id') doit avoir sa <section id="id"> avec du vrai contenu`,
+              fullCode.slice(0, 12000), 500
+            );
+            if (ctrl && ctrl.text.trim() !== "OK") llmIssues = ctrl.text.trim();
+          }
+
+          const allIssues = [...staticIssues, ...(llmIssues ? [llmIssues] : [])];
+          if (allIssues.length === 0) {
+            pipelineLog(`generate:validate:pass${pass}:ok`);
+            break;
+          }
+
+          if (pass === 2) {
+            pipelineLog('generate:validate:max_retries', { message: 'livraison avec code actuel' });
+            break;
+          }
+
+          // Auto-correction pass
+          pipelineLog(`generate:validate:pass${pass}:issues`, { count: allIssues.length });
+          sseWrite(res, "progress", { agent: "DeepSeek", step: `Correction automatique (${allIssues.length} problème${allIssues.length > 1 ? 's' : ''} détecté${allIssues.length > 1 ? 's' : ''})…`, icon: "🔄" });
+
+          const fixSysPrompt = `Tu es Mar-ia, développeuse web senior. Tu dois CORRIGER un code HTML généré qui contient des problèmes.
+
+PROBLÈMES À CORRIGER OBLIGATOIREMENT :
+${allIssues.map((issue, i) => `${i + 1}. ${issue}`).join('\n')}
+
+RÈGLES :
+• Retourne le HTML COMPLET corrigé (pas juste les parties modifiées)
+• Ne supprime AUCUNE section ou fonctionnalité existante
+• Navigation : onclick="showPage('id'); return false;" — jamais href="#quelquechose"
+• Code 100% complet : </style> </script> </body> </html> OBLIGATOIRES
+Retourne UNIQUEMENT le code HTML, sans explication, sans markdown, sans backticks.`;
+
+          const fixRes = await tryCallSync(
+            "deepseek", "deepseek-chat", deepseekKey,
+            fixSysPrompt,
+            `Code à corriger :\n${fullCode}`,
+            14000
+          );
+
+          if (fixRes?.text && fixRes.text.length > fullCode.length * 0.6) {
+            let fixedCode = fixRes.text.trim();
+            // Clean potential markdown wrapping
+            const htmlIdx = fixedCode.indexOf('<!DOCTYPE html>') >= 0
+              ? fixedCode.indexOf('<!DOCTYPE html>')
+              : fixedCode.indexOf('<html');
+            if (htmlIdx > 0) fixedCode = fixedCode.slice(htmlIdx);
+            const endIdx = fixedCode.lastIndexOf('</html>');
+            if (endIdx > 0) fixedCode = fixedCode.slice(0, endIdx + 7);
+            if (fixedCode.length > 1000) {
+              fullCode = fixedCode;
+              tokensUsed += fixRes.inputTokens + fixRes.outputTokens;
+              pipelineLog(`generate:validate:pass${pass}:corrected`, { codeLen: fullCode.length });
+            }
+          }
+        }
+      }
 
       // Save version
       const [versionResult] = await db.insert(versions).values({
