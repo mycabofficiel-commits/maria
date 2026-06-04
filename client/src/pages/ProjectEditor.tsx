@@ -484,6 +484,33 @@ export default function ProjectEditor() {
     }
   }, [currentVersionData?.generatedCode]);
 
+  /* ── Pre-fill form from project metadata (new project, no code yet) ── */
+  const autoGenTriggeredRef = useRef(false);
+  const shouldAutoGen = useRef(new URLSearchParams(window.location.search).get("autoGenerate") === "true");
+
+  useEffect(() => {
+    if (!project || project.currentVersionId) return; // skip if already has code
+    if (project.siteType) setSiteType(project.siteType);
+    if (project.style) setStyle(project.style);
+    if (project.language) setLanguage(project.language);
+    if (project.colorPalette) setColorPalette(project.colorPalette);
+    if (project.description && !prompt) setPrompt(project.description);
+    // Clean URL
+    if (shouldAutoGen.current) window.history.replaceState({}, "", window.location.pathname);
+  }, [project?.id]);
+
+  /* ── Auto-generate: fires once prompt is set (after pre-fill) ── */
+  useEffect(() => {
+    if (!shouldAutoGen.current) return;
+    if (autoGenTriggeredRef.current) return;
+    if (!prompt.trim()) return; // wait for pre-fill to set the prompt
+    if (!project || project.currentVersionId) return;
+    if (isGenerating) return;
+    autoGenTriggeredRef.current = true;
+    shouldAutoGen.current = false;
+    generateSiteStream();
+  }, [prompt, project?.id, isGenerating]);
+
   // Scroll vers le dernier message — déclenché à chaque changement de messages ou de panels
   const scrollToBottom = useCallback(() => {
     chatEndRef.current?.scrollIntoView({ behavior: "auto" });

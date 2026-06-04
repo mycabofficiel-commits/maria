@@ -67,6 +67,7 @@ export default function Projects() {
     siteType: "Landing page",
     style: "Moderne",
     language: "fr",
+    colorPalette: "Bleu/Violet",
     framework: "html" as "html" | "react" | "nextjs",
   });
 
@@ -76,10 +77,9 @@ export default function Projects() {
 
   const createProject = trpc.projects.create.useMutation({
     onSuccess: (data) => {
-      toast.success("Projet créé !");
       resetDialog();
       utils.projects.list.invalidate();
-      navigate(`/projects/${data.id}`);
+      navigate(`/projects/${data.id}?autoGenerate=true`);
     },
     onError: (err: any) => toast.error(err.message),
   });
@@ -98,7 +98,7 @@ export default function Projects() {
     setSelectedTpl(null);
     setTplProjectName("");
     setActiveCategory("Tous");
-    setForm({ name: "", description: "", siteType: "Landing page", style: "Moderne", language: "fr", framework: "html" });
+    setForm({ name: "", description: "", siteType: "Landing page", style: "Moderne", language: "fr", colorPalette: "Bleu/Violet", framework: "html" });
   };
 
   const handleCreate = () => {
@@ -194,12 +194,13 @@ export default function Projects() {
                     />
                   </div>
                   <div>
-                    <Label className="text-sm text-foreground mb-1.5 block">Description</Label>
-                    <Input
-                      placeholder="Décrivez brièvement votre projet"
+                    <Label className="text-sm text-foreground mb-1.5 block">Décrivez votre site *</Label>
+                    <textarea
+                      placeholder="Ex: Une landing page pour une startup de livraison de repas sains, avec un hero accrocheur, section fonctionnalités et un CTA fort…"
                       value={form.description}
                       onChange={(e) => setForm({ ...form, description: e.target.value })}
-                      className="bg-input border-border/60"
+                      rows={4}
+                      className="w-full rounded-md border border-border/60 bg-input px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground resize-none focus:outline-none focus:ring-1 focus:ring-primary"
                     />
                   </div>
                   <div className="grid grid-cols-2 gap-3">
@@ -217,8 +218,6 @@ export default function Projects() {
                         <SelectContent>{STYLES.map((s) => <SelectItem key={s} value={s}>{s}</SelectItem>)}</SelectContent>
                       </Select>
                     </div>
-                  </div>
-                  <div className="grid grid-cols-2 gap-3">
                     <div>
                       <Label className="text-sm text-foreground mb-1.5 block">Langue</Label>
                       <Select value={form.language} onValueChange={(v) => setForm({ ...form, language: v })}>
@@ -232,16 +231,20 @@ export default function Projects() {
                       </Select>
                     </div>
                     <div>
-                      <Label className="text-sm text-foreground mb-1.5 block">Framework</Label>
-                      <Select value={form.framework} onValueChange={(v: any) => setForm({ ...form, framework: v })}>
+                      <Label className="text-sm text-foreground mb-1.5 block">Palette</Label>
+                      <Select value={form.colorPalette} onValueChange={(v) => setForm({ ...form, colorPalette: v })}>
                         <SelectTrigger className="bg-input border-border/60"><SelectValue /></SelectTrigger>
-                        <SelectContent>{FRAMEWORKS.map((f) => <SelectItem key={f.value} value={f.value}>{f.label}</SelectItem>)}</SelectContent>
+                        <SelectContent>{["Bleu/Violet","Vert/Émeraude","Orange/Ambre","Rose/Rouge","Gris/Noir","Multicolore"].map((c) => <SelectItem key={c} value={c}>{c}</SelectItem>)}</SelectContent>
                       </Select>
                     </div>
                   </div>
-                  <Button className="w-full bg-primary hover:bg-primary/90 text-primary-foreground" onClick={handleCreate} disabled={createProject.isPending}>
+                  <Button
+                    className="w-full bg-primary hover:bg-primary/90 text-primary-foreground"
+                    onClick={handleCreate}
+                    disabled={createProject.isPending || !form.name.trim() || !form.description.trim()}
+                  >
                     {createProject.isPending ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Sparkles className="w-4 h-4 mr-2" />}
-                    Créer le projet
+                    Créer et générer le site
                   </Button>
                 </div>
               )}
