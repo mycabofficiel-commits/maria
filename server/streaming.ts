@@ -160,6 +160,48 @@ function validateGeneratedCode(html: string): string[] {
   const voidLinks = (html.match(/href="javascript:void/gi) || []).length;
   if (voidLinks > 3) issues.push(`${voidLinks} liens javascript:void(0) sans onclick défini`);
 
+  // 7. GHOST PAGES — showPage() targets without matching <section id="...">
+  //    This is the most common silent bug: nav links call showPage('services') but
+  //    <section id="services"> doesn't exist → blank page on click.
+  const showPageTargets = Array.from(new Set(
+    (html.match(/showPage\s*\(\s*['"]([^'"]+)['"]\s*\)/gi) || [])
+      .map(m => { const r = m.match(/showPage\s*\(\s*['"]([^'"]+)['"]/i); return r ? r[1] : null; })
+      .filter(Boolean) as string[]
+  ));
+  if (showPageTargets.length > 0) {
+    const missingPages: string[] = [];
+    const emptyPages: string[] = [];
+    for (const pageId of showPageTargets) {
+      // Check element with this id exists
+      const elRe = new RegExp(`<(?:section|div|main|article)[^>]+id=["']${pageId}["']`, 'i');
+      if (!elRe.test(html)) {
+        missingPages.push(pageId);
+      } else {
+        // Check it has meaningful content (strip tags, count text chars)
+        const contentRe = new RegExp(`<(?:section|div|main|article)[^>]+id=["']${pageId}["'][^>]*>([\\s\\S]*?)<\\/(?:section|div|main|article)>`, 'i');
+        const contentM = html.match(contentRe);
+        if (contentM) {
+          const text = contentM[1].replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+          if (text.length < 80) emptyPages.push(pageId);
+        }
+      }
+    }
+    if (missingPages.length > 0) {
+      issues.push(
+        `PAGES FANTÔMES — ${missingPages.length} page(s) appelée(s) par showPage() n'ont PAS de section HTML : ` +
+        missingPages.map(p => `id="${p}"`).join(', ') +
+        `. Créer <section id="${missingPages[0]}">...</section> avec du vrai contenu pour chacune.`
+      );
+    }
+    if (emptyPages.length > 0) {
+      issues.push(
+        `PAGES VIDES — ${emptyPages.length} page(s) existent mais sont quasi-vides : ` +
+        emptyPages.map(p => `id="${p}"`).join(', ') +
+        `. Ajouter du vrai contenu HTML dans chaque section.`
+      );
+    }
+  }
+
   return issues;
 }
 
@@ -555,11 +597,16 @@ export function registerStreamingRoutes(app: Express) {
 • Meta tags SEO : title, description, og:title, og:description, viewport
 
 ══ SPA MONO-FICHIER — NAVIGATION (ZÉRO LIEN CASSÉ) ══
-• Chaque "page" = <section id="page-xxx"> — accueil visible par défaut, autres cachés (display:none)
+• Chaque "page" = <section id="xxx"> — accueil visible par défaut, autres cachés (display:none)
 • Navigation : <a href="#" onclick="showPage('xxx'); return false;">
 • Logo → onclick="showPage('accueil'); return false;" href="#"
-• showPage(id) DANS le <script> : cache tout, affiche l'id, scrollTo(0,0)
+• showPage(id) DANS le <script> : hide all sections, show #id, scrollTo(0,0)
 • ❌ INTERDIT : href="#hero", href="#features", href="/page", href="page.html"
+
+⚠️ ANTI-PAGE-FANTÔME (BUG CRITIQUE) :
+Pour CHAQUE lien nav avec showPage('xxx'), créer une <section id="xxx">…</section> avec du VRAI contenu.
+Exemple : nav a 5 liens → 5 sections complètes. Zéro section vide, zéro section manquante.
+Un showPage() sans section = page blanche → INTERDIT.
 
 ══ DESIGN SYSTEM — VARIABLES CSS OBLIGATOIRES ══
 Déclare TOUJOURS dans :root {} selon la palette demandée :
@@ -953,12 +1000,18 @@ animations, sections, formulaires, couleurs de la palette, polices, JS existant,
 N'ajoute rien de non demandé. N'efface rien qui fonctionne.
 Si la tâche est "changer la couleur du bouton", ne touche QUE au bouton.
 
-══ RÈGLE 3 — NAVIGATION SPA MONO-FICHIER ══
+══ RÈGLE 3 — NAVIGATION SPA : CHAQUE PAGE DOIT EXISTER ══
 • Logo → <a href="#" onclick="showPage('accueil'); return false;">
 • Liens nav → <a href="#" onclick="showPage('page-id'); return false;">
 • CTAs internes → onclick="showPage('page-id'); return false;"
 • ❌ INTERDIT : href="#hero", href="#section", href="#features" → blanchit la preview
 • showPage(id) DOIT toujours exister dans le <script>
+
+⚠️ RÈGLE CRITIQUE — PAGES FANTÔMES (BUG LE PLUS FRÉQUENT) :
+Pour CHAQUE lien de nav qui appelle showPage('xxx'), il DOIT exister une <section id="xxx"> dans le HTML.
+Si tu crées un lien "Services" → onclick="showPage('services')" → tu DOIS créer <section id="services">...</section> avec du vrai contenu.
+Un lien sans section correspondante = page blanche quand l'utilisateur clique.
+AVANT DE FINIR : vérifie mentalement que chaque showPage('id') a bien sa <section id="id"> avec du contenu.
 
 ══ RÈGLE 4 — CODE 100% COMPLET ══
 Retourne le fichier HTML ENTIER. Jamais tronqué. Jamais raccourci avec des commentaires "// reste du code".
