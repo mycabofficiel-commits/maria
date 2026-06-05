@@ -414,6 +414,39 @@ export default function ProjectEditor() {
   /* ── Expo / React Native ── */
   const [expoSnackUrl, setExpoSnackUrl] = useState("");
   const [expoSnackPlatform, setExpoSnackPlatform] = useState<"android" | "ios">("android");
+  const [expoSnackLoading, setExpoSnackLoading] = useState(false);
+
+  const saveToExpoSnack = async (code: string, name: string) => {
+    setExpoSnackLoading(true);
+    try {
+      const res = await fetch("https://exp.host/--/api/v2/snack/save", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          manifest: { name, description: `App générée par Mar-ia`, sdkVersion: "52.0.0" },
+          code: { "App.js": { type: "CODE", contents: code } },
+          dependencies: { "expo": "~52.0.0", "react": "18.3.1", "react-native": "0.76.5" },
+        }),
+      });
+      if (res.ok) {
+        const data = await res.json() as any;
+        const hashId = data.hashId || data.id || "";
+        if (hashId) {
+          const url = `https://snack.expo.dev/${hashId}`;
+          setExpoSnackUrl(url);
+          toast.success("Lien Expo Snack généré !");
+        } else {
+          toast.error("Expo Snack n'a pas retourné d'ID.");
+        }
+      } else {
+        toast.error("Erreur lors de la création du Snack.");
+      }
+    } catch {
+      toast.error("Impossible de contacter Expo Snack.");
+    } finally {
+      setExpoSnackLoading(false);
+    }
+  };
 
   /* ── Resizable panel ── */
   const [panelWidth, setPanelWidth] = useState(45);
@@ -2453,9 +2486,17 @@ ${jsCode}`;
                       <div className="text-4xl">📱</div>
                       <div>
                         <p className="font-semibold text-sm">Application React Native prête</p>
-                        <p className="text-xs text-muted-foreground mt-1">Téléchargez App.js et testez avec Expo Go, ou regénérez pour obtenir un lien Expo Snack.</p>
+                        <p className="text-xs text-muted-foreground mt-1">Générez un lien Expo Snack pour obtenir le QR code.</p>
                       </div>
                       <div className="space-y-2">
+                        <button
+                          onClick={() => saveToExpoSnack(htmlCode, project?.name || "App")}
+                          disabled={expoSnackLoading || !htmlCode}
+                          className="flex items-center justify-center gap-2 w-full py-2.5 rounded-lg bg-primary text-white text-sm font-medium hover:bg-primary/90 transition-colors disabled:opacity-50"
+                        >
+                          {expoSnackLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <ExternalLink className="w-4 h-4" />}
+                          {expoSnackLoading ? "Génération…" : "Générer le QR Expo Snack"}
+                        </button>
                         <button
                           onClick={() => {
                             const blob = new Blob([htmlCode], { type: "text/javascript" });
@@ -2463,11 +2504,10 @@ ${jsCode}`;
                             const a = document.createElement("a"); a.href = url; a.download = "App.js"; a.click();
                             URL.revokeObjectURL(url);
                           }}
-                          className="flex items-center justify-center gap-2 w-full py-2.5 rounded-lg bg-primary text-white text-sm font-medium hover:bg-primary/90 transition-colors"
+                          className="flex items-center justify-center gap-2 w-full py-2 rounded-lg border border-border/60 text-xs text-muted-foreground hover:text-foreground transition-colors"
                         >
                           <Download className="w-4 h-4" /> Télécharger App.js
                         </button>
-                        <p className="text-[11px] text-muted-foreground">Ouvrez avec <strong>Expo Go</strong> sur iOS/Android</p>
                       </div>
                     </div>
                   )}

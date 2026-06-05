@@ -774,18 +774,21 @@ Retourne UNIQUEMENT le code JavaScript complet, sans explication, sans markdown,
     try {
       const snackRes = await fetch("https://exp.host/--/api/v2/snack/save", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "Expo-Platform": "web",
-        },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          name: projectName,
-          description: `Application générée par Mar-ia — ${siteType || "App mobile"}`,
-          sdkVersion: "52.0.0",
-          files: {
-            "App.js": { type: "CODE", contents: fullCode }
+          manifest: {
+            name: projectName,
+            description: `Application générée par Mar-ia — ${siteType || "App mobile"}`,
+            sdkVersion: "52.0.0",
           },
-          dependencies: {},
+          code: {
+            "App.js": { type: "CODE", contents: fullCode },
+          },
+          dependencies: {
+            "expo": "~52.0.0",
+            "react": "18.3.1",
+            "react-native": "0.76.5",
+          },
         }),
         signal: AbortSignal.timeout(20000),
       });
