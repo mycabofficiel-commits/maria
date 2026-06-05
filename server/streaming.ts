@@ -406,7 +406,11 @@ async function orchestrateGenerate(
   language: string,
   colorPalette: string
 ): Promise<string> {
-  let enriched = prompt;
+  const isMobileApp = siteType === "Application mobile";
+  // For mobile apps, prefix the prompt so orchestrators produce app-specific briefs
+  let enriched = isMobileApp
+    ? `[APPLICATION MOBILE iOS/ANDROID] ${prompt}\n\nNote pour les agents : génère un brief pour une APP MOBILE (pas un site web). Les sections = écrans de l'app (Accueil, Catalogue, Détail, Profil…), les CTAs = boutons mobiles, le design = style app native.`
+    : prompt;
 
   /** Emit progress, call agent, log tokens to DB, with automatic fallback */
   async function runStep(
@@ -622,6 +626,235 @@ Sois PRÉCIS et COMPLET. Ce document sera utilisé directement pour générer le
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// ── EXPO REACT NATIVE GENERATOR ───────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────────────────
+
+async function generateExpoApp(
+  res: Response,
+  db: Awaited<ReturnType<typeof getDb>>,
+  user: { id: number },
+  u: { plan?: string; generationsUsed?: number } | undefined,
+  projectId: number,
+  projectName: string,
+  prompt: string,
+  siteType: string | undefined,
+  style: string | undefined,
+  language: string | undefined,
+  colorPalette: string | undefined,
+  versionNumber: number,
+  deepseekKey: string
+): Promise<void> {
+  const startTime = Date.now();
+  let fullCode = "";
+  let inputTokens = 0;
+  let outputTokens = 0;
+
+  try {
+    sseWrite(res, "progress", { agent: "DeepSeek", step: "Génération de l'application React Native…", icon: "📱" });
+
+    const systemPrompt = `Tu es Mar-ia, experte en développement d'applications mobiles React Native / Expo. Tu génères du code React Native complet, fonctionnel et moderne pour une application iOS et Android.
+
+══ RÈGLES ABSOLUES ══
+• Fichier UNIQUE App.js (JavaScript, pas TypeScript — pour la compatibilité Expo Snack)
+• Commence EXACTEMENT par : import React, { useState, useEffect, useRef } from 'react';
+• Imports React Native : View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput, Image, SafeAreaView, StatusBar, FlatList, Modal, Alert, ActivityIndicator, Dimensions
+• Imports Expo : import { LinearGradient } from 'expo-linear-gradient'; (si dégradé)
+• PAS de React Navigation, PAS de Expo Router — navigation par state React (useState pour screen actif)
+• Export default function App() { ... }
+• StyleSheet.create() pour TOUS les styles — AUCUN style inline sauf pour les variables dynamiques
+• JAMAIS de DOM (document, window, innerHTML, querySelector)
+• JAMAIS de fetch sans SafeAreaView wrapper
+• Dimensions.get('window') pour les dimensions adaptatives
+
+══ ARCHITECTURE DE L'APP ══
+L'app doit avoir :
+1. Une constante COLORS avec les couleurs de la palette (primary, secondary, bg, card, text, textMuted, border)
+2. Des composants fonctionnels pour chaque écran (HomeScreen, ListScreen, DetailScreen, ProfileScreen…)
+3. Un composant BottomTabBar avec des icônes SVG via react-native-svg OU des emojis
+4. Un composant App() principal qui gère la navigation par state
+5. Un StatusBar configuré (style "light" ou "dark" selon le fond)
+
+══ DESIGN SYSTEM MOBILE NATIF ══
+• Cards : borderRadius 16, shadow (shadowColor, shadowOffset, shadowOpacity, elevation), backgroundColor #fff
+• Boutons primaires : height 52, borderRadius 26, backgroundColor COLORS.primary
+• TextInput : height 48, borderRadius 12, backgroundColor '#f5f5f5', paddingHorizontal 16
+• Spacing standard : 8, 12, 16, 20, 24, 32
+• FontFamily : System (Platform.OS === 'ios' ? 'SF Pro Display' : 'Roboto')
+• Taille texte : h1=28, h2=22, h3=18, body=15, caption=12
+
+══ ÉCRANS REQUIS (adapte selon l'app demandée) ══
+Génère AU MOINS 4 écrans complets avec du vrai contenu :
+• Accueil : header, résumé, actions rapides, stats ou highlights
+• Liste : FlatList de cards avec toutes les infos nécessaires
+• Détail : fiche complète d'un item avec bouton(s) d'action
+• Profil/Settings : infos utilisateur ou paramètres
+
+══ DONNÉES FICTIVES ══
+Utilise des données fictives réalistes hardcodées (pas de fetch API) : noms, prix, distances, photos Unsplash via Image source={{uri: 'https://images.unsplash.com/photo-...'}}
+
+TYPE APP: ${siteType || "application mobile"} | STYLE: ${style || "moderne"} | LANGUE: ${language || "fr"} | PALETTE: ${colorPalette || "bleu/violet"}`;
+
+    const userMessage = `Crée une application mobile React Native COMPLÈTE et PREMIUM pour : ${prompt}
+
+STRUCTURE OBLIGATOIRE :
+1. Imports React Native et Expo en haut du fichier
+2. Constante COLORS avec toutes les couleurs de la palette
+3. Composants pour chaque écran (HomeScreen, ListScreen, DetailScreen, ProfileScreen)
+4. Composant BottomTabBar avec navigation entre les écrans
+5. Composant App() principal avec useState pour gérer l'écran actif
+6. StyleSheet.create({ ... }) avec TOUS les styles en bas du fichier
+
+QUALITÉ ATTENDUE :
+• Contenu SPÉCIFIQUE au domaine demandé (pas de template générique)
+• Données fictives complètes et réalistes (noms, prix, descriptions, dates…)
+• UI soignée : gradients, ombres, arrondis, espacements cohérents
+• ScrollView dans les écrans longs
+• FlatList pour les listes de données
+• TouchableOpacity avec activeOpacity={0.8} sur tous les éléments cliquables
+• SafeAreaView en wrapper principal
+
+Retourne UNIQUEMENT le code JavaScript complet, sans explication, sans markdown, sans backticks.`;
+
+    // Stream the React Native code from DeepSeek
+    const aiRes = await fetch("https://api.deepseek.com/v1/chat/completions", {
+      method: "POST",
+      headers: { "Authorization": `Bearer ${deepseekKey}`, "content-type": "application/json" },
+      body: JSON.stringify({
+        model: "deepseek-chat",
+        max_tokens: 14000,
+        temperature: 0.3,
+        stream: true,
+        messages: [
+          { role: "system", content: systemPrompt },
+          { role: "user", content: userMessage }
+        ],
+      }),
+    });
+
+    if (!aiRes.ok || !aiRes.body) {
+      sseWrite(res, "error", { message: `Erreur DeepSeek Expo: ${await aiRes.text()}` });
+      res.end();
+      return;
+    }
+
+    const reader = aiRes.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = "";
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split("\n"); buffer = lines.pop() || "";
+      for (const line of lines) {
+        if (!line.startsWith("data: ")) continue;
+        const raw = line.slice(6).trim(); if (raw === "[DONE]") continue;
+        try {
+          const evt = JSON.parse(raw);
+          const chunk = evt.choices?.[0]?.delta?.content;
+          if (chunk) { fullCode += chunk; sseWrite(res, "chunk", { text: chunk }); }
+          if (evt.usage) { inputTokens = evt.usage.prompt_tokens || 0; outputTokens = evt.usage.completion_tokens || 0; }
+        } catch { /* skip */ }
+      }
+    }
+
+    // Clean potential markdown wrapping
+    const jsStart = fullCode.indexOf("import React");
+    if (jsStart > 0) fullCode = fullCode.slice(jsStart);
+    if (fullCode.endsWith("```")) fullCode = fullCode.slice(0, -3).trim();
+
+    const tokensUsed = inputTokens + outputTokens;
+    const durationMs = Date.now() - startTime;
+
+    // ── Save to Expo Snack (public API — no auth required) ─────────────────
+    sseWrite(res, "progress", { agent: "Expo", step: "Publication sur Expo Snack…", icon: "🚀" });
+    let snackUrl = "";
+    let snackId = "";
+
+    try {
+      const snackRes = await fetch("https://exp.host/--/api/v2/snack/save", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: projectName,
+          description: `Application générée par Mar-ia — ${siteType || "App mobile"}`,
+          sdkVersion: "51.0.0",
+          code: {
+            "App.js": { type: "CODE", contents: fullCode }
+          },
+          dependencies: {
+            "expo-linear-gradient": "~12.7.1",
+          }
+        }),
+        signal: AbortSignal.timeout(15000),
+      });
+
+      if (snackRes.ok) {
+        const snackData = await snackRes.json() as any;
+        snackId = snackData.hashId || snackData.id || "";
+        if (snackId) {
+          snackUrl = `https://snack.expo.dev/${snackId}`;
+          pipelineLog("expo:snack:saved", { snackId, snackUrl });
+        }
+      }
+    } catch (snackErr: any) {
+      pipelineLog("expo:snack:error", { error: snackErr?.message });
+    }
+
+    // ── Persist to DB ──────────────────────────────────────────────────────
+    if (!db) { sseWrite(res, "error", { message: "DB unavailable" }); res.end(); return; }
+
+    const [versionResult] = await db.insert(versions).values({
+      projectId,
+      userId: user.id,
+      versionNumber,
+      label: `Version ${versionNumber}`,
+      prompt,
+      generatedCode: fullCode,
+      tokensUsed,
+      generationTimeMs: durationMs,
+      model: "deepseek-chat",
+      status: "ready",
+    }).returning({ id: versions.id });
+    const versionId = versionResult.id;
+
+    await db.update(projects).set({
+      status: "ready",
+      currentVersionId: versionId,
+      siteType,
+      style,
+      language: language || "fr",
+      colorPalette,
+      previewUrl: snackUrl || undefined,
+    }).where(eq(projects.id, projectId));
+
+    await db.update(users)
+      .set({ generationsUsed: (u?.generationsUsed || 0) + 1 })
+      .where(eq(users.id, user.id));
+
+    const generateCost = estimateCost("deepseek-chat", inputTokens, outputTokens);
+    await db.insert(usageLogs).values({
+      userId: user.id,
+      projectId,
+      action: "generate:expo",
+      model: "deepseek-chat",
+      tokensUsed,
+      durationMs,
+      costEstimateUsd: Math.round(generateCost * 1_000_000),
+      status: "success",
+    });
+
+    sseWrite(res, "done", { versionId, tokensUsed, durationMs, snackUrl, snackId });
+
+  } catch (err: any) {
+    if (db) await db.update(projects).set({ status: "error" }).where(eq(projects.id, projectId));
+    sseWrite(res, "error", { message: err.message });
+  }
+
+  res.end();
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 
 export function registerStreamingRoutes(app: Express) {
   // ── POST /api/stream/generate ─────────────────────────────────────────────
@@ -695,6 +928,22 @@ export function registerStreamingRoutes(app: Express) {
     res.setHeader("Connection", "keep-alive");
     res.flushHeaders();
 
+    // ── Fetch project to get framework ────────────────────────────────────
+    const projectRow = await db.select().from(projects).where(eq(projects.id, projectId)).limit(1);
+    const projectFramework = projectRow[0]?.framework || "html";
+    const projectName = projectRow[0]?.name || "App";
+
+    // ══════════════════════════════════════════════════════════════════════
+    // ── EXPO / REACT NATIVE PATH ─────────────────────────────────────────
+    // ══════════════════════════════════════════════════════════════════════
+    if (projectFramework === "expo") {
+      await generateExpoApp(res, db, user, u, projectId, projectName, prompt, siteType, style, language, colorPalette, versionNumber, deepseekKey);
+      return;
+    }
+
+    // ── Keys needed for post-generation audit ─────────────────────────────
+    const claudeKey = await getPlatformKey("anthropic");
+
     // ── Multi-agent orchestration (creator / pro / agency) ─────────────────
     let enrichedPrompt = prompt;
     try {
@@ -709,9 +958,70 @@ export function registerStreamingRoutes(app: Express) {
     const { cleanPrompt: finalPrompt, context: inspirationCtx } = await buildInspirationContext(enrichedPrompt).catch(() => ({ cleanPrompt: enrichedPrompt, context: "" }));
 
     // ── Final execution: DeepSeek streams the HTML ─────────────────────────
-    sseWrite(res, "progress", { agent: "DeepSeek", step: "Génération du code HTML…", icon: "💻" });
+    const isMobileApp = siteType === "Application mobile";
+    sseWrite(res, "progress", { agent: "DeepSeek", step: isMobileApp ? "Génération du prototype mobile…" : "Génération du code HTML…", icon: "💻" });
 
-    const systemPrompt = `Tu es Mar-ia, créatrice de sites web premium. Tu génères du HTML/CSS/JS complet, visuellement impactant, professionnel et 100% fonctionnel.
+    const systemPrompt = isMobileApp
+      ? `Tu es Mar-ia, experte en design d'applications mobiles. Tu génères un prototype interactif HTML/CSS/JS qui simule EXACTEMENT une vraie app mobile (iOS/Android) dans un cadre de téléphone.
+
+══ STRUCTURE OBLIGATOIRE ══
+• Fichier UNIQUE : <!DOCTYPE html>…</html> — CSS dans <style>, JS dans <script>
+• Le corps de la page : fond sombre (#0f0f0f), centré, avec un cadre téléphone en CSS
+• Google Fonts : Inter obligatoire (system font des apps mobiles)
+• Viewport : width=device-width, initial-scale=1
+
+══ CADRE TÉLÉPHONE (OBLIGATOIRE) ══
+Le fond de page est sombre. Au centre : un cadre qui simule un iPhone/Android :
+  .phone-frame {
+    width: 390px; max-width: 100vw; height: 844px; max-height: 95vh;
+    background: #fff; border-radius: 50px; overflow: hidden;
+    box-shadow: 0 40px 80px rgba(0,0,0,.6), inset 0 0 0 2px #333;
+    position: relative; display: flex; flex-direction: column;
+  }
+  .phone-notch { height: 44px; background: #000; border-radius: 0 0 20px 20px; width: 120px; margin: 0 auto; }
+  .status-bar { display: flex; justify-content: space-between; padding: 8px 20px; font-size: 12px; font-weight: 600; background: var(--c-bg); }
+
+══ NAVIGATION PAR ONGLETS (Bottom Tab Bar) ══
+• Barre fixe en bas du cadre : 4 à 5 onglets avec icônes SVG + labels
+• Onglet actif : couleur primaire, icône remplie ; inactifs : gris
+• JS : switchTab(id) → cache .screen, montre #screen-{id}, update tab actif
+• Écrans : .screen { display:none } → .screen.active { display:flex; flex-direction:column; flex:1; overflow-y:auto }
+
+══ DESIGN SYSTEM MOBILE ══
+:root {
+  --c-primary: [couleur principale palette] ;
+  --c-bg: #ffffff ; --c-bg-alt: #f8f9fa ; --c-surface: #f1f3f5 ;
+  --c-text: #0a0a0a ; --c-text-muted: #6b7280 ; --c-border: #e5e7eb ;
+  --radius-sm: 8px ; --radius: 14px ; --radius-lg: 22px ;
+  --font: 'Inter', system-ui, sans-serif ;
+}
+
+══ COMPOSANTS UI MOBILES OBLIGATOIRES ══
+• Cards : border-radius var(--radius), shadow 0 2px 12px rgba(0,0,0,.08), padding 16px
+• Boutons primaires : background var(--c-primary), color #fff, border-radius var(--radius-lg), height 52px, font-weight 600
+• Input fields : background var(--c-surface), border 1.5px solid var(--c-border), border-radius var(--radius), height 48px, padding 0 16px
+• Avatar/profil : cercle 40-48px, background gradient, initiales centrées
+• Liste items : padding 12px 16px, border-bottom 1px solid var(--c-border), flex gap-12px
+
+══ ÉCRANS À GÉNÉRER (adapte au contenu demandé) ══
+Minimum 4 écrans complets avec du VRAI contenu (pas lorem ipsum) :
+• Accueil/Home : hero adapté + résumé du service + actions rapides
+• Liste/Catalogue : liste de cards ou grille selon le type d'app
+• Détail : fiche détaillée d'un item (ex: chauffeur, produit, article)
+• Profil/Auth : écran connexion ou profil utilisateur
+
+══ INTERACTIONS JS ══
+• switchTab(name) : navigation entre écrans
+• Boutons avec feedback visuel (active state, touch ripple)
+• Formulaires : preventDefault + affichage message succès
+• Si l'app a une carte (VTC, livraison) : div avec fond dégradé carte + marqueur CSS
+
+══ ANTI-HALLUCINATION ══
+• ❌ JAMAIS vrai téléphone/email/adresse de personne réelle
+• ✅ "+33 6 00 00 00 00", "user@example.fr", données fictives cohérentes
+
+TYPE APP: ${siteType} | STYLE: ${style || "moderne"} | LANGUE: ${language || "fr"} | PALETTE: ${colorPalette || "bleu/violet moderne"}${inspirationCtx}`
+      : `Tu es Mar-ia, créatrice de sites web premium. Tu génères du HTML/CSS/JS complet, visuellement impactant, professionnel et 100% fonctionnel.
 
 ══ ARCHITECTURE ══
 • Fichier UNIQUE : <!DOCTYPE html>…</html> — CSS dans <style>, JS dans <script> avant </body>
@@ -784,7 +1094,34 @@ Adapte le thème à la demande. Portrait carré : w=400&h=400
 
 TYPE: ${siteType || "landing page"} | STYLE: ${style || "moderne"} | LANGUE: ${language || "fr"} | PALETTE: ${colorPalette || "bleu/violet moderne"}${inspirationCtx}`;
 
-    const userMessage = `Crée un site web COMPLET et PREMIUM pour : ${finalPrompt}
+    const userMessage = isMobileApp
+      ? `Crée un prototype d'application mobile COMPLET et RÉALISTE dans un cadre téléphone pour : ${finalPrompt}
+
+STRUCTURE OBLIGATOIRE :
+1. <head> : charset, viewport, title, Google Fonts (Inter)
+2. Body fond sombre (#0f0f0f), centré verticalement et horizontalement
+3. .phone-frame : cadre téléphone (390×844px max) avec notch + status bar
+4. 4 à 5 écrans complets (adapte au type d'app demandé)
+5. Bottom tab bar avec 4-5 onglets + icônes SVG inline + labels
+6. JS : fonction switchTab(name) pour naviguer entre les écrans
+
+ÉCRANS REQUIS (adapte selon l'app) :
+• Écran Accueil : header avec avatar/logo + salutation + résumé service + actions rapides
+• Écran Liste/Catalogue : liste de cards scrollable avec avatar/image + info + bouton action
+• Écran Détail : fiche complète d'un élément (ex: chauffeur disponible, produit, profil)
+• Écran Profil/Auth : formulaire de connexion ou profil utilisateur avec photo
+• (Optionnel selon app) Écran Carte/Map : simulation visuelle d'une carte avec marqueur CSS
+
+QUALITÉ MOBILE :
+• Fond de cards : blanc ou #f8f9fa avec border-radius 14px et ombre légère
+• Boutons : height 52px, border-radius 26px (pill), couleur primaire de la palette
+• Inputs : height 48px, background #f1f3f5, border-radius 12px
+• Icônes bottom tab : SVG inline (pas de CDN icon), taille 24px
+• Textes en français (ou langue demandée), contenu réaliste et spécifique
+• Données fictives cohérentes (noms, prix, distances…)
+
+Retourne UNIQUEMENT le code HTML complet, sans explication, sans markdown, sans backticks.`
+      : `Crée un site web COMPLET et PREMIUM pour : ${finalPrompt}
 
 STRUCTURE MINIMALE OBLIGATOIRE :
 1. <head> complet : charset, viewport, title SEO, description, OG tags, Google Fonts

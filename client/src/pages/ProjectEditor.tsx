@@ -24,7 +24,8 @@ import {
   Sparkles, Send, Eye, Code2, History, Smartphone, Tablet, Monitor,
   Loader2, ArrowLeft, Globe, RotateCcw, Save, CheckCircle2, MessageSquare,
   Rocket, Share2, Tag, MousePointer2, Copy, Check, PencilRuler, Upload,
-  PanelLeftClose, PanelLeftOpen, Bug, Mic, MicOff, Paperclip, Camera, X as XIcon, Image as ImageIcon, Trash2
+  PanelLeftClose, PanelLeftOpen, Bug, Mic, MicOff, Paperclip, Camera, X as XIcon, Image as ImageIcon, Trash2,
+  ExternalLink, Download
 } from "lucide-react";
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
@@ -410,6 +411,9 @@ export default function ProjectEditor() {
   const [isChatPending, setIsChatPending] = useState(false);
   /* ── Console errors captured from the preview iframe ── */
   const [consoleErrors, setConsoleErrors] = useState<string[]>([]);
+  /* ── Expo / React Native ── */
+  const [expoSnackUrl, setExpoSnackUrl] = useState("");
+  const [expoSnackPlatform, setExpoSnackPlatform] = useState<"android" | "ios">("android");
 
   /* ── Resizable panel ── */
   const [panelWidth, setPanelWidth] = useState(45);
@@ -487,6 +491,9 @@ export default function ProjectEditor() {
     { enabled: !!(selectedVersionId || project?.currentVersionId) }
   );
 
+  /* ── Expo flag — must be declared early (before any useEffect that uses it) ── */
+  const isExpoProject = project?.framework === "expo";
+
   /* sync version → code state */
   useEffect(() => {
     if (project?.currentVersionId && !selectedVersionId) setSelectedVersionId(project.currentVersionId);
@@ -503,6 +510,8 @@ export default function ProjectEditor() {
   /* ── Pre-fill form from project metadata (new project, no code yet) ── */
   const autoGenTriggeredRef = useRef(false);
   const shouldAutoGen = useRef(new URLSearchParams(window.location.search).get("autoGenerate") === "true");
+  // Prevents the builder form from flashing while we wait for auto-generation to kick in
+  const [waitingForAutoGen, setWaitingForAutoGen] = useState(shouldAutoGen.current);
 
   useEffect(() => {
     if (!project || project.currentVersionId) return; // skip if already has code
@@ -510,7 +519,11 @@ export default function ProjectEditor() {
     if (project.style) setStyle(project.style);
     if (project.language) setLanguage(project.language);
     if (project.colorPalette) setColorPalette(project.colorPalette);
-    if (project.description && !prompt) setPrompt(project.description);
+    // Strip [INSPIRATION_URLS: ...] block from displayed prompt — the generator handles it server-side
+    if (project.description && !prompt) {
+      const cleanDesc = project.description.replace(/\[INSPIRATION_URLS:[^\]]*\]/g, "").trim();
+      setPrompt(cleanDesc || project.description);
+    }
     // Clean URL
     if (shouldAutoGen.current) window.history.replaceState({}, "", window.location.pathname);
   }, [project?.id]);
@@ -524,6 +537,7 @@ export default function ProjectEditor() {
     if (isGenerating) return;
     autoGenTriggeredRef.current = true;
     shouldAutoGen.current = false;
+    setWaitingForAutoGen(false);
     generateSiteStream();
   }, [prompt, project?.id, isGenerating]);
 
@@ -605,16 +619,17 @@ export default function ProjectEditor() {
   useEffect(() => {
     if (!htmlCode && !cssCode && !jsCode) return;
     if (visualEditMode) return;
+    if (isExpoProject) return; // React Native code — don't try to preview as HTML
     if (debounceRef.current) clearTimeout(debounceRef.current);
     debounceRef.current = setTimeout(() => buildPreview(htmlCode, cssCode, jsCode), 800);
     return () => { if (debounceRef.current) clearTimeout(debounceRef.current); };
-  }, [htmlCode, cssCode, jsCode, buildPreview, visualEditMode]);
+  }, [htmlCode, cssCode, jsCode, buildPreview, visualEditMode, isExpoProject]);
 
   /* also update preview when version data arrives (from server) */
   useEffect(() => {
     const code = currentVersionData?.generatedCode;
-    if (code && !visualEditMode) buildPreview(extractHtml(code), extractCss(code), extractJs(code));
-  }, [currentVersionData?.generatedCode, visualEditMode]);
+    if (code && !visualEditMode && !isExpoProject) buildPreview(extractHtml(code), extractCss(code), extractJs(code));
+  }, [currentVersionData?.generatedCode, visualEditMode, isExpoProject]);
 
   /* ── CodeMirror: create/destroy editor on tab or version change ── */
   useEffect(() => {
@@ -697,11 +712,15 @@ export default function ProjectEditor() {
                 setCssCode(extractCss(accumulated));
                 setJsCode(extractJs(accumulated));
               }
+              if (evt.snackUrl) {
+                setExpoSnackUrl(evt.snackUrl);
+              }
               if (evt.versionId) {
                 setAgentStep(null);
                 setSelectedVersionId(evt.versionId);
                 setStreamingTokens(evt.tokensUsed || 0);
-                toast.success(`Site généré ! ${evt.tokensUsed} tokens.`);
+                const isExpo = project?.framework === "expo";
+                toast.success(isExpo ? `App générée ! ${evt.tokensUsed} tokens.` : `Site généré ! ${evt.tokensUsed} tokens.`);
                 utils.projects.getVersions.invalidate({ projectId });
                 utils.projects.get.invalidate({ id: projectId });
                 utils.user.getUsageStats.invalidate();
@@ -715,9 +734,13 @@ export default function ProjectEditor() {
     } catch (err: any) {
       toast.error(err.message);
     } finally {
-      setIsGenerating(false);
-      setStreamingChars(0);
-      setAgentStep(null);
+      // Don't set isGenerating(false) immediately — wait 1.5s for tRPC to refetch
+      // so we never flash the builder form between "generation done" and "hasCode = true"
+      setTimeout(() => {
+        setIsGenerating(false);
+        setStreamingChars(0);
+        setAgentStep(null);
+      }, 1500);
     }
   }, [projectId, prompt, siteType, style, language, colorPalette]);
 
@@ -1256,6 +1279,8 @@ export default function ProjectEditor() {
   };
 
   const hasCode = !!(currentVersionData?.generatedCode);
+  // For Expo projects, the snackUrl may come from the done SSE event or from project.previewUrl
+  const activeSnackUrl = expoSnackUrl || (isExpoProject ? (project?.previewUrl || "") : "");
 
   /* loading */
   if (authLoading || projectLoading) {
@@ -1317,14 +1342,15 @@ export default function ProjectEditor() {
                     setInspectMode(false);
                     setVisualEditMode(true);
                   } else {
-                    // Exit VE mode without saving
-                    if (veDirty) {
-                      setHtmlCode(veOriginalHtmlRef.current);
-                      buildPreview(veOriginalHtmlRef.current, cssCode, jsCode);
-                    }
+                    // Exit VE mode — always rebuild preview to flush the VE script
+                    const exitHtml = veDirty ? veOriginalHtmlRef.current : htmlCode;
+                    if (veDirty) setHtmlCode(veOriginalHtmlRef.current);
                     setVeDirty(false);
                     setVeSelection(null);
+                    setVeDeleteConfirm(false);
                     setVisualEditMode(false);
+                    // Always call buildPreview so the iframe reloads without the VE script
+                    buildPreview(exitHtml, cssCode, jsCode);
                   }
                 }}>
                 <PencilRuler className="w-3.5 h-3.5 sm:mr-1.5" />
@@ -1358,7 +1384,7 @@ export default function ProjectEditor() {
         </div>
 
         {/* ── Body ── */}
-        {!hasCode && !isGenerating ? (
+        {!hasCode && !isGenerating && !waitingForAutoGen ? (
           /* ═══ BUILDER MODE (before first generation) ═══ */
           <div className="flex-1 overflow-y-auto p-4 max-w-2xl mx-auto w-full">
             <div className="space-y-4">
@@ -1443,7 +1469,7 @@ export default function ProjectEditor() {
                 </div>
               </div>
             ) : (
-              <p className="text-sm text-muted-foreground animate-pulse">Mar-ia génère votre site…</p>
+              <p className="text-sm text-muted-foreground animate-pulse">{isExpoProject ? "Mar-ia génère votre application mobile…" : "Mar-ia génère votre site…"}</p>
             )}
 
             {/* Code streaming progress */}
@@ -1586,7 +1612,7 @@ ${jsCode}`;
 
                 {/* Status bar */}
                 <div className="h-5 bg-[#007acc] flex items-center px-3 gap-4 flex-shrink-0">
-                  <span className="text-[10px] text-white/80">{codeTab === "html" ? "index.html" : codeTab === "css" ? "style.css" : "script.js"}</span>
+                  <span className="text-[10px] text-white/80">{isExpoProject ? "App.js" : codeTab === "html" ? "index.html" : codeTab === "css" ? "style.css" : "script.js"}</span>
                   <span className="text-[10px] text-white/60">
                     {(codeTab === "html" ? htmlCode : codeTab === "css" ? cssCode : jsCode).split("\n").length} lignes
                   </span>
@@ -2044,17 +2070,29 @@ ${jsCode}`;
                   )}
                 </div>
                 <div className="flex items-center gap-1">
-                  {(["desktop", "tablet", "mobile"] as ViewMode[]).map((mode) => {
-                    const icons = { desktop: Monitor, tablet: Tablet, mobile: Smartphone };
-                    const Icon = icons[mode];
-                    return (
-                      <Button key={mode} variant="ghost" size="icon"
-                        className={`w-7 h-7 ${viewMode === mode ? "text-primary bg-primary/10" : "text-muted-foreground"}`}
-                        onClick={() => setViewMode(mode)}>
-                        <Icon className="w-3.5 h-3.5" />
-                      </Button>
-                    );
-                  })}
+                  {isExpoProject ? (
+                    <>
+                      {(["android", "ios"] as const).map((p) => (
+                        <Button key={p} variant="ghost" size="sm"
+                          className={`h-7 px-2 text-xs ${expoSnackPlatform === p ? "text-primary bg-primary/10" : "text-muted-foreground"}`}
+                          onClick={() => setExpoSnackPlatform(p)}>
+                          {p === "android" ? "🤖 Android" : "🍎 iOS"}
+                        </Button>
+                      ))}
+                    </>
+                  ) : (
+                    (["desktop", "tablet", "mobile"] as ViewMode[]).map((mode) => {
+                      const icons = { desktop: Monitor, tablet: Tablet, mobile: Smartphone };
+                      const Icon = icons[mode];
+                      return (
+                        <Button key={mode} variant="ghost" size="icon"
+                          className={`w-7 h-7 ${viewMode === mode ? "text-primary bg-primary/10" : "text-muted-foreground"}`}
+                          onClick={() => setViewMode(mode)}>
+                          <Icon className="w-3.5 h-3.5" />
+                        </Button>
+                      );
+                    })
+                  )}
                 </div>
               </div>
               {/* ── VE banner ── */}
@@ -2353,20 +2391,126 @@ ${jsCode}`;
               )}
 
               {/* iframe preview — pleine hauteur */}
-              <div className="flex-1 flex items-start justify-center p-3 bg-muted/20 overflow-hidden">
-                <div className="h-full overflow-hidden rounded-lg border border-border/60 shadow-xl transition-all duration-300 bg-white"
-                  style={{ width: VIEW_SIZES[viewMode], maxWidth: "100%" }}>
-                  <iframe
-                    key={visualEditMode ? "ve-mode" : (inspectMode ? "inspect-mode" : "preview-mode")}
-                    ref={previewRef}
-                    srcDoc={(inspectMode || visualEditMode) ? getPreviewSrc() : previewSrc}
-                    onLoad={() => { if (visualEditMode) setTimeout(injectVeScript, 50); }}
-                    className="w-full h-full border-0"
-                    title="Preview"
-                    sandbox={visualEditMode ? "allow-scripts allow-same-origin" : "allow-scripts"}
-                  />
+              {isExpoProject ? (
+                /* ── EXPO PREVIEW PANEL ── */
+                <div className="flex-1 flex flex-col items-center justify-start gap-4 p-4 bg-muted/20 overflow-y-auto">
+                  {/* Platform selector */}
+                  <div className="flex items-center gap-2 p-1 rounded-lg bg-card border border-border/60">
+                    {(["android", "ios"] as const).map((p) => (
+                      <button key={p}
+                        onClick={() => setExpoSnackPlatform(p)}
+                        className={`px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${expoSnackPlatform === p ? "bg-primary text-white" : "text-muted-foreground hover:text-foreground"}`}
+                      >
+                        {p === "android" ? "🤖 Android" : "🍎 iOS"}
+                      </button>
+                    ))}
+                  </div>
+
+                  {/* Expo Snack embed or placeholder */}
+                  {activeSnackUrl ? (
+                    <div className="w-full max-w-md flex-1 rounded-2xl overflow-hidden border border-border/60 shadow-xl bg-black min-h-[600px]">
+                      <iframe
+                        src={`${activeSnackUrl}?preview=true&platform=${expoSnackPlatform}&theme=dark`}
+                        className="w-full h-full border-0"
+                        title="Expo Snack Preview"
+                        allow="camera; microphone; geolocation"
+                        style={{ minHeight: "600px" }}
+                      />
+                    </div>
+                  ) : (
+                    <div className="w-full max-w-sm rounded-2xl border border-border/60 bg-card p-6 flex flex-col gap-4 text-center">
+                      <div className="text-4xl">📱</div>
+                      <div>
+                        <p className="font-semibold text-sm">Application React Native</p>
+                        <p className="text-xs text-muted-foreground mt-1">Le code est prêt. Testez-le sur votre appareil ou dans Expo Snack.</p>
+                      </div>
+                      <div className="space-y-2">
+                        <a
+                          href={`https://snack.expo.dev/?code=${encodeURIComponent(htmlCode)}&platform=${expoSnackPlatform}`}
+                          target="_blank" rel="noopener noreferrer"
+                          className="flex items-center justify-center gap-2 w-full py-2.5 rounded-lg bg-primary text-white text-sm font-medium hover:bg-primary/90 transition-colors"
+                        >
+                          <ExternalLink className="w-4 h-4" /> Ouvrir dans Expo Snack
+                        </a>
+                        <p className="text-[11px] text-muted-foreground">Ou scannez le QR code avec Expo Go sur votre téléphone</p>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Open buttons */}
+                  <div className="flex gap-2 flex-wrap justify-center">
+                    {activeSnackUrl && (
+                      <a href={activeSnackUrl} target="_blank" rel="noopener noreferrer"
+                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-border/60 text-xs text-muted-foreground hover:text-foreground hover:border-primary/40 transition-colors">
+                        <ExternalLink className="w-3.5 h-3.5" /> Expo Snack
+                      </a>
+                    )}
+                    <button
+                      onClick={() => {
+                        const blob = new Blob([htmlCode], { type: "text/javascript" });
+                        const url = URL.createObjectURL(blob);
+                        const a = document.createElement("a"); a.href = url; a.download = "App.js"; a.click();
+                        URL.revokeObjectURL(url);
+                      }}
+                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-border/60 text-xs text-muted-foreground hover:text-foreground hover:border-primary/40 transition-colors"
+                    >
+                      <Download className="w-3.5 h-3.5" /> App.js
+                    </button>
+                    <button
+                      onClick={async () => {
+                        const code = htmlCode;
+                        const pkgJson = JSON.stringify({
+                          name: "maria-app", version: "1.0.0", main: "App.js",
+                          scripts: { start: "expo start", android: "expo run:android", ios: "expo run:ios" },
+                          dependencies: { expo: "~51.0.0", react: "18.2.0", "react-native": "0.74.1", "expo-linear-gradient": "~12.7.1" },
+                          devDependencies: { "@babel/core": "^7.20.0" }
+                        }, null, 2);
+                        const appConfig = `import { ExpoConfig } from 'expo/config';\nexport default ({ config }: { config: ExpoConfig }): ExpoConfig => ({\n  ...config,\n  name: '${project?.name || "App"}',\n  slug: '${(project?.name || "app").toLowerCase().replace(/\s+/g, "-")}',\n  version: '1.0.0',\n  orientation: 'portrait',\n  platforms: ['android', 'ios'],\n});\n`;
+                        const zip = [`package.json\n${pkgJson}`, `App.js\n${code}`, `app.config.js\n${appConfig}`].join("\n---FILE---\n");
+                        const blob = new Blob([zip], { type: "text/plain" });
+                        const url = URL.createObjectURL(blob);
+                        const a = document.createElement("a"); a.href = url; a.download = `${project?.name || "app"}-expo.txt`; a.click();
+                        URL.revokeObjectURL(url);
+                        toast.success("Projet exporté ! Consultez le guide d'installation.");
+                      }}
+                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-emerald-500/40 text-xs text-emerald-400 hover:bg-emerald-500/10 transition-colors"
+                    >
+                      <Download className="w-3.5 h-3.5" /> Exporter projet Expo
+                    </button>
+                  </div>
+
+                  {/* Install guide */}
+                  <div className="w-full max-w-md bg-card/50 border border-border/40 rounded-xl p-4 text-xs space-y-2">
+                    <p className="font-semibold text-foreground">⚡ Tester sur votre téléphone (Expo Go)</p>
+                    <ol className="space-y-1 text-muted-foreground list-decimal list-inside">
+                      <li>Installez <strong className="text-foreground">Expo Go</strong> sur Android ou iPhone</li>
+                      <li>Cliquez "Expo Snack" ci-dessus → scannez le QR code</li>
+                      <li>L'app se lance directement dans Expo Go</li>
+                    </ol>
+                    <p className="font-semibold text-foreground pt-1">🏗️ Build natif (APK / IPA)</p>
+                    <ol className="space-y-1 text-muted-foreground list-decimal list-inside">
+                      <li>Exportez le projet, décompressez-le</li>
+                      <li><code className="bg-muted px-1 rounded">npm install</code></li>
+                      <li><code className="bg-muted px-1 rounded">npx eas build --platform android</code></li>
+                    </ol>
+                  </div>
                 </div>
-              </div>
+              ) : (
+                <div className="flex-1 flex items-start justify-center p-3 bg-muted/20 overflow-hidden">
+                  <div className="h-full overflow-hidden rounded-lg border border-border/60 shadow-xl transition-all duration-300 bg-white"
+                    style={{ width: VIEW_SIZES[viewMode], maxWidth: "100%" }}>
+                    <iframe
+                      key={visualEditMode ? "ve-mode" : (inspectMode ? "inspect-mode" : "preview-mode")}
+                      ref={previewRef}
+                      srcDoc={(inspectMode || visualEditMode) ? getPreviewSrc() : previewSrc}
+                      onLoad={() => { if (visualEditMode) setTimeout(injectVeScript, 50); }}
+                      className="w-full h-full border-0"
+                      title="Preview"
+                      sandbox={visualEditMode ? "allow-scripts allow-same-origin" : "allow-scripts"}
+                    />
+                  </div>
+                </div>
+              )}
             </div>
 
 

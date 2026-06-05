@@ -16,7 +16,7 @@ import { useLocation } from "wouter";
 import {
   Plus, FolderOpen, Globe, Clock, CheckCircle2, AlertCircle,
   Loader2, Sparkles, Users, Eye, LayoutTemplate, ArrowLeft, ArrowRight,
-  Link, X
+  Link, X, Pencil
 } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 import { fr } from "date-fns/locale";
@@ -121,8 +121,6 @@ export default function Projects() {
     const palette = form.useCustomColors
       ? form.customColors.filter(Boolean).join(",")
       : form.colorPalette;
-    // "expo" n'est pas une valeur DB valide (pgEnum html/react/nextjs)
-    const dbFramework = form.framework === "expo" ? "react" : form.framework;
 
     // Append valid inspiration URLs to the description so the generator can scrape them
     const validUrls = form.inspirationUrls.filter((u) => u.trim().match(/^https?:\/\/.+/));
@@ -137,7 +135,7 @@ export default function Projects() {
       style: form.style,
       language: form.languages.join(","),
       colorPalette: palette,
-      framework: dbFramework,
+      framework: form.framework,
     });
   };
 
@@ -583,7 +581,7 @@ export default function Projects() {
                     <div className="absolute top-3 right-3">
                       <Badge variant="outline" className="text-[10px] text-muted-foreground border-border/40">
                         {project.collaboratorRole === "editor" ? (
-                          <><Edit3 className="w-2.5 h-2.5 mr-1" />Éditeur</>
+                          <><Pencil className="w-2.5 h-2.5 mr-1" />Éditeur</>
                         ) : (
                           <><Eye className="w-2.5 h-2.5 mr-1" />Lecteur</>
                         )}

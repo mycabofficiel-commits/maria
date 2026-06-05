@@ -24,13 +24,13 @@ export async function scrapeInspirationUrl(url: string): Promise<string> {
       html.match(/<meta[^>]+content=["']([^"']{1,300})["'][^>]+name=["']description["']/i)
     )?.[1]?.trim() || "";
     // Detect hex colors (CSS variables, inline styles)
-    const colorMatches = [...html.matchAll(/#([0-9a-fA-F]{6})\b/g)]
+    const colorMatches = Array.from(html.matchAll(/#([0-9a-fA-F]{6})\b/g))
       .map((m) => `#${m[1]}`)
       .filter((c, i, arr) => arr.indexOf(c) === i)
       .slice(0, 8)
       .join(", ");
     // Headings h1–h3
-    const headings = [...html.matchAll(/<h[1-3][^>]*>\s*([^<]{1,80})\s*<\/h[1-3]>/gi)]
+    const headings = Array.from(html.matchAll(/<h[1-3][^>]*>\s*([^<]{1,80})\s*<\/h[1-3]>/gi))
       .map((m) => m[1].replace(/<[^>]+>/g, "").trim())
       .filter(Boolean)
       .slice(0, 8)

@@ -14,7 +14,7 @@ import {
 // ─── Enums ────────────────────────────────────────────────────────────────────
 export const roleEnum = pgEnum("role", ["user", "admin", "ultra"]);
 export const planEnum = pgEnum("plan", ["free", "creator", "pro", "agency"]);
-export const frameworkEnum = pgEnum("framework", ["html", "react", "nextjs"]);
+export const frameworkEnum = pgEnum("framework", ["html", "react", "nextjs", "expo"]);
 export const projectStatusEnum = pgEnum("project_status", ["draft", "generating", "ready", "published", "archived", "error"]);
 export const versionStatusEnum = pgEnum("version_status", ["generating", "ready", "error"]);
 export const apiKeyStatusEnum = pgEnum("api_key_status", ["valid", "invalid", "expired", "quota_exceeded", "untested"]);

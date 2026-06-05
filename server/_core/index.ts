@@ -82,6 +82,14 @@ async function ensureSchema() {
       ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "monthlyTokensLimit" integer
     `);
 
+    // Valeur "expo" dans l'enum framework (PostgreSQL 12+ supporte ADD VALUE IF NOT EXISTS)
+    await db.execute(sql`
+      DO $$ BEGIN
+        ALTER TYPE "framework" ADD VALUE IF NOT EXISTS 'expo';
+      EXCEPTION WHEN duplicate_object THEN NULL;
+      END $$;
+    `);
+
     console.log("[DB] Schema patch OK");
   } catch (err) {
     console.warn("[DB] ensureSchema warning:", err);
