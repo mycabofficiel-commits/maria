@@ -774,19 +774,20 @@ Retourne UNIQUEMENT le code JavaScript complet, sans explication, sans markdown,
     try {
       const snackRes = await fetch("https://exp.host/--/api/v2/snack/save", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          "Expo-Platform": "web",
+        },
         body: JSON.stringify({
           name: projectName,
           description: `Application générée par Mar-ia — ${siteType || "App mobile"}`,
-          sdkVersion: "51.0.0",
-          code: {
+          sdkVersion: "52.0.0",
+          files: {
             "App.js": { type: "CODE", contents: fullCode }
           },
-          dependencies: {
-            "expo-linear-gradient": "~12.7.1",
-          }
+          dependencies: {},
         }),
-        signal: AbortSignal.timeout(15000),
+        signal: AbortSignal.timeout(20000),
       });
 
       if (snackRes.ok) {
@@ -795,7 +796,12 @@ Retourne UNIQUEMENT le code JavaScript complet, sans explication, sans markdown,
         if (snackId) {
           snackUrl = `https://snack.expo.dev/${snackId}`;
           pipelineLog("expo:snack:saved", { snackId, snackUrl });
+        } else {
+          pipelineLog("expo:snack:no-id", { body: JSON.stringify(snackData).slice(0, 300) });
         }
+      } else {
+        const errBody = await snackRes.text().catch(() => "");
+        pipelineLog("expo:snack:http-error", { status: snackRes.status, body: errBody.slice(0, 300) });
       }
     } catch (snackErr: any) {
       pipelineLog("expo:snack:error", { error: snackErr?.message });

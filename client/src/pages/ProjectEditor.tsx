@@ -2421,18 +2421,22 @@ ${jsCode}`;
                     <div className="w-full max-w-sm rounded-2xl border border-border/60 bg-card p-6 flex flex-col gap-4 text-center">
                       <div className="text-4xl">📱</div>
                       <div>
-                        <p className="font-semibold text-sm">Application React Native</p>
-                        <p className="text-xs text-muted-foreground mt-1">Le code est prêt. Testez-le sur votre appareil ou dans Expo Snack.</p>
+                        <p className="font-semibold text-sm">Application React Native prête</p>
+                        <p className="text-xs text-muted-foreground mt-1">Téléchargez App.js et testez avec Expo Go, ou regénérez pour obtenir un lien Expo Snack.</p>
                       </div>
                       <div className="space-y-2">
-                        <a
-                          href={`https://snack.expo.dev/?code=${encodeURIComponent(htmlCode)}&platform=${expoSnackPlatform}`}
-                          target="_blank" rel="noopener noreferrer"
+                        <button
+                          onClick={() => {
+                            const blob = new Blob([htmlCode], { type: "text/javascript" });
+                            const url = URL.createObjectURL(blob);
+                            const a = document.createElement("a"); a.href = url; a.download = "App.js"; a.click();
+                            URL.revokeObjectURL(url);
+                          }}
                           className="flex items-center justify-center gap-2 w-full py-2.5 rounded-lg bg-primary text-white text-sm font-medium hover:bg-primary/90 transition-colors"
                         >
-                          <ExternalLink className="w-4 h-4" /> Ouvrir dans Expo Snack
-                        </a>
-                        <p className="text-[11px] text-muted-foreground">Ou scannez le QR code avec Expo Go sur votre téléphone</p>
+                          <Download className="w-4 h-4" /> Télécharger App.js
+                        </button>
+                        <p className="text-[11px] text-muted-foreground">Ouvrez avec <strong>Expo Go</strong> sur iOS/Android</p>
                       </div>
                     </div>
                   )}
