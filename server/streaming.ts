@@ -883,32 +883,28 @@ export function registerStreamingRoutes(app: Express) {
         headers: { "Authorization": `Bearer ${deepseekKey}`, "content-type": "application/json" },
         body: JSON.stringify({
           model: "deepseek-chat",
-          max_tokens: 6000,
+          max_tokens: 3000,
           temperature: 0.1,
           messages: [
             {
               role: "system",
-              content: `Tu es un expert en conversion React Native → HTML/CSS mobile.
-Convertis le App.js fourni en une page HTML autonome qui simule visuellement l'application mobile.
-RÈGLES STRICTES :
-- HTML complet (<!DOCTYPE html>...) avec styles CSS inline ou <style>
-- Reproduis fidèlement : couleurs, layout, typographie, contenu du premier écran visible
-- Simule un écran mobile : body { margin:0; font-family: system-ui; background:#000; display:flex; justify-content:center; }
-- Conteneur principal : max-width:390px; min-height:844px; overflow:hidden; position:relative;
-- Traduis View → div, Text → p/span/h1/h2, TouchableOpacity → button, FlatList → liste de divs, Image → img
-- Utilise les vraies couleurs et textes du code source
-- StatusBar → barre de statut fictive en haut (hauteur 44px)
-- BottomTabBar → barre d'onglets fictive en bas (hauteur 80px, position fixe)
-- AUCUNE dépendance externe (pas de CDN, pas de JS frameworks)
-- Retourne UNIQUEMENT le HTML brut, sans markdown, sans explication`
+              content: `Convert the React Native App.js to a self-contained HTML mobile preview.
+OUTPUT: Only raw HTML (<!DOCTYPE html>...), no markdown, no explanation.
+RULES:
+- body { margin:0; font-family:system-ui; background:#1a1a1a; display:flex; justify-content:center; align-items:flex-start; min-height:100vh; }
+- App container: max-width:390px; width:100%; min-height:780px; position:relative; overflow:hidden; background:#fff;
+- Map: View→div, Text→p/span, TouchableOpacity→button, FlatList→div list, Image→img (placeholder if no src)
+- Copy real colors, fonts, text from the source code
+- StatusBar: 44px top bar; BottomTabBar: 80px fixed bottom bar
+- No external CDN, no JS frameworks, inline styles or <style> block only`
             },
             {
               role: "user",
-              content: `Convertis ce React Native App.js en aperçu HTML mobile :\n\n${code.slice(0, 10000)}`
+              content: `Convert this App.js to HTML mobile preview:\n\n${code.slice(0, 5000)}`
             }
           ],
         }),
-        signal: AbortSignal.timeout(30000),
+        signal: AbortSignal.timeout(60000),
       });
 
       if (!aiRes.ok) return res.status(502).json({ error: "Erreur LLM" });
