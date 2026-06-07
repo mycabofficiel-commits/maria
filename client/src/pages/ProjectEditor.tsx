@@ -2442,40 +2442,35 @@ ${jsCode}`;
                   {/* Expo Snack embed or placeholder */}
                   {activeSnackUrl ? (
                     <>
-                      <div className="w-full max-w-md flex-1 rounded-2xl overflow-hidden border border-border/60 shadow-xl bg-black min-h-[600px]">
-                        <iframe
-                          src={`${activeSnackUrl}?preview=true&platform=${expoSnackPlatform}&theme=dark`}
-                          className="w-full h-full border-0"
-                          title="Expo Snack Preview"
-                          allow="camera; microphone; geolocation"
-                          style={{ minHeight: "600px" }}
-                        />
-                      </div>
+                      {/* Preview simulateur */}
+                      {(() => {
+                        const snackHash = activeSnackUrl.replace("https://snack.expo.dev/", "").replace(/[?#].*/, "");
+                        const embedSrc = `https://snack.expo.dev/embedded?preview=true&platform=${expoSnackPlatform}&theme=dark&snack=${snackHash}&iframeId=maria-preview`;
+                        return (
+                          <div className="w-full max-w-[360px] rounded-[2.5rem] overflow-hidden border-[6px] border-border/80 shadow-2xl bg-black" style={{ minHeight: 640 }}>
+                            <iframe
+                              src={embedSrc}
+                              className="w-full border-0"
+                              title="Expo Preview"
+                              allow="camera; microphone; geolocation"
+                              style={{ height: 640 }}
+                            />
+                          </div>
+                        );
+                      })()}
                       {/* QR code pour Expo Go */}
                       {(() => {
                         const snackHash = activeSnackUrl.replace("https://snack.expo.dev/", "").replace(/[?#].*/, "");
-                        const expoGoUrl = `exp://exp.host/@snack/${snackHash}`;
-                        const qrSrc = `https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=${encodeURIComponent(expoGoUrl)}&bgcolor=ffffff&color=000000&margin=10`;
+                        const snackWebUrl = `https://snack.expo.dev/${snackHash}`;
+                        const qrSrc = `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(snackWebUrl)}&bgcolor=ffffff&color=000000&margin=12`;
                         return (
                           <div className="w-full max-w-md bg-card border border-border/60 rounded-2xl p-4 flex flex-col items-center gap-3">
-                            <p className="text-xs font-semibold text-foreground">📱 Scanner avec Expo Go</p>
-                            <img
-                              src={qrSrc}
-                              alt="QR code Expo Go"
-                              width={180}
-                              height={180}
-                              className="rounded-xl border border-border/40"
-                            />
-                            <div className="text-center space-y-1">
-                              <p className="text-[11px] text-muted-foreground">
-                                1. Installez <strong className="text-foreground">Expo Go</strong> sur votre téléphone
-                              </p>
-                              <p className="text-[11px] text-muted-foreground">
-                                2. Ouvrez l'app et scannez ce QR code
-                              </p>
-                              <p className="text-[11px] text-muted-foreground">
-                                3. L'application se lance en direct 🚀
-                              </p>
+                            <p className="text-xs font-semibold text-foreground">📱 Tester sur votre téléphone</p>
+                            <img src={qrSrc} alt="QR Expo Go" width={200} height={200} className="rounded-xl border border-border/40" />
+                            <div className="text-center space-y-0.5">
+                              <p className="text-[11px] text-muted-foreground">1. Installez <strong className="text-foreground">Expo Go</strong> (iOS / Android)</p>
+                              <p className="text-[11px] text-muted-foreground">2. Scannez ce QR code</p>
+                              <p className="text-[11px] text-muted-foreground">3. L'app se lance en direct 🚀</p>
                             </div>
                           </div>
                         );
