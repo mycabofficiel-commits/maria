@@ -118,7 +118,7 @@ const VE_SCRIPT = `(function(){
 
   function cleanHtml(){
     var clone=document.documentElement.cloneNode(true);
-    ['#__ve__','#__ve_s__','#__ve_ov__'].forEach(function(id){
+    ['#__ve__','#__ve_s__','#__ve_ov__','#__ve_preload__','#__ve_htip__','#__ve_dim__'].forEach(function(id){
       var el=clone.querySelector(id);if(el&&el.parentNode)el.parentNode.removeChild(el);
     });
     Array.from(clone.querySelectorAll('[data-veh],[data-ves],[data-vedrag],[draggable],[contenteditable]')).forEach(function(el){

@@ -890,19 +890,28 @@ export function registerStreamingRoutes(app: Express) {
         body: JSON.stringify({
           model: "deepseek-chat",
           stream: true,
-          max_tokens: 1200,
-          temperature: 0.1,
+          max_tokens: 1800,
+          temperature: 0.2,
           messages: [
             {
               role: "system",
-              content: `Convert React Native App.js to HTML. Output ONLY raw HTML, no markdown, no explanation.
-Rules: body{margin:0;font-family:system-ui;width:390px;min-height:844px;overflow:hidden;position:relative}
-Map View→div, Text→p/span/h2, TouchableOpacity→button. Copy real bg colors and text. Inline styles only, no CDN.
-Generate only the first visible screen.`
+              content: `Convert React Native App.js to a mobile HTML preview. Output ONLY raw HTML, no markdown, no explanation, no backticks.
+
+RULES:
+- body: margin:0; font-family:system-ui,sans-serif; width:100%; min-height:100vh; overflow-x:hidden; overflow-y:auto; box-sizing:border-box; background:[copy bg color from App.js]
+- Copy ALL colors, gradients, border-radius, shadows from the StyleSheet
+- Map: View→div, Text→p or span or h2, TouchableOpacity→button, ScrollView→div with overflow-y:auto, FlatList→div, Image→img with object-fit:cover, TextInput→input, LinearGradient→div with background:linear-gradient, SafeAreaView→div, StatusBar→div(height:44px)
+- Inline styles ONLY — no <style> block, no CDN, no classes
+- Bottom tab bar: position:fixed; bottom:0; left:0; right:0; display:flex; background:[nav bg]; border-top:1px solid rgba(0,0,0,.1); z-index:100; padding:8px 0 16px
+- Each tab: flex:1; display:flex; flex-direction:column; align-items:center; gap:3px; font-size:10px; cursor:pointer
+- Active tab: color:[primary]; inactive: color:#888
+- Only the first visible screen (Home screen). No JS navigation needed.
+- Images: use placeholder img tags with bg-color instead of real URLs
+- Reproduce the EXACT layout, spacing, and colors of the app`
             },
             {
               role: "user",
-              content: `App.js:\n\n${code.slice(0, 2500)}`
+              content: `App.js:\n\n${code.slice(0, 3000)}`
             }
           ],
         }),
@@ -1115,11 +1124,11 @@ Minimum 4 écrans complets avec du VRAI contenu (pas lorem ipsum) :
 • ✅ "+33 6 00 00 00 00", "user@example.fr", données fictives cohérentes
 
 TYPE APP: ${siteType} | STYLE: ${style || "moderne"} | LANGUE: ${language || "fr"} | PALETTE: ${colorPalette || "bleu/violet moderne"}${inspirationCtx}`
-      : `Tu es Mar-ia, créatrice de sites web premium. Tu génères du HTML/CSS/JS complet, visuellement impactant, professionnel et 100% fonctionnel.
+      : `Tu es Mar-ia, créatrice de sites web premium. Tu génères du HTML/CSS/JS complet, visuellement SPECTACULAIRE, moderne, professionnel et 100% fonctionnel. Qualité Dribbble / Awwwards.
 
 ══ ARCHITECTURE ══
 • Fichier UNIQUE : <!DOCTYPE html>…</html> — CSS dans <style>, JS dans <script> avant </body>
-• Google Fonts CDN obligatoire (Inter, Raleway, Montserrat, Playfair Display…)
+• Google Fonts CDN obligatoire — COMBINE 2 polices : une display (Playfair Display, Raleway, Poppins, Montserrat, DM Serif Display) + une body (Inter, Nunito, DM Sans)
 • Meta tags SEO : title, description, og:title, og:description, viewport
 
 ══ SPA MONO-FICHIER — NAVIGATION (ZÉRO LIEN CASSÉ) ══
@@ -1139,15 +1148,33 @@ Déclare TOUJOURS dans :root {} selon la palette demandée :
   --c-primary  --c-secondary  --c-accent  --c-bg  --c-bg-alt
   --c-text  --c-text-muted  --c-border
   --font-display (titres)  --font-body (corps)
-  --radius (ex: 10px)  --shadow (ex: 0 4px 24px rgba(0,0,0,.10))  --transition (ex: .25s ease)
+  --radius (ex: 12px)  --radius-lg (ex: 24px)
+  --shadow (ex: 0 8px 32px rgba(0,0,0,.12))  --shadow-lg (ex: 0 24px 64px rgba(0,0,0,.18))
+  --transition (ex: .3s cubic-bezier(.4,0,.2,1))
 Utilise ces variables partout — jamais de valeurs hex hardcodées dans le CSS.
 
+══ HÉRO — OBLIGATOIRE (pleine page, fort impact) ══
+Le héro doit occuper min-height:100vh. Options selon le style :
+• Image de fond Unsplash avec overlay gradient semi-transparent + texte blanc
+• Gradient diagonal bold (ex: linear-gradient(135deg, var(--c-primary) 0%, var(--c-secondary) 100%))
+• Split-screen : image à droite, texte + CTA à gauche
+Toujours : titre H1 + sous-titre percutant + 2 boutons CTA différenciés (primary filled + outline).
+
+══ SECTIONS DE CONTENU — RICHESSE OBLIGATOIRE ══
+Chaque section doit avoir du "wow factor". Standards minimaux :
+• Services/features : grille 3+ cards avec icône SVG inline + titre + description (100+ mots de contenu par card)
+• Témoignages : carousel ou grille avec avatar CSS (initiales colorées), étoiles ★, texte + nom + poste
+• Stats/chiffres : compteurs animés (IntersectionObserver), fond en dégradé, 4 métriques
+• Process : timeline verticale ou numérotée, étapes détaillées
+• Galerie/Portfolio : grille masonry CSS 3 colonnes, images Unsplash, hover overlay avec infos
+• Pricing : 3 cards, card centrale highlighted (border 2px primary, scale 1.05), features list avec ✓/✗
+
 ══ ÉCHELLE TYPOGRAPHIQUE OBLIGATOIRE ══
-• H1 hero : clamp(2.4rem, 6vw, 4rem) — gras, line-height 1.15
-• H2 sections : clamp(1.6rem, 3.5vw, 2.4rem) — weight 700
-• H3 cards : 1.2rem — weight 600
-• Body : 1rem, line-height 1.75
-• Caption/label : 0.85rem, letter-spacing .05em, text-transform uppercase
+• H1 hero : clamp(2.8rem, 7vw, 5rem) — font-weight 800, line-height 1.1, letter-spacing -0.02em
+• H2 sections : clamp(1.8rem, 4vw, 2.8rem) — font-weight 700, position relative avec pseudo-élément décoratif
+• H3 cards : 1.25rem — font-weight 600
+• Body : 1rem, line-height 1.8, color: var(--c-text-muted)
+• Labels/badges : 0.75rem, letter-spacing 0.1em, text-transform uppercase, font-weight 600
 
 ══ RESPONSIVE MOBILE-FIRST (3 BREAKPOINTS) ══
 • Base CSS = mobile (< 640px) : 1 colonne, padding 1.25rem
@@ -1155,11 +1182,13 @@ Utilise ces variables partout — jamais de valeurs hex hardcodées dans le CSS.
 • @media (min-width: 1024px) : 3+ colonnes, layout desktop complet
 • Header mobile : hamburger menu JS (toggle classe .open)
 
-══ ANIMATIONS REQUISES ══
-• IntersectionObserver sur .animate-on-scroll → classe .visible (opacity 0→1, translateY 20px→0, transition .6s)
-• Hover cards : transform translateY(-4px) + box-shadow renforcé
-• Hover boutons CTA : background légèrement plus sombre + transform scale(1.02)
-• Header : backdrop-filter: blur(12px) + background semi-transparent au scroll (JS scroll listener)
+══ ANIMATIONS PREMIUM ══
+• IntersectionObserver sur .animate-on-scroll → classe .visible (opacity 0→1, translateY 30px→0, transition .7s ease)
+• Stagger : nth-child(n) { transition-delay: calc(n * 0.1s) } sur les grilles de cards
+• Hover cards : transform translateY(-8px) + box-shadow var(--shadow-lg) + transition var(--transition)
+• Hover boutons CTA : scale(1.04) + ombre renforcée
+• Header : backdrop-filter:blur(16px) + background:rgba(255,255,255,.85) au scroll (JS scroll listener)
+• Compteurs animés : IntersectionObserver → setInterval pour incrémenter de 0 à la valeur cible
 
 ══ IMAGES — IDs UNSPLASH FIABLES ══
 Format : https://images.unsplash.com/photo-{ID}?w={W}&h={H}&fit=crop&q=80
@@ -1248,7 +1277,7 @@ Retourne UNIQUEMENT le code HTML complet, sans explication, sans markdown, sans 
         body: JSON.stringify({
           model: "deepseek-chat",
           max_tokens: 14000,
-          temperature: 0.3,
+          temperature: 0.6,
           stream: true,
           messages: [{ role: "system", content: systemPrompt }, { role: "user", content: userMessage }],
         }),
@@ -1682,11 +1711,19 @@ Retourne le fichier HTML ENTIER. Jamais tronqué. Jamais raccourci avec des comm
 Fermetures OBLIGATOIRES : </style> </script> </body> </html>
 Si le code actuel fait 15 000 caractères, ta réponse doit faire au moins autant.
 
-══ RÈGLE 5 — QUALITÉ DU CODE MODIFIÉ ══
-• Images : https://images.unsplash.com/photo-{ID}?w=800&h=600&fit=crop&q=80 (IDs réels)
-• Formulaires : onsubmit="e.preventDefault(); [masque form, affiche message succès]"
+══ RÈGLE 5 — QUALITÉ VISUELLE PREMIUM (OBLIGATOIRE POUR TOUTE MODIFICATION) ══
+• Images : https://images.unsplash.com/photo-{ID}?w=800&h=600&fit=crop&q=80 (IDs réels, pas de placeholder)
+• Formulaires : onsubmit="e.preventDefault(); [masque form, affiche message succès animé]"
 • Responsive : mobile-first, breakpoints @media (min-width: 640px) et @media (min-width: 1024px)
-• Nouvelles sections ajoutées : appliquer le même style que les sections existantes (même variables CSS, même typographie)
+• Nouvelles sections : même style que l'existant (variables CSS, typographie, spacing), PLUS :
+  — Cards avec border-radius var(--radius), box-shadow var(--shadow), hover transform+shadow
+  — Icônes SVG inline (pas de CDN) ou emojis significatifs — jamais de placeholders vides
+  — Texte dense et réaliste (min 80 mots par section) — JAMAIS lorem ipsum ni "description de service"
+  — CTA avec gradient ou couleur primaire, border-radius var(--radius-lg), height:52px min, transition var(--transition)
+• Si le héro existant est basique (fond uni, image manquante) → remplace par : gradient bold OU image Unsplash avec overlay
+• Si les animations IntersectionObserver sont absentes → ajoute-les systématiquement
+• Témoignages : toujours avec avatar CSS (initiales + couleur primaire), étoiles ★, nom + poste fictif
+• Stats : fond dégradé ou sombre, compteurs, typographie xl (clamp(2rem,5vw,3.5rem))
 
 ══ RÈGLE 6 — IMAGES JOINTES PAR L'UTILISATEUR ══
 Si une image est jointe ET que le plan d'action liste des éléments numérotés à créer :
