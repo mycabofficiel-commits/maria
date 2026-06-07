@@ -2460,30 +2460,32 @@ ${jsCode}`;
                 /* ── EXPO PREVIEW : phone mockup pleine hauteur comme le preview web ── */
                 <div className="flex-1 flex flex-col overflow-hidden">
 
-                  {/* Zone preview : phone centré qui remplit l'espace disponible */}
-                  <div className="flex-1 min-h-0 flex items-center justify-center bg-[#0c0c14] overflow-hidden p-3">
+                  {/* Zone preview : même pattern que le preview web — items-start, h-full sur l'enfant */}
+                  <div className="flex-1 flex items-start justify-center p-3 bg-[#0c0c14] overflow-hidden">
                     {expoHtmlLoading && !expoHtmlPreview && (
-                      <div className="flex flex-col items-center gap-3 text-muted-foreground">
+                      <div className="flex flex-col items-center gap-3 text-muted-foreground mt-16">
                         <Loader2 className="w-8 h-8 animate-spin text-primary" />
                         <span className="text-sm">Génération de l'aperçu…</span>
                       </div>
                     )}
                     {!expoHtmlLoading && !expoHtmlPreview && (
-                      <button
-                        onClick={() => generateExpoHtmlPreview(htmlCode)}
-                        disabled={!htmlCode}
-                        className="flex flex-col items-center gap-3 px-8 py-6 rounded-2xl bg-primary/10 border border-primary/20 text-primary hover:bg-primary/20 transition-colors"
-                      >
-                        <span className="text-4xl">📱</span>
-                        <span className="text-sm font-medium">Générer l'aperçu</span>
-                        <span className="text-xs text-muted-foreground">Aperçu HTML interactif de l'app</span>
-                      </button>
+                      <div className="flex flex-col items-center gap-3 mt-16">
+                        <button
+                          onClick={() => generateExpoHtmlPreview(htmlCode)}
+                          disabled={!htmlCode}
+                          className="flex flex-col items-center gap-3 px-8 py-6 rounded-2xl bg-primary/10 border border-primary/20 text-primary hover:bg-primary/20 transition-colors"
+                        >
+                          <span className="text-4xl">📱</span>
+                          <span className="text-sm font-medium">Générer l'aperçu</span>
+                          <span className="text-xs text-muted-foreground">Aperçu HTML de l'app</span>
+                        </button>
+                      </div>
                     )}
                     {expoHtmlPreview && (
-                      /* Phone mockup : hauteur 100% de la zone, aspect ratio iPhone */
+                      /* Phone mockup : h-full + aspect-ratio = même pattern que le web preview */
                       <div
-                        className="h-full rounded-[2.5rem] overflow-hidden shadow-2xl flex-shrink-0"
-                        style={{ aspectRatio: "390/844", maxWidth: "390px", border: "8px solid #1c1c2e", background: "#000" }}
+                        className="h-full overflow-hidden shadow-2xl flex-shrink-0"
+                        style={{ aspectRatio: "390/844", maxWidth: "390px", borderRadius: "2.5rem", border: "8px solid #1c1c2e", background: "#000" }}
                       >
                         <iframe
                           key={visualEditMode ? "expo-ve-mode" : inspectMode ? "expo-inspect-mode" : "expo-preview"}

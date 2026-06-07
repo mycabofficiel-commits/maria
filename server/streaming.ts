@@ -883,24 +883,19 @@ export function registerStreamingRoutes(app: Express) {
         headers: { "Authorization": `Bearer ${deepseekKey}`, "content-type": "application/json" },
         body: JSON.stringify({
           model: "deepseek-chat",
-          max_tokens: 3000,
+          max_tokens: 1500,
           temperature: 0.1,
           messages: [
             {
               role: "system",
-              content: `Convert the React Native App.js to a self-contained HTML mobile preview.
-OUTPUT: Only raw HTML (<!DOCTYPE html>...), no markdown, no explanation.
-RULES:
-- body { margin:0; font-family:system-ui; background:#1a1a1a; display:flex; justify-content:center; align-items:flex-start; min-height:100vh; }
-- App container: max-width:390px; width:100%; min-height:780px; position:relative; overflow:hidden; background:#fff;
-- Map: View→div, Text→p/span, TouchableOpacity→button, FlatList→div list, Image→img (placeholder if no src)
-- Copy real colors, fonts, text from the source code
-- StatusBar: 44px top bar; BottomTabBar: 80px fixed bottom bar
-- No external CDN, no JS frameworks, inline styles or <style> block only`
+              content: `Convert React Native App.js → standalone HTML mobile preview. Output ONLY raw HTML, no markdown.
+- body: margin:0; font-family:system-ui; background:#fff; width:390px; min-height:844px; overflow:hidden; position:relative;
+- View→div, Text→p/span, TouchableOpacity→button; copy real colors/text/layout from source
+- StatusBar: fixed top bar 44px dark. BottomTab: fixed bottom 60px. No CDN, inline styles only.`
             },
             {
               role: "user",
-              content: `Convert this App.js to HTML mobile preview:\n\n${code.slice(0, 5000)}`
+              content: `App.js:\n\n${code.slice(0, 3000)}`
             }
           ],
         }),
