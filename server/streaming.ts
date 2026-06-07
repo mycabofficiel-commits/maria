@@ -864,6 +864,63 @@ Retourne UNIQUEMENT le code JavaScript complet, sans explication, sans markdown,
 // ─────────────────────────────────────────────────────────────────────────────
 
 export function registerStreamingRoutes(app: Express) {
+
+  // ── POST /api/expo/html-preview ───────────────────────────────────────────
+  // Converts an App.js (React Native) to a mobile HTML preview for in-browser display
+  app.post("/api/expo/html-preview", async (req: Request, res: Response) => {
+    const user = await authenticate(req, res);
+    if (!user) return;
+
+    const { code, projectName = "App" } = req.body as { code: string; projectName?: string };
+    if (!code) return res.status(400).json({ error: "code requis" });
+
+    try {
+      const deepseekKey = await getPlatformKey("deepseek");
+      if (!deepseekKey) return res.status(503).json({ error: "Clé LLM manquante" });
+
+      const aiRes = await fetch("https://api.deepseek.com/v1/chat/completions", {
+        method: "POST",
+        headers: { "Authorization": `Bearer ${deepseekKey}`, "content-type": "application/json" },
+        body: JSON.stringify({
+          model: "deepseek-chat",
+          max_tokens: 6000,
+          temperature: 0.1,
+          messages: [
+            {
+              role: "system",
+              content: `Tu es un expert en conversion React Native → HTML/CSS mobile.
+Convertis le App.js fourni en une page HTML autonome qui simule visuellement l'application mobile.
+RÈGLES STRICTES :
+- HTML complet (<!DOCTYPE html>...) avec styles CSS inline ou <style>
+- Reproduis fidèlement : couleurs, layout, typographie, contenu du premier écran visible
+- Simule un écran mobile : body { margin:0; font-family: system-ui; background:#000; display:flex; justify-content:center; }
+- Conteneur principal : max-width:390px; min-height:844px; overflow:hidden; position:relative;
+- Traduis View → div, Text → p/span/h1/h2, TouchableOpacity → button, FlatList → liste de divs, Image → img
+- Utilise les vraies couleurs et textes du code source
+- StatusBar → barre de statut fictive en haut (hauteur 44px)
+- BottomTabBar → barre d'onglets fictive en bas (hauteur 80px, position fixe)
+- AUCUNE dépendance externe (pas de CDN, pas de JS frameworks)
+- Retourne UNIQUEMENT le HTML brut, sans markdown, sans explication`
+            },
+            {
+              role: "user",
+              content: `Convertis ce React Native App.js en aperçu HTML mobile :\n\n${code.slice(0, 10000)}`
+            }
+          ],
+        }),
+        signal: AbortSignal.timeout(30000),
+      });
+
+      if (!aiRes.ok) return res.status(502).json({ error: "Erreur LLM" });
+      const data = await aiRes.json() as any;
+      let html = data.choices?.[0]?.message?.content || "";
+      html = html.replace(/^```html\n?/i, "").replace(/^```\n?/, "").replace(/\n?```$/, "").trim();
+      return res.json({ html });
+    } catch (err: any) {
+      return res.status(500).json({ error: err.message });
+    }
+  });
+
   // ── POST /api/stream/generate ─────────────────────────────────────────────
   app.post("/api/stream/generate", async (req: Request, res: Response) => {
     const user = await authenticate(req, res);

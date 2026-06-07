@@ -415,6 +415,8 @@ export default function ProjectEditor() {
   const [expoSnackUrl, setExpoSnackUrl] = useState("");
   const [expoSnackPlatform, setExpoSnackPlatform] = useState<"android" | "ios">("android");
   const [expoSnackLoading, setExpoSnackLoading] = useState(false);
+  const [expoHtmlPreview, setExpoHtmlPreview] = useState("");
+  const [expoHtmlLoading, setExpoHtmlLoading] = useState(false);
 
   const saveToExpoSnack = async (code: string, name: string) => {
     setExpoSnackLoading(true);
@@ -446,6 +448,26 @@ export default function ProjectEditor() {
     } finally {
       setExpoSnackLoading(false);
     }
+  };
+
+  const generateExpoHtmlPreview = async (code: string) => {
+    if (!code || expoHtmlLoading) return;
+    setExpoHtmlLoading(true);
+    try {
+      const res = await fetch("/api/expo/html-preview", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ code, projectName: project?.name || "App" }),
+      });
+      if (res.ok) {
+        const data = await res.json() as { html?: string };
+        if (data.html) {
+          setExpoHtmlPreview(data.html);
+          buildPreview(data.html, "", "");
+        }
+      }
+    } catch { /* silently ignore */ }
+    finally { setExpoHtmlLoading(false); }
   };
 
   /* ── Resizable panel ── */
@@ -652,16 +674,26 @@ export default function ProjectEditor() {
   useEffect(() => {
     if (!htmlCode && !cssCode && !jsCode) return;
     if (visualEditMode) return;
-    if (isExpoProject) return; // React Native code — don't try to preview as HTML
+    if (isExpoProject) {
+      // For Expo: show existing HTML preview if available, else leave iframe alone
+      if (expoHtmlPreview) buildPreview(expoHtmlPreview, "", "");
+      return;
+    }
     if (debounceRef.current) clearTimeout(debounceRef.current);
     debounceRef.current = setTimeout(() => buildPreview(htmlCode, cssCode, jsCode), 800);
     return () => { if (debounceRef.current) clearTimeout(debounceRef.current); };
-  }, [htmlCode, cssCode, jsCode, buildPreview, visualEditMode, isExpoProject]);
+  }, [htmlCode, cssCode, jsCode, buildPreview, visualEditMode, isExpoProject, expoHtmlPreview]);
 
   /* also update preview when version data arrives (from server) */
   useEffect(() => {
     const code = currentVersionData?.generatedCode;
-    if (code && !visualEditMode && !isExpoProject) buildPreview(extractHtml(code), extractCss(code), extractJs(code));
+    if (!code || visualEditMode) return;
+    if (isExpoProject) {
+      // Auto-generate HTML preview on first load if not already generated
+      if (!expoHtmlPreview && !expoHtmlLoading) generateExpoHtmlPreview(code);
+    } else {
+      buildPreview(extractHtml(code), extractCss(code), extractJs(code));
+    }
   }, [currentVersionData?.generatedCode, visualEditMode, isExpoProject]);
 
   /* ── CodeMirror: create/destroy editor on tab or version change ── */
@@ -2427,81 +2459,64 @@ ${jsCode}`;
               {isExpoProject ? (
                 /* ── EXPO PREVIEW PANEL ── */
                 <div className="flex-1 flex flex-col items-center justify-start gap-4 p-4 bg-muted/20 overflow-y-auto">
-                  {/* Platform selector */}
-                  <div className="flex items-center gap-2 p-1 rounded-lg bg-card border border-border/60">
-                    {(["android", "ios"] as const).map((p) => (
-                      <button key={p}
-                        onClick={() => setExpoSnackPlatform(p)}
-                        className={`px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${expoSnackPlatform === p ? "bg-primary text-white" : "text-muted-foreground hover:text-foreground"}`}
-                      >
-                        {p === "android" ? "🤖 Android" : "🍎 iOS"}
-                      </button>
-                    ))}
+
+                  {/* Label aperçu web */}
+                  <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-primary/10 border border-primary/20 text-xs text-primary font-medium">
+                    <span>📱</span> Aperçu web de l'app — l'éditeur visuel fonctionne ici
                   </div>
 
-                  {/* Expo Snack embed or placeholder */}
+                  {/* Bouton générer l'aperçu si pas encore disponible */}
+                  {!expoHtmlPreview && (
+                    <button
+                      onClick={() => generateExpoHtmlPreview(htmlCode)}
+                      disabled={expoHtmlLoading || !htmlCode}
+                      className="flex items-center gap-2 px-4 py-2 rounded-lg bg-primary text-white text-sm font-medium hover:bg-primary/90 disabled:opacity-50 transition-colors"
+                    >
+                      {expoHtmlLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <span>👁️</span>}
+                      {expoHtmlLoading ? "Génération de l'aperçu…" : "Générer l'aperçu visuel"}
+                    </button>
+                  )}
+                  {expoHtmlPreview && (
+                    <button
+                      onClick={() => generateExpoHtmlPreview(htmlCode)}
+                      disabled={expoHtmlLoading}
+                      className="flex items-center gap-1.5 px-3 py-1 rounded-lg border border-border/60 text-xs text-muted-foreground hover:text-foreground disabled:opacity-50 transition-colors"
+                    >
+                      {expoHtmlLoading ? <Loader2 className="w-3 h-3 animate-spin" /> : "🔄"} Régénérer l'aperçu
+                    </button>
+                  )}
+
+                  {/* QR code Expo Go */}
                   {activeSnackUrl ? (
-                    <>
-                      {/* Preview simulateur */}
-                      {(() => {
-                        const snackHash = activeSnackUrl.replace("https://snack.expo.dev/", "").replace(/[?#].*/, "");
-                        const embedSrc = `https://snack.expo.dev/embedded?preview=true&platform=${expoSnackPlatform}&theme=dark&snack=${snackHash}&iframeId=maria-preview`;
-                        return (
-                          <div className="w-full max-w-[360px] rounded-[2.5rem] overflow-hidden border-[6px] border-border/80 shadow-2xl bg-black" style={{ minHeight: 640 }}>
-                            <iframe
-                              src={embedSrc}
-                              className="w-full border-0"
-                              title="Expo Preview"
-                              allow="camera; microphone; geolocation"
-                              style={{ height: 640 }}
-                            />
+                    (() => {
+                      const snackHash = activeSnackUrl.replace("https://snack.expo.dev/", "").replace(/[?#].*/, "");
+                      const qrSrc = `https://api.qrserver.com/v1/create-qr-code/?size=160x160&data=${encodeURIComponent(`https://snack.expo.dev/${snackHash}`)}&bgcolor=ffffff&color=000000&margin=10`;
+                      return (
+                        <div className="w-full max-w-md bg-card border border-border/60 rounded-xl p-3 flex items-center gap-4">
+                          <img src={qrSrc} alt="QR Expo Go" width={80} height={80} className="rounded-lg border border-border/40 flex-shrink-0" />
+                          <div className="space-y-1 text-left">
+                            <p className="text-xs font-semibold">📱 Tester sur appareil réel</p>
+                            <p className="text-[11px] text-muted-foreground">Installez <strong>Expo Go</strong> et scannez ce QR</p>
+                            <a href={`https://snack.expo.dev/${snackHash}`} target="_blank" rel="noopener noreferrer"
+                              className="inline-flex items-center gap-1 text-[11px] text-primary hover:underline">
+                              <ExternalLink className="w-3 h-3" /> Ouvrir Expo Snack
+                            </a>
                           </div>
-                        );
-                      })()}
-                      {/* QR code pour Expo Go */}
-                      {(() => {
-                        const snackHash = activeSnackUrl.replace("https://snack.expo.dev/", "").replace(/[?#].*/, "");
-                        const snackWebUrl = `https://snack.expo.dev/${snackHash}`;
-                        const qrSrc = `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(snackWebUrl)}&bgcolor=ffffff&color=000000&margin=12`;
-                        return (
-                          <div className="w-full max-w-md bg-card border border-border/60 rounded-2xl p-4 flex flex-col items-center gap-3">
-                            <p className="text-xs font-semibold text-foreground">📱 Tester sur votre téléphone</p>
-                            <img src={qrSrc} alt="QR Expo Go" width={200} height={200} className="rounded-xl border border-border/40" />
-                            <div className="text-center space-y-0.5">
-                              <p className="text-[11px] text-muted-foreground">1. Installez <strong className="text-foreground">Expo Go</strong> (iOS / Android)</p>
-                              <p className="text-[11px] text-muted-foreground">2. Scannez ce QR code</p>
-                              <p className="text-[11px] text-muted-foreground">3. L'app se lance en direct 🚀</p>
-                            </div>
-                          </div>
-                        );
-                      })()}
-                    </>
+                        </div>
+                      );
+                    })()
                   ) : (
-                    <div className="w-full max-w-sm rounded-2xl border border-border/60 bg-card p-6 flex flex-col gap-4 text-center">
-                      <div className="text-4xl">📱</div>
-                      <div>
-                        <p className="font-semibold text-sm">Application React Native prête</p>
-                        <p className="text-xs text-muted-foreground mt-1">Générez un lien Expo Snack pour obtenir le QR code.</p>
-                      </div>
-                      <div className="space-y-2">
+                    <div className="w-full max-w-md bg-card border border-border/60 rounded-xl p-3 flex items-center gap-4">
+                      <div className="w-20 h-20 rounded-lg bg-muted/50 flex items-center justify-center flex-shrink-0 text-2xl">📱</div>
+                      <div className="space-y-2 text-left">
+                        <p className="text-xs font-semibold">Tester sur appareil réel</p>
                         <button
                           onClick={() => saveToExpoSnack(htmlCode, project?.name || "App")}
                           disabled={expoSnackLoading || !htmlCode}
-                          className="flex items-center justify-center gap-2 w-full py-2.5 rounded-lg bg-primary text-white text-sm font-medium hover:bg-primary/90 transition-colors disabled:opacity-50"
+                          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-primary text-white text-xs font-medium hover:bg-primary/90 disabled:opacity-50 transition-colors"
                         >
-                          {expoSnackLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <ExternalLink className="w-4 h-4" />}
-                          {expoSnackLoading ? "Génération…" : "Générer le QR Expo Snack"}
-                        </button>
-                        <button
-                          onClick={() => {
-                            const blob = new Blob([htmlCode], { type: "text/javascript" });
-                            const url = URL.createObjectURL(blob);
-                            const a = document.createElement("a"); a.href = url; a.download = "App.js"; a.click();
-                            URL.revokeObjectURL(url);
-                          }}
-                          className="flex items-center justify-center gap-2 w-full py-2 rounded-lg border border-border/60 text-xs text-muted-foreground hover:text-foreground transition-colors"
-                        >
-                          <Download className="w-4 h-4" /> Télécharger App.js
+                          {expoSnackLoading ? <Loader2 className="w-3 h-3 animate-spin" /> : <ExternalLink className="w-3 h-3" />}
+                          {expoSnackLoading ? "Génération…" : "Générer QR Expo Go"}
                         </button>
                       </div>
                     </div>
