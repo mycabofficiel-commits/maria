@@ -2477,13 +2477,27 @@ ${jsCode}`;
                     </button>
                   )}
                   {expoHtmlPreview && (
-                    <button
-                      onClick={() => generateExpoHtmlPreview(htmlCode)}
-                      disabled={expoHtmlLoading}
-                      className="flex items-center gap-1.5 px-3 py-1 rounded-lg border border-border/60 text-xs text-muted-foreground hover:text-foreground disabled:opacity-50 transition-colors"
-                    >
-                      {expoHtmlLoading ? <Loader2 className="w-3 h-3 animate-spin" /> : "🔄"} Régénérer l'aperçu
-                    </button>
+                    <>
+                      {/* iframe HTML preview — même mécanique que le preview web normal */}
+                      <div className="w-full max-w-[390px] rounded-[2rem] overflow-hidden border-[6px] border-border/70 shadow-2xl bg-white flex-shrink-0" style={{ height: 780 }}>
+                        <iframe
+                          key={visualEditMode ? "expo-ve-mode" : inspectMode ? "expo-inspect-mode" : "expo-preview"}
+                          ref={previewRef}
+                          srcDoc={(visualEditMode || inspectMode) ? getPreviewSrc() : previewSrc}
+                          onLoad={() => { if (visualEditMode) setTimeout(injectVeScript, 50); }}
+                          className="w-full h-full border-0"
+                          title="App Preview"
+                          sandbox={visualEditMode ? "allow-scripts allow-same-origin" : "allow-scripts"}
+                        />
+                      </div>
+                      <button
+                        onClick={() => generateExpoHtmlPreview(htmlCode)}
+                        disabled={expoHtmlLoading}
+                        className="flex items-center gap-1.5 px-3 py-1 rounded-lg border border-border/60 text-xs text-muted-foreground hover:text-foreground disabled:opacity-50 transition-colors"
+                      >
+                        {expoHtmlLoading ? <Loader2 className="w-3 h-3 animate-spin" /> : "🔄"} Régénérer l'aperçu
+                      </button>
+                    </>
                   )}
 
                   {/* QR code Expo Go */}
