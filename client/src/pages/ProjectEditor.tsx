@@ -453,21 +453,64 @@ export default function ProjectEditor() {
   const generateExpoHtmlPreview = async (code: string) => {
     if (!code || expoHtmlLoading) return;
     setExpoHtmlLoading(true);
+    setExpoHtmlPreview(""); // reset previous preview
+    let partialHtml = "";
+    let debounceTimer: ReturnType<typeof setTimeout> | null = null;
+
+    const flushPartial = (html: string) => {
+      if (debounceTimer) clearTimeout(debounceTimer);
+      debounceTimer = setTimeout(() => {
+        const cleaned = html.replace(/^```html\n?/i, "").replace(/^```\n?/, "").replace(/\n?```$/, "").trim();
+        if (cleaned) buildPreview(cleaned, "", "");
+      }, 400);
+    };
+
     try {
       const res = await fetch("/api/expo/html-preview", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ code, projectName: project?.name || "App" }),
       });
-      if (res.ok) {
-        const data = await res.json() as { html?: string };
-        if (data.html) {
-          setExpoHtmlPreview(data.html);
-          buildPreview(data.html, "", "");
+      if (!res.ok || !res.body) throw new Error("Erreur serveur");
+
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split("\n");
+        buffer = lines.pop() || "";
+        for (const line of lines) {
+          if (line.startsWith("event: chunk")) continue;
+          if (line.startsWith("event: error")) continue;
+          if (line.startsWith("event: done")) continue;
+          if (!line.startsWith("data: ")) continue;
+          const raw = line.slice(6).trim();
+          try {
+            const evt = JSON.parse(raw) as { text?: string; html?: string; message?: string };
+            if (evt.text) {
+              partialHtml += evt.text;
+              flushPartial(partialHtml);
+            } else if (evt.html) {
+              // Final cleaned HTML from server
+              if (debounceTimer) clearTimeout(debounceTimer);
+              setExpoHtmlPreview(evt.html);
+              buildPreview(evt.html, "", "");
+            } else if (evt.message) {
+              toast.error("Erreur aperçu : " + evt.message);
+            }
+          } catch { /* skip malformed */ }
         }
       }
-    } catch { /* silently ignore */ }
-    finally { setExpoHtmlLoading(false); }
+    } catch (err: any) {
+      toast.error("Impossible de générer l'aperçu : " + (err?.message ?? "erreur réseau"));
+    } finally {
+      if (debounceTimer) clearTimeout(debounceTimer);
+      setExpoHtmlLoading(false);
+    }
   };
 
   /* ── Resizable panel ── */

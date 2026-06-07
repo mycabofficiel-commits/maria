@@ -865,8 +865,8 @@ Retourne UNIQUEMENT le code JavaScript complet, sans explication, sans markdown,
 
 export function registerStreamingRoutes(app: Express) {
 
-  // ── POST /api/expo/html-preview ───────────────────────────────────────────
-  // Converts an App.js (React Native) to a mobile HTML preview for in-browser display
+  // ── POST /api/expo/html-preview ─────────────────────────────────────────────
+  // Streaming SSE: envoie les tokens HTML au fur et à mesure (premier token ~3s)
   app.post("/api/expo/html-preview", async (req: Request, res: Response) => {
     const user = await authenticate(req, res);
     if (!user) return;
@@ -878,20 +878,27 @@ export function registerStreamingRoutes(app: Express) {
       const deepseekKey = await getPlatformKey("deepseek");
       if (!deepseekKey) return res.status(503).json({ error: "Clé LLM manquante" });
 
+      // SSE headers — stream tokens as they arrive
+      res.setHeader("Content-Type", "text/event-stream");
+      res.setHeader("Cache-Control", "no-cache");
+      res.setHeader("Connection", "keep-alive");
+      res.flushHeaders();
+
       const aiRes = await fetch("https://api.deepseek.com/v1/chat/completions", {
         method: "POST",
         headers: { "Authorization": `Bearer ${deepseekKey}`, "content-type": "application/json" },
         body: JSON.stringify({
           model: "deepseek-chat",
-          max_tokens: 900,
+          stream: true,
+          max_tokens: 1200,
           temperature: 0.1,
           messages: [
             {
               role: "system",
-              content: `Convert React Native App.js to HTML. Output ONLY the raw HTML, no markdown, no explanation.
-Rules: width:390px; overflow:hidden; position:relative; font-family:system-ui; margin:0.
+              content: `Convert React Native App.js to HTML. Output ONLY raw HTML, no markdown, no explanation.
+Rules: body{margin:0;font-family:system-ui;width:390px;min-height:844px;overflow:hidden;position:relative}
 Map View→div, Text→p/span/h2, TouchableOpacity→button. Copy real bg colors and text. Inline styles only, no CDN.
-Generate ONLY the first visible screen (no scroll, no tab navigation needed).`
+Generate only the first visible screen.`
             },
             {
               role: "user",
@@ -902,13 +909,45 @@ Generate ONLY the first visible screen (no scroll, no tab navigation needed).`
         signal: AbortSignal.timeout(60000),
       });
 
-      if (!aiRes.ok) return res.status(502).json({ error: "Erreur LLM" });
-      const data = await aiRes.json() as any;
-      let html = data.choices?.[0]?.message?.content || "";
-      html = html.replace(/^```html\n?/i, "").replace(/^```\n?/, "").replace(/\n?```$/, "").trim();
-      return res.json({ html });
+      if (!aiRes.ok || !aiRes.body) {
+        res.write(`event: error\ndata: ${JSON.stringify({ message: "Erreur LLM" })}\n\n`);
+        res.end(); return;
+      }
+
+      const reader = aiRes.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
+      let fullHtml = "";
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split("\n"); buffer = lines.pop() || "";
+        for (const line of lines) {
+          if (!line.startsWith("data: ")) continue;
+          const raw = line.slice(6).trim();
+          if (raw === "[DONE]") continue;
+          try {
+            const evt = JSON.parse(raw);
+            const chunk = evt.choices?.[0]?.delta?.content;
+            if (chunk) {
+              fullHtml += chunk;
+              res.write(`event: chunk\ndata: ${JSON.stringify({ text: chunk })}\n\n`);
+            }
+          } catch { /* skip malformed */ }
+        }
+      }
+
+      // Nettoyage markdown résiduel
+      fullHtml = fullHtml.replace(/^```html\n?/i, "").replace(/^```\n?/, "").replace(/\n?```$/, "").trim();
+      res.write(`event: done\ndata: ${JSON.stringify({ html: fullHtml })}\n\n`);
+      res.end();
     } catch (err: any) {
-      return res.status(500).json({ error: err.message });
+      try {
+        res.write(`event: error\ndata: ${JSON.stringify({ message: err.message })}\n\n`);
+        res.end();
+      } catch { /* already ended */ }
     }
   });
 
