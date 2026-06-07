@@ -883,19 +883,19 @@ export function registerStreamingRoutes(app: Express) {
         headers: { "Authorization": `Bearer ${deepseekKey}`, "content-type": "application/json" },
         body: JSON.stringify({
           model: "deepseek-chat",
-          max_tokens: 1500,
+          max_tokens: 900,
           temperature: 0.1,
           messages: [
             {
               role: "system",
-              content: `Convert React Native App.js → standalone HTML mobile preview. Output ONLY raw HTML, no markdown.
-- body: margin:0; font-family:system-ui; background:#fff; width:390px; min-height:844px; overflow:hidden; position:relative;
-- View→div, Text→p/span, TouchableOpacity→button; copy real colors/text/layout from source
-- StatusBar: fixed top bar 44px dark. BottomTab: fixed bottom 60px. No CDN, inline styles only.`
+              content: `Convert React Native App.js to HTML. Output ONLY the raw HTML, no markdown, no explanation.
+Rules: width:390px; overflow:hidden; position:relative; font-family:system-ui; margin:0.
+Map View→div, Text→p/span/h2, TouchableOpacity→button. Copy real bg colors and text. Inline styles only, no CDN.
+Generate ONLY the first visible screen (no scroll, no tab navigation needed).`
             },
             {
               role: "user",
-              content: `App.js:\n\n${code.slice(0, 3000)}`
+              content: `App.js:\n\n${code.slice(0, 2500)}`
             }
           ],
         }),
