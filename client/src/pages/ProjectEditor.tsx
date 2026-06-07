@@ -2457,29 +2457,34 @@ ${jsCode}`;
 
               {/* iframe preview — pleine hauteur */}
               {isExpoProject ? (
-                /* ── EXPO PREVIEW PANEL ── */
-                <div className="flex-1 flex flex-col items-center justify-start gap-4 p-4 bg-muted/20 overflow-y-auto">
+                /* ── EXPO PREVIEW : phone mockup pleine hauteur comme le preview web ── */
+                <div className="flex-1 flex flex-col overflow-hidden">
 
-                  {/* Label aperçu web */}
-                  <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-primary/10 border border-primary/20 text-xs text-primary font-medium">
-                    <span>📱</span> Aperçu web de l'app — l'éditeur visuel fonctionne ici
-                  </div>
-
-                  {/* Bouton générer l'aperçu si pas encore disponible */}
-                  {!expoHtmlPreview && (
-                    <button
-                      onClick={() => generateExpoHtmlPreview(htmlCode)}
-                      disabled={expoHtmlLoading || !htmlCode}
-                      className="flex items-center gap-2 px-4 py-2 rounded-lg bg-primary text-white text-sm font-medium hover:bg-primary/90 disabled:opacity-50 transition-colors"
-                    >
-                      {expoHtmlLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <span>👁️</span>}
-                      {expoHtmlLoading ? "Génération de l'aperçu…" : "Générer l'aperçu visuel"}
-                    </button>
-                  )}
-                  {expoHtmlPreview && (
-                    <>
-                      {/* iframe HTML preview — même mécanique que le preview web normal */}
-                      <div className="w-full max-w-[390px] rounded-[2rem] overflow-hidden border-[6px] border-border/70 shadow-2xl bg-white flex-shrink-0" style={{ height: 780 }}>
+                  {/* Zone preview : phone centré qui remplit l'espace disponible */}
+                  <div className="flex-1 min-h-0 flex items-center justify-center bg-[#0c0c14] overflow-hidden p-3">
+                    {expoHtmlLoading && !expoHtmlPreview && (
+                      <div className="flex flex-col items-center gap-3 text-muted-foreground">
+                        <Loader2 className="w-8 h-8 animate-spin text-primary" />
+                        <span className="text-sm">Génération de l'aperçu…</span>
+                      </div>
+                    )}
+                    {!expoHtmlLoading && !expoHtmlPreview && (
+                      <button
+                        onClick={() => generateExpoHtmlPreview(htmlCode)}
+                        disabled={!htmlCode}
+                        className="flex flex-col items-center gap-3 px-8 py-6 rounded-2xl bg-primary/10 border border-primary/20 text-primary hover:bg-primary/20 transition-colors"
+                      >
+                        <span className="text-4xl">📱</span>
+                        <span className="text-sm font-medium">Générer l'aperçu</span>
+                        <span className="text-xs text-muted-foreground">Aperçu HTML interactif de l'app</span>
+                      </button>
+                    )}
+                    {expoHtmlPreview && (
+                      /* Phone mockup : hauteur 100% de la zone, aspect ratio iPhone */
+                      <div
+                        className="h-full rounded-[2.5rem] overflow-hidden shadow-2xl flex-shrink-0"
+                        style={{ aspectRatio: "390/844", maxWidth: "390px", border: "8px solid #1c1c2e", background: "#000" }}
+                      >
                         <iframe
                           key={visualEditMode ? "expo-ve-mode" : inspectMode ? "expo-inspect-mode" : "expo-preview"}
                           ref={previewRef}
@@ -2490,108 +2495,76 @@ ${jsCode}`;
                           sandbox={visualEditMode ? "allow-scripts allow-same-origin" : "allow-scripts"}
                         />
                       </div>
-                      <button
-                        onClick={() => generateExpoHtmlPreview(htmlCode)}
-                        disabled={expoHtmlLoading}
-                        className="flex items-center gap-1.5 px-3 py-1 rounded-lg border border-border/60 text-xs text-muted-foreground hover:text-foreground disabled:opacity-50 transition-colors"
-                      >
-                        {expoHtmlLoading ? <Loader2 className="w-3 h-3 animate-spin" /> : "🔄"} Régénérer l'aperçu
-                      </button>
-                    </>
-                  )}
-
-                  {/* QR code Expo Go */}
-                  {activeSnackUrl ? (
-                    (() => {
-                      const snackHash = activeSnackUrl.replace("https://snack.expo.dev/", "").replace(/[?#].*/, "");
-                      const qrSrc = `https://api.qrserver.com/v1/create-qr-code/?size=160x160&data=${encodeURIComponent(`https://snack.expo.dev/${snackHash}`)}&bgcolor=ffffff&color=000000&margin=10`;
-                      return (
-                        <div className="w-full max-w-md bg-card border border-border/60 rounded-xl p-3 flex items-center gap-4">
-                          <img src={qrSrc} alt="QR Expo Go" width={80} height={80} className="rounded-lg border border-border/40 flex-shrink-0" />
-                          <div className="space-y-1 text-left">
-                            <p className="text-xs font-semibold">📱 Tester sur appareil réel</p>
-                            <p className="text-[11px] text-muted-foreground">Installez <strong>Expo Go</strong> et scannez ce QR</p>
-                            <a href={`https://snack.expo.dev/${snackHash}`} target="_blank" rel="noopener noreferrer"
-                              className="inline-flex items-center gap-1 text-[11px] text-primary hover:underline">
-                              <ExternalLink className="w-3 h-3" /> Ouvrir Expo Snack
-                            </a>
-                          </div>
-                        </div>
-                      );
-                    })()
-                  ) : (
-                    <div className="w-full max-w-md bg-card border border-border/60 rounded-xl p-3 flex items-center gap-4">
-                      <div className="w-20 h-20 rounded-lg bg-muted/50 flex items-center justify-center flex-shrink-0 text-2xl">📱</div>
-                      <div className="space-y-2 text-left">
-                        <p className="text-xs font-semibold">Tester sur appareil réel</p>
-                        <button
-                          onClick={() => saveToExpoSnack(htmlCode, project?.name || "App")}
-                          disabled={expoSnackLoading || !htmlCode}
-                          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-primary text-white text-xs font-medium hover:bg-primary/90 disabled:opacity-50 transition-colors"
-                        >
-                          {expoSnackLoading ? <Loader2 className="w-3 h-3 animate-spin" /> : <ExternalLink className="w-3 h-3" />}
-                          {expoSnackLoading ? "Génération…" : "Générer QR Expo Go"}
-                        </button>
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Open buttons */}
-                  <div className="flex gap-2 flex-wrap justify-center">
-                    {activeSnackUrl && (
-                      <a href={activeSnackUrl} target="_blank" rel="noopener noreferrer"
-                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-border/60 text-xs text-muted-foreground hover:text-foreground hover:border-primary/40 transition-colors">
-                        <ExternalLink className="w-3.5 h-3.5" /> Expo Snack
-                      </a>
                     )}
-                    <button
-                      onClick={() => {
-                        const blob = new Blob([htmlCode], { type: "text/javascript" });
-                        const url = URL.createObjectURL(blob);
-                        const a = document.createElement("a"); a.href = url; a.download = "App.js"; a.click();
-                        URL.revokeObjectURL(url);
-                      }}
-                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-border/60 text-xs text-muted-foreground hover:text-foreground hover:border-primary/40 transition-colors"
-                    >
-                      <Download className="w-3.5 h-3.5" /> App.js
-                    </button>
-                    <button
-                      onClick={async () => {
-                        const code = htmlCode;
-                        const pkgJson = JSON.stringify({
-                          name: "maria-app", version: "1.0.0", main: "App.js",
-                          scripts: { start: "expo start", android: "expo run:android", ios: "expo run:ios" },
-                          dependencies: { expo: "~51.0.0", react: "18.2.0", "react-native": "0.74.1", "expo-linear-gradient": "~12.7.1" },
-                          devDependencies: { "@babel/core": "^7.20.0" }
-                        }, null, 2);
-                        const appConfig = `import { ExpoConfig } from 'expo/config';\nexport default ({ config }: { config: ExpoConfig }): ExpoConfig => ({\n  ...config,\n  name: '${project?.name || "App"}',\n  slug: '${(project?.name || "app").toLowerCase().replace(/\s+/g, "-")}',\n  version: '1.0.0',\n  orientation: 'portrait',\n  platforms: ['android', 'ios'],\n});\n`;
-                        const zip = [`package.json\n${pkgJson}`, `App.js\n${code}`, `app.config.js\n${appConfig}`].join("\n---FILE---\n");
-                        const blob = new Blob([zip], { type: "text/plain" });
-                        const url = URL.createObjectURL(blob);
-                        const a = document.createElement("a"); a.href = url; a.download = `${project?.name || "app"}-expo.txt`; a.click();
-                        URL.revokeObjectURL(url);
-                        toast.success("Projet exporté ! Consultez le guide d'installation.");
-                      }}
-                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-emerald-500/40 text-xs text-emerald-400 hover:bg-emerald-500/10 transition-colors"
-                    >
-                      <Download className="w-3.5 h-3.5" /> Exporter projet Expo
-                    </button>
                   </div>
 
-                  {/* Install guide */}
-                  <div className="w-full max-w-md bg-card/50 border border-border/40 rounded-xl p-4 text-xs space-y-2">
-                    <p className="font-semibold text-foreground">⚡ Tester sur votre téléphone (Expo Go)</p>
-                    <ol className="space-y-1 text-muted-foreground list-decimal list-inside">
-                      <li>Installez <strong className="text-foreground">Expo Go</strong> sur Android ou iPhone</li>
-                      <li>Cliquez "Expo Snack" ci-dessus → scannez le QR code</li>
-                      <li>L'app se lance directement dans Expo Go</li>
-                    </ol>
-                    <p className="font-semibold text-foreground pt-1">🏗️ Build natif (APK / IPA)</p>
-                    <ol className="space-y-1 text-muted-foreground list-decimal list-inside">
-                      <li>Exportez le projet, décompressez-le</li>
-                      <li><code className="bg-muted px-1 rounded">npm install</code></li>
-                      <li><code className="bg-muted px-1 rounded">npx eas build --platform android</code></li>
-                    </ol>
+                  {/* Barre d'outils compacte en bas */}
+                  <div className="flex-shrink-0 border-t border-border/30 bg-background/80 flex items-center gap-2 px-3 py-2 flex-wrap">
+                    <button
+                      onClick={() => generateExpoHtmlPreview(htmlCode)}
+                      disabled={expoHtmlLoading || !htmlCode}
+                      className="flex items-center gap-1.5 px-2 py-1 rounded border border-border/50 text-xs text-muted-foreground hover:text-foreground disabled:opacity-40 transition-colors"
+                    >
+                      {expoHtmlLoading ? <Loader2 className="w-3 h-3 animate-spin" /> : "🔄"} Régénérer
+                    </button>
+                    <div className="w-px h-4 bg-border/40" />
+                    <button
+                      onClick={() => saveToExpoSnack(htmlCode, project?.name || "App")}
+                      disabled={expoSnackLoading || !htmlCode}
+                      className="flex items-center gap-1.5 px-2 py-1 rounded border border-border/50 text-xs text-muted-foreground hover:text-foreground disabled:opacity-40 transition-colors"
+                    >
+                      {expoSnackLoading ? <Loader2 className="w-3 h-3 animate-spin" /> : <Smartphone className="w-3 h-3" />}
+                      {expoSnackLoading ? "…" : "QR Expo Go"}
+                    </button>
+                    {activeSnackUrl && (() => {
+                      const snackHash = activeSnackUrl.replace("https://snack.expo.dev/", "").replace(/[?#].*/, "");
+                      return (
+                        <>
+                          <img
+                            src={`https://api.qrserver.com/v1/create-qr-code/?size=64x64&data=${encodeURIComponent(`https://snack.expo.dev/${snackHash}`)}&bgcolor=ffffff&color=000000&margin=4`}
+                            alt="QR" width={28} height={28} className="rounded border border-border/40"
+                          />
+                          <a href={`https://snack.expo.dev/${snackHash}`} target="_blank" rel="noopener noreferrer"
+                            className="flex items-center gap-1 text-xs text-primary hover:underline">
+                            <ExternalLink className="w-3 h-3" /> Expo Snack
+                          </a>
+                        </>
+                      );
+                    })()}
+                    <div className="ml-auto flex items-center gap-1.5">
+                      <button
+                        onClick={() => {
+                          const blob = new Blob([htmlCode], { type: "text/javascript" });
+                          const url = URL.createObjectURL(blob);
+                          const a = document.createElement("a"); a.href = url; a.download = "App.js"; a.click();
+                          URL.revokeObjectURL(url);
+                        }}
+                        className="flex items-center gap-1 px-2 py-1 rounded border border-border/50 text-xs text-muted-foreground hover:text-foreground transition-colors"
+                      >
+                        <Download className="w-3 h-3" /> App.js
+                      </button>
+                      <button
+                        onClick={async () => {
+                          const code = htmlCode;
+                          const pkgJson = JSON.stringify({
+                            name: "maria-app", version: "1.0.0", main: "App.js",
+                            scripts: { start: "expo start", android: "expo run:android", ios: "expo run:ios" },
+                            dependencies: { expo: "~54.0.0", react: "18.3.1", "react-native": "0.76.7", "expo-linear-gradient": "~14.0.1" },
+                            devDependencies: { "@babel/core": "^7.20.0" }
+                          }, null, 2);
+                          const appConfig = `import { ExpoConfig } from 'expo/config';\nexport default ({ config }: { config: ExpoConfig }): ExpoConfig => ({\n  ...config,\n  name: '${project?.name || "App"}',\n  slug: '${(project?.name || "app").toLowerCase().replace(/\s+/g, "-")}',\n  version: '1.0.0',\n  orientation: 'portrait',\n  platforms: ['android', 'ios'],\n});\n`;
+                          const zip = [`package.json\n${pkgJson}`, `App.js\n${code}`, `app.config.js\n${appConfig}`].join("\n---FILE---\n");
+                          const blob = new Blob([zip], { type: "text/plain" });
+                          const url = URL.createObjectURL(blob);
+                          const a = document.createElement("a"); a.href = url; a.download = `${project?.name || "app"}-expo.txt`; a.click();
+                          URL.revokeObjectURL(url);
+                          toast.success("Projet exporté !");
+                        }}
+                        className="flex items-center gap-1 px-2 py-1 rounded border border-emerald-500/40 text-xs text-emerald-400 hover:bg-emerald-500/10 transition-colors"
+                      >
+                        <Download className="w-3 h-3" /> Exporter
+                      </button>
+                    </div>
                   </div>
                 </div>
               ) : (
