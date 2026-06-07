@@ -423,9 +423,9 @@ export default function ProjectEditor() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          manifest: { name, description: `App générée par Mar-ia`, sdkVersion: "52.0.0" },
+          manifest: { name, description: `App générée par Mar-ia`, sdkVersion: "54.0.0" },
           code: { "App.js": { type: "CODE", contents: code } },
-          dependencies: { "expo": "~52.0.0", "react": "18.3.1", "react-native": "0.76.5" },
+          dependencies: { "expo": "~54.0.0", "react": "18.3.1", "react-native": "0.76.7", "expo-linear-gradient": "~14.0.1" },
         }),
       });
       if (res.ok) {

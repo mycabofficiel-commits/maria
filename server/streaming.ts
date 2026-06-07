@@ -689,7 +689,7 @@ async function generateExpoApp(
 • Photos : Image source={{uri:'https://images.unsplash.com/photo-ID?w=400&q=80'}}
 • Contenu spécifique au domaine demandé
 
-TYPE APP: ${siteType || "application mobile"} | STYLE: ${style || "moderne"} | LANGUE: ${language || "fr"} | PALETTE: ${colorPalette || "bleu/violet"}`;
+SDK: Expo 54 / React Native 0.76.7 | TYPE APP: ${siteType || "application mobile"} | STYLE: ${style || "moderne"} | LANGUE: ${language || "fr"} | PALETTE: ${colorPalette || "bleu/violet"}`;
 
     const userMessage = `Crée une application mobile React Native COMPLÈTE et PREMIUM pour : ${prompt}
 
@@ -776,15 +776,15 @@ Retourne UNIQUEMENT le code JavaScript complet, sans explication, sans markdown,
           manifest: {
             name: projectName,
             description: `Application générée par Mar-ia — ${siteType || "App mobile"}`,
-            sdkVersion: "52.0.0",
+            sdkVersion: "54.0.0",
           },
           code: {
             "App.js": { type: "CODE", contents: fullCode },
           },
           dependencies: {
-            "expo": "~52.0.0",
+            "expo": "~54.0.0",
             "react": "18.3.1",
-            "react-native": "0.76.5",
+            "react-native": "0.76.7",
             "expo-linear-gradient": "~14.0.1",
           },
         }),
