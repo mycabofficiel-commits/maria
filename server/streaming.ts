@@ -1675,9 +1675,11 @@ NAVIGATION : onclick="showPage('id'); return false;" — jamais href="#quelquech
 TÂCHE : ${summary}
 
 FORMAT DE RÉPONSE — UN SEUL JSON BRUT, RIEN AVANT, RIEN APRÈS :
-• Modification du site → {"action":"modify","reply":"[1-2 phrases courtes décrivant ce qui a changé]","code":"<!DOCTYPE html>..."}
+• Changement CSS pur (scrollbars, couleurs, spacing, padding, animations CSS, border, opacity, font-size, transitions) → {"action":"style-patch","reply":"[1-2 phrases]","css":"/* CSS complet à injecter dans le <style> existant */"}
+  → Utilise style-patch pour TOUT changement qui ne touche QUE au CSS : c'est plus rapide, plus fiable, préserve tout le code.
+• Modification du site (HTML, JS, nouveau contenu, nouvelle section) → {"action":"modify","reply":"[1-2 phrases courtes décrivant ce qui a changé]","code":"<!DOCTYPE html>..."}
 • Question conversationnelle pure (aucun changement visuel) → {"action":"chat","reply":"[réponse]"}
-⚠️ Tout changement visuel, ajout de contenu, correction de bug → action="modify" OBLIGATOIRE.
+⚠️ Tout changement visuel, ajout de contenu, correction de bug → action="modify" ou "style-patch" OBLIGATOIRE.
 
 ══ RÈGLE 1 — LIRE AVANT D'ÉCRIRE ══
 Analyse le code actuel fourni ci-dessous. Identifie EXACTEMENT :
@@ -1848,6 +1850,24 @@ ${agentPlan ? `\n══ PLAN D'ACTION ══\n${agentPlan}` : ""}${qwenDraft ? `
         }
         pipelineLog('execute:parsed', { plan: userPlan, action: agentResponse.action, hasCode: !!agentResponse.code, codeLen: agentResponse.code?.length || 0 });
 
+        // ── D0 : Style-patch — injection CSS pure (rapide, sans régénération) ──
+        // When the executor detects a CSS-only change it outputs action="style-patch"
+        // with a "css" field. We inject that CSS into the existing <style> block
+        // instead of regenerating the whole HTML. This is reliable for scrollbar,
+        // colour, spacing, animation changes.
+        const agentExt = agentResponse as { action: string; code?: string; reply: string; css?: string };
+        if (agentExt.action === "style-patch" && agentExt.css) {
+          const existingCode = currentVersion[0].generatedCode || "";
+          const cssBlock = `\n/* === patch — ${summary.slice(0, 60)} === */\n${agentExt.css}\n`;
+          // Inject before the LAST </style> tag so it overrides earlier rules
+          const patched = existingCode.includes('</style>')
+            ? existingCode.replace(/(<\/style>)(?![\s\S]*<\/style>)/i, `${cssBlock}</style>`)
+            : existingCode + `<style>${cssBlock}</style>`;
+          agentResponse.code = patched;
+          agentResponse.action = "modify";
+          pipelineLog('execute:style-patch', { cssLen: agentExt.css.length });
+        }
+
         // ── D : Validation + boucle auto-correction (max 2 passes) ────
         if (agentResponse.action === "modify" && agentResponse.code) {
           const controlLlm = resolveKey(config.controller, allKeys);
@@ -1857,26 +1877,23 @@ ${agentPlan ? `\n══ PLAN D'ACTION ══\n${agentPlan}` : ""}${qwenDraft ? `
             const staticIssues = validateGeneratedCode(agentResponse.code!);
             pipelineLog(`validate:static:pass${pass}`, { plan: userPlan, issues: staticIssues.length, detail: staticIssues });
 
-            // ── D2 : LLM contrôleur (analyse sémantique) ──────────────
+            // ── D2 : LLM contrôleur — SEULEMENT si problèmes statiques détectés ──
+            // Running the LLM controller on every modification produces false positives
+            // and triggers unnecessary correction passes that degrade the output.
             let llmIssues = "";
-            if (controlLlm) {
+            if (controlLlm && staticIssues.length > 0) {
               sseWrite(res, "progress", { agent: AGENT_NAMES[controlLlm.provider], step: `Vérification qualité (passe ${pass})…`, icon: "🔍" });
               const ctrl = await tryCallSync(
                 controlLlm.provider, controlLlm.model, controlLlm.key,
                 `Tu es un expert QA développement web. Inspecte ce code HTML/CSS/JS et liste les problèmes CONCRETS.
-Réponds UNIQUEMENT "OK" si tout est correct. Sinon, liste chaque problème en 1 ligne (100 mots max total).
+Réponds UNIQUEMENT "OK" si tout est correct. Sinon, liste chaque problème en 1 ligne (80 mots max total).
 
-VÉRIFIE :
+VÉRIFIE UNIQUEMENT :
 — Navigation : href="#quelquechose" sur liens nav/logo/CTA → doit être onclick="showPage('id'); return false;"
 — showPage() présente dans <script> si le site a plusieurs <section>
-— Balises HTML fermées : </style> </script> </body> </html>
-— JS valide : accolades équilibrées, fonctions complètes, pas de syntaxe cassée
-— Code complet : pas tronqué en milieu de section ou de balise
-— Images : src="" vide ou src="image.png" sans URL complète → doit être URL Unsplash complète
-— Formulaires : pas d'action="submit.php" → doit avoir onsubmit avec e.preventDefault()
-— Pas de console.log() ou alert() de debug laissés dans le code
-— Variables CSS utilisées de façon cohérente (pas de valeurs hex hardcodées contredisant :root)`,
-                (agentResponse.code || "").slice(0, 10000), 400
+— Balises fermées : </style> </script> </body> </html>
+— Code complet (pas tronqué en milieu de section ou de balise)`,
+                (agentResponse.code || "").slice(0, 10000), 300
               );
               if (ctrl && ctrl.text.trim() !== "OK") llmIssues = ctrl.text.trim();
             }
@@ -1892,7 +1909,10 @@ VÉRIFIE :
               break; // Code is clean, no retry needed
             }
 
-            // ── D3 : Auto-correction avec feedback précis ─────────────
+            // ── D3 : Auto-correction — passe le code problématique comme input ──
+            // FIX: previously passed `summary` (task description) as the user message,
+            // so the model corrected in the dark without seeing the broken code.
+            // Now we pass the actual broken code + the issue list.
             pipelineLog(`validate:pass${pass}:issues`, { count: allIssues.length, issues: allIssues });
             if (pass === 2) {
               pipelineLog('validate:max_retries', { message: 'livraison avec code actuel' });
@@ -1900,14 +1920,26 @@ VÉRIFIE :
             }
 
             sseWrite(res, "progress", { agent: AGENT_NAMES[execLlm.provider], step: `Correction auto (passe ${pass})…`, icon: "🔄" });
-            const correctionPrompt = `${systemPrompt}
 
-══ PROBLÈMES DÉTECTÉS DANS TON CODE — CORRIGE-LES TOUS ══
-${allIssues.map((issue, i) => `${i + 1}. ${issue}`).join('\n')}
+            const fixSystemPrompt = `Tu es un expert développeur web. Corrige UNIQUEMENT les problèmes listés dans ce code HTML. Ne modifie rien d'autre.
+FORMAT STRICT — un seul JSON brut :
+{"action":"modify","reply":"Corrections appliquées.","code":"<!DOCTYPE html>...code complet corrigé..."}
 
-Retourne le JSON complet corrigé {"action":"modify","reply":"...","code":"..."}`;
+RÈGLES DE CORRECTION :
+— Navigation : remplace href="#xxx" par onclick="showPage('id'); return false;" href="#"
+— Pages fantômes : crée les <section id="xxx"> manquantes avec du vrai contenu
+— Balises non fermées : ferme </style> </script> </body> </html>
+— Retourne le HTML ENTIER, pas tronqué. Si le code original fait N chars, ta réponse doit faire au moins autant.
 
-            const retry = await tryCallSync(execLlm.provider, execLlm.model, execLlm.key, correctionPrompt, summary, 16000);
+PROBLÈMES À CORRIGER :
+${allIssues.map((issue, i) => `${i + 1}. ${issue}`).join('\n')}`;
+
+            const retry = await tryCallSync(
+              execLlm.provider, execLlm.model, execLlm.key,
+              fixSystemPrompt,
+              `CODE HTML À CORRIGER :\n${agentResponse.code?.slice(0, 14000) || ""}`,
+              16000
+            );
             if (!retry) break;
 
             // Parse corrected response
