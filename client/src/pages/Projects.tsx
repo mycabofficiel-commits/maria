@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useRef } from "react";
 import AppLayout from "@/components/AppLayout";
 import { trpc } from "@/lib/trpc";
 import { Button } from "@/components/ui/button";
@@ -16,7 +16,7 @@ import { useLocation } from "wouter";
 import {
   Plus, FolderOpen, Globe, Clock, CheckCircle2, AlertCircle,
   Loader2, Sparkles, Users, Eye, LayoutTemplate, ArrowLeft, ArrowRight,
-  Link, X, Pencil
+  Link, X, Pencil, Mic, MicOff
 } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 import { fr } from "date-fns/locale";
@@ -80,6 +80,8 @@ export default function Projects() {
   const [activeCategory, setActiveCategory] = useState<TemplateCategory>("Tous");
   const [selectedTpl, setSelectedTpl] = useState<Template | null>(null);
   const [tplProjectName, setTplProjectName] = useState("");
+  const [isDictating, setIsDictating] = useState(false);
+  const dictRecognitionRef = useRef<any>(null);
   const [form, setForm] = useState({
     name: "",
     description: "",
@@ -227,14 +229,60 @@ export default function Projects() {
                     />
                   </div>
                   <div>
-                    <Label className="text-sm text-foreground mb-1.5 block">Décrivez votre site *</Label>
+                    <div className="flex items-center justify-between mb-1.5">
+                      <Label className="text-sm text-foreground">Décrivez votre site *</Label>
+                      <button
+                        type="button"
+                        title={isDictating ? "Arrêter la dictée" : "Dicter la description (voix)"}
+                        onClick={() => {
+                          const SR = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+                          if (!SR) { toast.error("Dictée non supportée dans ce navigateur (Chrome recommandé)"); return; }
+                          if (isDictating) {
+                            dictRecognitionRef.current?.stop();
+                            setIsDictating(false);
+                            return;
+                          }
+                          const rec = new SR();
+                          rec.lang = "fr-FR";
+                          rec.continuous = true;
+                          rec.interimResults = true;
+                          let base = form.description;
+                          rec.onresult = (e: any) => {
+                            const transcript = Array.from(e.results as any[]).map((r: any) => r[0].transcript).join("");
+                            setForm(prev => ({ ...prev, description: base + (base && !base.endsWith(" ") ? " " : "") + transcript }));
+                          };
+                          rec.onend = () => { setIsDictating(false); };
+                          rec.onerror = () => { setIsDictating(false); toast.error("Erreur de dictée"); };
+                          dictRecognitionRef.current = rec;
+                          base = form.description;
+                          rec.start();
+                          setIsDictating(true);
+                        }}
+                        className={`flex items-center gap-1 px-2 py-1 rounded text-xs transition-colors ${
+                          isDictating
+                            ? "bg-red-500/20 text-red-400 border border-red-500/40 animate-pulse"
+                            : "text-muted-foreground hover:text-primary border border-border/40 hover:border-primary/40"
+                        }`}
+                      >
+                        {isDictating ? <MicOff className="w-3 h-3" /> : <Mic className="w-3 h-3" />}
+                        {isDictating ? "Arrêter" : "Dicter"}
+                      </button>
+                    </div>
                     <textarea
                       placeholder="Ex: Une landing page pour une startup de livraison de repas sains, avec un hero accrocheur, section fonctionnalités et un CTA fort…"
                       value={form.description}
                       onChange={(e) => setForm({ ...form, description: e.target.value })}
                       rows={4}
-                      className="w-full rounded-md border border-border/60 bg-input px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground resize-none focus:outline-none focus:ring-1 focus:ring-primary"
+                      className={`w-full rounded-md border bg-input px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground resize-none focus:outline-none focus:ring-1 focus:ring-primary transition-colors ${
+                        isDictating ? "border-red-500/40 ring-1 ring-red-500/20" : "border-border/60"
+                      }`}
                     />
+                    {isDictating && (
+                      <p className="mt-1 text-xs text-red-400 flex items-center gap-1">
+                        <span className="w-1.5 h-1.5 rounded-full bg-red-400 animate-ping inline-block" />
+                        Dictée en cours… parlez maintenant
+                      </p>
+                    )}
                   </div>
                   {/* ── Inspiration URLs ── */}
                   <div>

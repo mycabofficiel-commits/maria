@@ -2182,17 +2182,7 @@ ${jsCode}`;
                   )}
                 </div>
                 <div className="flex items-center gap-1">
-                  {isExpoProject ? (
-                    <>
-                      {(["android", "ios"] as const).map((p) => (
-                        <Button key={p} variant="ghost" size="sm"
-                          className={`h-7 px-2 text-xs ${expoSnackPlatform === p ? "text-primary bg-primary/10" : "text-muted-foreground"}`}
-                          onClick={() => setExpoSnackPlatform(p)}>
-                          {p === "android" ? "🤖 Android" : "🍎 iOS"}
-                        </Button>
-                      ))}
-                    </>
-                  ) : (
+                  {isExpoProject ? null : (
                     (["desktop", "tablet", "mobile"] as ViewMode[]).map((mode) => {
                       const icons = { desktop: Monitor, tablet: Tablet, mobile: Smartphone };
                       const Icon = icons[mode];
@@ -2567,16 +2557,37 @@ ${jsCode}`;
                     </button>
                     {activeSnackUrl && (() => {
                       const snackHash = activeSnackUrl.replace("https://snack.expo.dev/", "").replace(/[?#].*/, "");
+                      const snackUrl = `https://snack.expo.dev/${snackHash}`;
+                      const expUrl = `exp://snack.expo.dev/${snackHash}`;
                       return (
                         <>
                           <img
-                            src={`https://api.qrserver.com/v1/create-qr-code/?size=64x64&data=${encodeURIComponent(`https://snack.expo.dev/${snackHash}`)}&bgcolor=ffffff&color=000000&margin=4`}
+                            src={`https://api.qrserver.com/v1/create-qr-code/?size=64x64&data=${encodeURIComponent(snackUrl)}&bgcolor=ffffff&color=000000&margin=4`}
                             alt="QR" width={28} height={28} className="rounded border border-border/40"
                           />
-                          <a href={`https://snack.expo.dev/${snackHash}`} target="_blank" rel="noopener noreferrer"
+                          <a href={snackUrl} target="_blank" rel="noopener noreferrer"
                             className="flex items-center gap-1 text-xs text-primary hover:underline">
                             <ExternalLink className="w-3 h-3" /> Expo Snack
                           </a>
+                          <div className="w-px h-4 bg-border/40" />
+                          {/* Bouton Installer — copie le lien exp:// direct pour mobile */}
+                          <button
+                            onClick={() => {
+                              navigator.clipboard.writeText(expUrl).then(() => {
+                                toast.success("Lien copié ! Collez-le dans Expo Go sur votre mobile.", { duration: 4000 });
+                              }).catch(() => {
+                                // Fallback: ouvrir une fenêtre avec le lien
+                                const w = window.open("", "_blank");
+                                if (w) {
+                                  w.document.write(`<pre style="font-size:18px;padding:20px;word-break:break-all">${expUrl}</pre><p style="padding:0 20px">Copiez ce lien et ouvrez-le dans <b>Expo Go</b> sur Android ou iOS.</p>`);
+                                }
+                              });
+                            }}
+                            className="flex items-center gap-1 px-2 py-1 rounded border border-primary/40 text-xs text-primary hover:bg-primary/10 transition-colors"
+                            title="Copie le lien Expo Go pour tester sur votre mobile (Android ou iOS)"
+                          >
+                            📲 Installer
+                          </button>
                         </>
                       );
                     })()}
