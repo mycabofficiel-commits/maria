@@ -331,7 +331,7 @@ export default function NewProjectConfig() {
             {!frameworkLocked && (
               <Section icon={<Layers className="w-4 h-4" />} title="Framework">
                 <div className="flex gap-2">
-                  {[{v:"html",l:"HTML/CSS/JS"},{v:"react",l:"React"},{v:"nextjs",l:"Next.js"}].map(f => (
+                  {([{v:"html",l:"HTML/CSS/JS"},{v:"react",l:"React"},{v:"nextjs",l:"Next.js"}] as {v:"html"|"react"|"nextjs"; l:string}[]).map(f => (
                     <button key={f.v} onClick={() => setFramework(f.v)}
                       className={`flex-1 py-2 rounded-xl border text-sm font-medium transition-all ${framework===f.v?"border-primary bg-primary/10 text-primary":"border-border/60 text-muted-foreground hover:border-border hover:text-foreground"}`}>
                       {f.l}

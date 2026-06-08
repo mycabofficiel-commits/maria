@@ -14,7 +14,6 @@ import Dashboard from "./pages/Dashboard";
 import Templates from "./pages/Templates";
 import Onboarding from "./pages/Onboarding";
 import Projects from "./pages/Projects";
-import NewProjectConfig from "./pages/NewProjectConfig";
 import ProjectEditor from "./pages/ProjectEditor";
 import ApiKeys from "./pages/ApiKeys";
 import Profile from "./pages/Profile";
@@ -43,7 +42,6 @@ function Router() {
       <Route path="/onboarding" component={Onboarding} />
       <Route path="/dashboard" component={Dashboard} />
       <Route path="/projects" component={Projects} />
-      <Route path="/projects/new" component={NewProjectConfig} />
       <Route path="/projects/:id" component={ProjectEditor} />
       <Route path="/projects/:id/share" component={ShareProject} />
       <Route path="/api-keys" component={ApiKeys} />

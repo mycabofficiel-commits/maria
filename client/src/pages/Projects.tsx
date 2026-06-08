@@ -73,6 +73,34 @@ const STATUS_CONFIG: Record<string, { label: string; color: string; icon: any }>
   error: { label: "Erreur", color: "text-destructive", icon: AlertCircle },
 };
 
+// ── Template config constants ────────────────────────────────────────────────
+const TPL_COLOR_PRESETS = [
+  { label:"Violet/Indigo", p:"#7c3aed", s:"#4f46e5", a:"#a78bfa" },
+  { label:"Bleu/Cyan",     p:"#2563eb", s:"#06b6d4", a:"#60a5fa" },
+  { label:"Vert/Émeraude", p:"#059669", s:"#10b981", a:"#34d399" },
+  { label:"Rose/Rouge",    p:"#db2777", s:"#ef4444", a:"#f472b6" },
+  { label:"Orange/Ambre",  p:"#ea580c", s:"#d97706", a:"#fb923c" },
+  { label:"Gris/Noir",     p:"#374151", s:"#111827", a:"#6b7280" },
+];
+const TPL_AUTH_OPTS = [
+  { id:"none",   label:"Sans auth",  icon:"🚫" },
+  { id:"email",  label:"Email/mdp",  icon:"✉️"  },
+  { id:"google", label:"Google",     icon:"🔵" },
+  { id:"github", label:"GitHub",     icon:"⚫" },
+  { id:"magic",  label:"Magic link", icon:"✨" },
+];
+const TPL_LANG_OPTS = [
+  { code:"fr", flag:"🇫🇷", label:"Français" },
+  { code:"en", flag:"🇬🇧", label:"English" },
+  { code:"es", flag:"🇪🇸", label:"Español" },
+  { code:"de", flag:"🇩🇪", label:"Deutsch" },
+  { code:"it", flag:"🇮🇹", label:"Italiano" },
+  { code:"pt", flag:"🇧🇷", label:"Português" },
+  { code:"ar", flag:"🇸🇦", label:"عربي" },
+  { code:"zh", flag:"🇨🇳", label:"中文" },
+  { code:"ja", flag:"🇯🇵", label:"日本語" },
+];
+
 type DialogTab = "blank" | "template" | "tpl-confirm";
 
 export default function Projects() {
@@ -82,7 +110,13 @@ export default function Projects() {
   const [activeCategory, setActiveCategory] = useState<TemplateCategory>("Tous");
   const [selectedTpl, setSelectedTpl] = useState<Template | null>(null);
   const [tplProjectName, setTplProjectName] = useState("");
-  const [additionalPrompt, setAdditionalPrompt] = useState("");
+  const [tplPrompt, setTplPrompt] = useState("");
+  const [tplColorPreset, setTplColorPreset] = useState(0);
+  const [tplAuthMethods, setTplAuthMethods] = useState<string[]>(["none"]);
+  const [tplLangs, setTplLangs] = useState<string[]>(["fr"]);
+  const [tplDarkMode, setTplDarkMode] = useState(false);
+  const [tplDictating, setTplDictating] = useState(false);
+  const tplDictRef = useRef<any>(null);
   const [isDictating, setIsDictating] = useState(false);
   const dictRecognitionRef = useRef<any>(null);
   const [form, setForm] = useState({
@@ -145,20 +179,75 @@ export default function Projects() {
   };
 
   const handleSelectTemplate = (tpl: Template) => {
-    setOpen(false);
-    navigate(`/projects/new?template=${tpl.id}`);
+    setSelectedTpl(tpl);
+    setTplProjectName(tpl.name);
+    setTplPrompt(tpl.prompt);
+    setTplColorPreset(0);
+    setTplAuthMethods(["none"]);
+    setTplLangs([tpl.language || "fr"]);
+    setTplDarkMode(["violet","indigo","orange","monochrome"].includes(tpl.colorPalette));
+    setTab("tpl-confirm");
   };
+
+  function toggleTplAuth(id: string) {
+    if (id === "none") { setTplAuthMethods(["none"]); return; }
+    setTplAuthMethods(prev => {
+      const without = prev.filter(a => a !== "none");
+      return without.includes(id) ? (without.filter(a => a !== id).length ? without.filter(a => a !== id) : ["none"]) : [...without, id];
+    });
+  }
+
+  function toggleTplLang(code: string) {
+    setTplLangs(prev => prev.includes(code) ? (prev.length > 1 ? prev.filter(c => c !== code) : prev) : [...prev, code]);
+  }
+
+  function startTplDictation() {
+    const SR = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    if (!SR) { toast.error("Dictée non supportée sur ce navigateur."); return; }
+    const rec = new SR();
+    rec.lang = "fr-FR"; rec.continuous = true; rec.interimResults = true;
+    rec.onresult = (e: any) => {
+      const transcript = Array.from(e.results).map((r: any) => r[0].transcript).join("");
+      setTplPrompt(prev => {
+        const base = prev.replace(/\s*\[dictée en cours…\]\s*$/, "");
+        return base + (base && !base.endsWith(" ") ? " " : "") + transcript + (e.results[e.results.length-1].isFinal ? "" : " [dictée en cours…]");
+      });
+    };
+    rec.onerror = () => setTplDictating(false);
+    rec.onend = () => setTplDictating(false);
+    tplDictRef.current = rec;
+    rec.start();
+    setTplDictating(true);
+  }
+
+  function stopTplDictation() {
+    tplDictRef.current?.stop();
+    setTplPrompt(prev => prev.replace(/\s*\[dictée en cours…\]\s*$/, "").trim());
+    setTplDictating(false);
+  }
 
   const handleCreateFromTemplate = () => {
     if (!selectedTpl) return;
-    const extra = additionalPrompt.trim();
+    const preset = TPL_COLOR_PRESETS[tplColorPreset];
+    let finalPrompt = tplPrompt.replace(/\s*\[dictée en cours…\]\s*$/, "").trim();
+    const activeAuth = tplAuthMethods.filter(a => a !== "none");
+    if (activeAuth.length > 0) {
+      const labels = activeAuth.map(id => TPL_AUTH_OPTS.find(a => a.id === id)?.label ?? id);
+      finalPrompt += `\n\nAuthentification : Intégrer un système d'authentification avec ${labels.join(", ")}.`;
+    }
+    if (tplLangs.length > 1) {
+      const labels = tplLangs.map(c => TPL_LANG_OPTS.find(l => l.code === c)?.label ?? c);
+      finalPrompt += `\n\nMulti-langues : L'interface doit être disponible en ${labels.join(", ")} avec sélecteur de langue.`;
+    }
+    finalPrompt += `\n\nCouleurs : ${preset.p} (primaire), ${preset.s} (secondaire), ${preset.a} (accent).`;
+    if (tplDarkMode) finalPrompt += `\n\nThème : Design sombre (dark mode), fond très foncé.`;
     createProject.mutate({
       name: tplProjectName.trim() || selectedTpl.name,
-      description: selectedTpl.prompt + (extra ? `\n\n---\nInstructions personnalisées :\n${extra}` : ""),
+      description: finalPrompt,
       siteType: selectedTpl.siteType,
       style: selectedTpl.style,
-      colorPalette: selectedTpl.colorPalette,
-      language: selectedTpl.language,
+      colorPalette: preset.p,
+      language: tplLangs[0] ?? "fr",
       framework: selectedTpl.framework,
     });
   };
@@ -182,7 +271,7 @@ export default function Projects() {
                 Nouveau projet
               </Button>
             </DialogTrigger>
-            <DialogContent className={`bg-card border-border/60 transition-all ${tab === "template" ? "max-w-4xl" : "max-w-lg"}`}>
+            <DialogContent className={`bg-card border-border/60 transition-all ${tab === "template" ? "max-w-4xl" : tab === "tpl-confirm" ? "max-w-2xl" : "max-w-lg"}`}>
               <DialogHeader>
                 <DialogTitle className="font-display text-foreground flex items-center gap-2">
                   {tab === "tpl-confirm" && (
@@ -518,64 +607,161 @@ export default function Projects() {
                 </div>
               )}
 
-              {/* ── Tab: Confirm template ── */}
+              {/* ── Tab: Configure template ── */}
               {tab === "tpl-confirm" && selectedTpl && (
-                <div className="space-y-4 pt-1">
-                  {/* Mini preview band */}
-                  <div className="rounded-xl overflow-hidden border border-border/40" style={{ height: 80 }}>
-                    <div style={{ height: 80, pointerEvents: "none" }}>
-                      <div className="w-full h-full">
-                        <TemplatePreviewThumb template={selectedTpl} />
+                <div className="max-h-[80vh] overflow-y-auto space-y-5 pt-1 pr-1">
+
+                  {/* Preview band */}
+                  <div className="rounded-xl overflow-hidden border border-border/40 flex-shrink-0" style={{ height: 100 }}>
+                    <TemplatePreviewThumb template={selectedTpl} height={100} showExpand={false} />
+                  </div>
+
+                  {/* Two-col layout */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
+
+                    {/* LEFT: Name + Prompt */}
+                    <div className="space-y-4 sm:col-span-2">
+                      {/* Name */}
+                      <div>
+                        <Label className="text-sm text-foreground mb-1.5 block">Nom du projet</Label>
+                        <Input
+                          placeholder={selectedTpl.name}
+                          value={tplProjectName}
+                          onChange={(e) => setTplProjectName(e.target.value)}
+                          className="bg-input border-border/60"
+                          autoFocus
+                        />
+                      </div>
+
+                      {/* Prompt with dictation */}
+                      <div>
+                        <div className="flex items-center justify-between mb-1.5">
+                          <Label className="text-sm text-foreground">Instructions pour l'IA</Label>
+                          <button
+                            type="button"
+                            onClick={tplDictating ? stopTplDictation : startTplDictation}
+                            className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium border transition-all ${
+                              tplDictating
+                                ? "bg-red-500/10 border-red-500/40 text-red-400 animate-pulse"
+                                : "bg-muted/40 border-border/60 text-muted-foreground hover:text-foreground hover:border-border"
+                            }`}
+                          >
+                            {tplDictating ? <MicOff className="w-3 h-3" /> : <Mic className="w-3 h-3" />}
+                            {tplDictating ? "Arrêter" : "Dicter"}
+                          </button>
+                        </div>
+                        <textarea
+                          value={tplPrompt}
+                          onChange={(e) => setTplPrompt(e.target.value)}
+                          rows={5}
+                          placeholder="Décris ton projet : nom, fonctionnalités, sections, contenu, architecture…"
+                          className={`w-full rounded-xl bg-input border px-3 py-2.5 text-sm text-foreground placeholder:text-muted-foreground/55 focus:outline-none focus:ring-2 focus:ring-primary/40 resize-y transition-colors ${
+                            tplDictating ? "border-red-500/40" : "border-border/60"
+                          }`}
+                        />
+                        {tplDictating && <p className="text-[11px] text-red-400 mt-1 flex items-center gap-1"><span className="w-1.5 h-1.5 bg-red-400 rounded-full animate-pulse" />Dictée en cours…</p>}
                       </div>
                     </div>
-                  </div>
 
-                  <p className="text-sm text-muted-foreground">
-                    Mar-ia va générer ce{selectedTpl.category === "Mobile" ? "tte app mobile" : " site"} à partir du template <strong className="text-foreground">{selectedTpl.name}</strong>.
-                  </p>
+                    {/* Couleurs */}
+                    <div>
+                      <Label className="text-sm text-foreground mb-2 block">Palette de couleurs</Label>
+                      <div className="grid grid-cols-3 gap-1.5">
+                        {TPL_COLOR_PRESETS.map((preset, i) => (
+                          <button
+                            key={i}
+                            onClick={() => setTplColorPreset(i)}
+                            className={`flex items-center gap-1.5 p-2 rounded-lg border text-left transition-all ${
+                              tplColorPreset === i ? "border-primary bg-primary/10" : "border-border/50 hover:border-border"
+                            }`}
+                          >
+                            <div className="flex gap-0.5 flex-shrink-0">
+                              {[preset.p, preset.s, preset.a].map((c,j) => (
+                                <div key={j} style={{ background:c }} className="w-3 h-3 rounded-full" />
+                              ))}
+                            </div>
+                            <span className="text-[10px] text-muted-foreground truncate">{preset.label}</span>
+                          </button>
+                        ))}
+                      </div>
+                      {/* Dark mode */}
+                      <button
+                        onClick={() => setTplDarkMode(!tplDarkMode)}
+                        className={`mt-2 w-full flex items-center gap-2 p-2.5 rounded-lg border text-sm transition-all ${
+                          tplDarkMode ? "border-primary/60 bg-primary/8 text-foreground" : "border-border/50 text-muted-foreground hover:border-border"
+                        }`}
+                      >
+                        <div className={`relative w-8 h-4 rounded-full transition-colors flex-shrink-0 ${tplDarkMode ? "bg-primary" : "bg-muted-foreground/30"}`}>
+                          <div className={`absolute top-0.5 w-3 h-3 bg-white rounded-full shadow transition-transform ${tplDarkMode ? "translate-x-4" : "translate-x-0.5"}`} />
+                        </div>
+                        <span>Mode sombre</span>
+                      </button>
+                    </div>
 
-                  {/* Project name */}
-                  <div>
-                    <Label className="text-sm text-foreground mb-1.5 block">Nom du projet</Label>
-                    <Input
-                      placeholder={selectedTpl.name}
-                      value={tplProjectName}
-                      onChange={(e) => setTplProjectName(e.target.value)}
-                      onKeyDown={(e) => e.key === "Enter" && handleCreateFromTemplate()}
-                      className="bg-input border-border/60"
-                      autoFocus
-                    />
-                  </div>
+                    {/* Auth */}
+                    <div>
+                      <Label className="text-sm text-foreground mb-2 block">Authentification</Label>
+                      <div className="flex flex-col gap-1.5">
+                        {TPL_AUTH_OPTS.map(opt => {
+                          const active = tplAuthMethods.includes(opt.id);
+                          return (
+                            <button
+                              key={opt.id}
+                              onClick={() => toggleTplAuth(opt.id)}
+                              className={`flex items-center gap-2 px-3 py-1.5 rounded-lg border text-sm transition-all text-left ${
+                                active ? "border-primary/60 bg-primary/10 text-foreground" : "border-border/50 text-muted-foreground hover:border-border hover:text-foreground"
+                              }`}
+                            >
+                              <span className="text-base">{opt.icon}</span>
+                              <span className={active ? "font-medium" : ""}>{opt.label}</span>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
 
-                  {/* Additional prompt */}
-                  <div>
-                    <Label className="text-sm text-foreground mb-1.5 block">
-                      Instructions personnalisées <span className="text-muted-foreground font-normal">(optionnel)</span>
-                    </Label>
-                    <textarea
-                      value={additionalPrompt}
-                      onChange={(e) => setAdditionalPrompt(e.target.value)}
-                      placeholder={
-                        selectedTpl.category === "Mobile"
-                          ? "Ex : Appelle l'app « RideFast », utilise le vert comme couleur principale, ajoute un écran de connexion avec Google…"
-                          : "Ex : Le site s'appelle « TechFlow », palette bleue/cyan, ajoute une section vidéo dans le hero, le CTA doit aller vers /contact…"
-                      }
-                      rows={3}
-                      className="w-full rounded-lg bg-input border border-border/60 px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground/60 focus:outline-none focus:ring-2 focus:ring-primary/40 resize-none"
-                    />
-                    <p className="text-[11px] text-muted-foreground mt-1 flex items-center gap-1">
-                      <Sparkles className="w-3 h-3" />
-                      Précise le nom, les couleurs, les sections spécifiques, l'architecture…
-                    </p>
-                  </div>
+                    {/* Languages */}
+                    <div className="sm:col-span-2">
+                      <Label className="text-sm text-foreground mb-2 block">Langues de l'interface</Label>
+                      <div className="flex flex-wrap gap-1.5">
+                        {TPL_LANG_OPTS.map(l => {
+                          const active = tplLangs.includes(l.code);
+                          return (
+                            <button
+                              key={l.code}
+                              onClick={() => toggleTplLang(l.code)}
+                              className={`flex items-center gap-1 px-2.5 py-1 rounded-full border text-xs transition-all ${
+                                active ? "border-primary/60 bg-primary/10 text-primary font-medium" : "border-border/50 text-muted-foreground hover:border-border hover:text-foreground"
+                              }`}
+                            >
+                              <span>{l.flag}</span> <span>{l.label}</span>
+                            </button>
+                          );
+                        })}
+                      </div>
+                      {tplLangs.length > 1 && (
+                        <p className="text-[11px] text-muted-foreground mt-1.5 flex items-center gap-1">
+                          <Globe className="w-3 h-3" /> Sélecteur de langue intégré en {tplLangs.length} langues.
+                        </p>
+                      )}
+                    </div>
 
-                  <div className="flex gap-2">
-                    <Button variant="outline" className="flex-1 border-border/60" onClick={() => setTab("template")}>
+                  </div>{/* end grid */}
+
+                  {/* Actions */}
+                  <div className="flex gap-2 pt-1 border-t border-border/30">
+                    <Button variant="outline" className="border-border/60" onClick={() => setTab("template")}>
                       <ArrowLeft className="w-3.5 h-3.5 mr-1.5" /> Retour
                     </Button>
-                    <Button className="flex-1 bg-primary hover:bg-primary/90 text-primary-foreground" onClick={handleCreateFromTemplate} disabled={createProject.isPending}>
-                      {createProject.isPending ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Sparkles className="w-4 h-4 mr-2" />}
-                      Créer le projet
+                    <Button
+                      className="flex-1 bg-primary hover:bg-primary/90 text-primary-foreground font-semibold"
+                      onClick={handleCreateFromTemplate}
+                      disabled={createProject.isPending || !tplProjectName.trim()}
+                    >
+                      {createProject.isPending
+                        ? <><Loader2 className="w-4 h-4 animate-spin mr-2" />Création…</>
+                        : <><Sparkles className="w-4 h-4 mr-2" />Créer et générer avec l'IA</>
+                      }
                     </Button>
                   </div>
                 </div>
