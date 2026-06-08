@@ -247,6 +247,17 @@ function sseWrite(res: Response, event: string, data: unknown) {
   res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
 }
 
+/** Parse a raw LLM error body into a clean user-readable message (never raw JSON) */
+function parseLlmError(raw: string, provider?: string): string {
+  try {
+    const j = JSON.parse(raw);
+    const msg: string = j?.error?.message || j?.message || raw;
+    if (msg.includes("credit") || msg.includes("balance") || msg.includes("quota") || msg.includes("billing"))
+      return `Crédits insuffisants${provider ? ` (${provider})` : ""}. L'IA bascule automatiquement sur un autre modèle.`;
+    return msg.slice(0, 200);
+  } catch { return raw.slice(0, 200); }
+}
+
 /** Authenticate request and return user, or send 401 */
 async function authenticate(req: Request, res: Response) {
   try {
@@ -730,7 +741,7 @@ Retourne UNIQUEMENT le code JavaScript complet, sans explication, sans markdown,
     });
 
     if (!aiRes.ok || !aiRes.body) {
-      sseWrite(res, "error", { message: `Erreur DeepSeek Expo: ${await aiRes.text()}` });
+      sseWrite(res, "error", { message: parseLlmError(await aiRes.text(), "DeepSeek") });
       res.end();
       return;
     }
@@ -1345,7 +1356,7 @@ Retourne UNIQUEMENT le code HTML complet, sans explication, sans markdown, sans 
           messages: [{ role: "system", content: systemPrompt }, { role: "user", content: userMessage }],
         }),
       });
-      if (!aiRes.ok || !aiRes.body) { sseWrite(res, "error", { message: `Erreur DeepSeek: ${await aiRes.text()}` }); res.end(); return; }
+      if (!aiRes.ok || !aiRes.body) { sseWrite(res, "error", { message: parseLlmError(await aiRes.text(), "DeepSeek") }); res.end(); return; }
       const reader = aiRes.body.getReader();
       const decoder = new TextDecoder();
       let buffer = "";
@@ -1582,12 +1593,12 @@ Retourne UNIQUEMENT le code HTML, sans explication, sans markdown, sans backtick
       chatHistory.reverse();
 
       // Pick best available LLM (prefer Claude for nuance, fallback chain)
-      const discussLlm =
-        resolveKey("anthropic", allKeys) ??
-        resolveKey("openai", allKeys) ??
-        resolveKey("qwen", allKeys) ??
-        resolveKey("deepseek", allKeys);
-      if (!discussLlm) { sseWrite(res, "error", { message: "Aucun LLM disponible" }); res.end(); return; }
+      // resolveKey only checks if a key is configured — the actual call may still fail (quota, credits, etc.)
+      // So we build an ordered list and retry on failure instead of stopping at the first pick.
+      const discussCandidates: NonNullable<ReturnType<typeof resolveKey>>[] = (
+        ["anthropic", "openai", "qwen", "deepseek"] as Provider[]
+      ).map(p => resolveKey(p, allKeys)).filter(Boolean) as NonNullable<ReturnType<typeof resolveKey>>[];
+      if (discussCandidates.length === 0) { sseWrite(res, "error", { message: "Aucun LLM disponible" }); res.end(); return; }
 
       const projectDesc = [
         project[0].siteType ? `Type : ${project[0].siteType}` : null,
@@ -1631,65 +1642,85 @@ INTERDICTIONS ABSOLUES :
       // Save user message
       await db.insert(chatMessages).values({ projectId, userId: user.id, role: "user", content: message });
 
-      sseWrite(res, "progress", { agent: AGENT_NAMES[discussLlm.provider], step: "Réflexion…", icon: "💬" });
-
       let fullReply = "";
       let inputTokens = 0;
       let outputTokens = 0;
+      let usedLlm = discussCandidates[0];
 
-      try {
-        if (discussLlm.provider === "anthropic") {
-          const aiRes = await fetch("https://api.anthropic.com/v1/messages", {
-            method: "POST",
-            headers: { "x-api-key": discussLlm.key, "anthropic-version": "2023-06-01", "content-type": "application/json" },
-            body: JSON.stringify({ model: discussLlm.model, max_tokens: 1200, temperature: 0.7, stream: true, system: discussSystemPrompt, messages: llmMessages }),
-          });
-          if (!aiRes.ok || !aiRes.body) throw new Error(`Anthropic: ${await aiRes.text()}`);
-          const reader = aiRes.body.getReader(); const dec = new TextDecoder(); let buf = "";
-          while (true) {
-            const { done, value } = await reader.read(); if (done) break;
-            buf += dec.decode(value, { stream: true });
-            const lines = buf.split("\n"); buf = lines.pop() || "";
-            for (const line of lines) {
-              if (!line.startsWith("data: ")) continue;
-              const raw = line.slice(6).trim(); if (raw === "[DONE]") continue;
-              try {
-                const evt = JSON.parse(raw);
-                if (evt.type === "content_block_delta" && evt.delta?.type === "text_delta") { fullReply += evt.delta.text; sseWrite(res, "chunk", { text: evt.delta.text }); }
-                if (evt.type === "message_delta" && evt.usage) outputTokens = evt.usage.output_tokens || 0;
-                if (evt.type === "message_start" && evt.message?.usage) inputTokens = evt.message.usage.input_tokens || 0;
-              } catch { /* skip */ }
+      // Try each provider in order — stop as soon as one succeeds
+      for (const candidate of discussCandidates) {
+        sseWrite(res, "progress", { agent: AGENT_NAMES[candidate.provider], step: "Réflexion…", icon: "💬" });
+        fullReply = ""; inputTokens = 0; outputTokens = 0;
+        let providerOk = false;
+
+        try {
+          if (candidate.provider === "anthropic") {
+            const aiRes = await fetch("https://api.anthropic.com/v1/messages", {
+              method: "POST",
+              headers: { "x-api-key": candidate.key, "anthropic-version": "2023-06-01", "content-type": "application/json" },
+              body: JSON.stringify({ model: candidate.model, max_tokens: 1200, temperature: 0.7, stream: true, system: discussSystemPrompt, messages: llmMessages }),
+            });
+            if (!aiRes.ok || !aiRes.body) {
+              pipelineLog('discuss:provider:fail', { provider: candidate.provider, status: aiRes.status, msg: parseLlmError(await aiRes.text()) });
+              continue; // try next provider
+            }
+            const reader = aiRes.body.getReader(); const dec = new TextDecoder(); let buf = "";
+            while (true) {
+              const { done, value } = await reader.read(); if (done) break;
+              buf += dec.decode(value, { stream: true });
+              const lines = buf.split("\n"); buf = lines.pop() || "";
+              for (const line of lines) {
+                if (!line.startsWith("data: ")) continue;
+                const raw = line.slice(6).trim(); if (raw === "[DONE]") continue;
+                try {
+                  const evt = JSON.parse(raw);
+                  if (evt.type === "content_block_delta" && evt.delta?.type === "text_delta") { fullReply += evt.delta.text; sseWrite(res, "chunk", { text: evt.delta.text }); }
+                  if (evt.type === "message_delta" && evt.usage) outputTokens = evt.usage.output_tokens || 0;
+                  if (evt.type === "message_start" && evt.message?.usage) inputTokens = evt.message.usage.input_tokens || 0;
+                } catch { /* skip */ }
+              }
+            }
+          } else {
+            const baseUrls: Record<string, string> = { deepseek: "https://api.deepseek.com/v1", openai: "https://api.openai.com/v1", qwen: "https://dashscope.aliyuncs.com/compatible-mode/v1" };
+            const baseUrl = baseUrls[candidate.provider] || "https://api.openai.com/v1";
+            const aiRes = await fetch(`${baseUrl}/chat/completions`, {
+              method: "POST",
+              headers: { "Authorization": `Bearer ${candidate.key}`, "content-type": "application/json" },
+              body: JSON.stringify({ model: candidate.model, max_tokens: 1200, temperature: 0.7, stream: true, messages: [{ role: "system", content: discussSystemPrompt }, ...llmMessages] }),
+            });
+            if (!aiRes.ok || !aiRes.body) {
+              pipelineLog('discuss:provider:fail', { provider: candidate.provider, status: aiRes.status, msg: parseLlmError(await aiRes.text()) });
+              continue; // try next provider
+            }
+            const reader = aiRes.body.getReader(); const dec = new TextDecoder(); let buf = "";
+            while (true) {
+              const { done, value } = await reader.read(); if (done) break;
+              buf += dec.decode(value, { stream: true });
+              const lines = buf.split("\n"); buf = lines.pop() || "";
+              for (const line of lines) {
+                if (!line.startsWith("data: ")) continue;
+                const raw = line.slice(6).trim(); if (raw === "[DONE]") continue;
+                try {
+                  const evt = JSON.parse(raw);
+                  const chunk = evt.choices?.[0]?.delta?.content;
+                  if (chunk) { fullReply += chunk; sseWrite(res, "chunk", { text: chunk }); }
+                  if (evt.usage) { inputTokens = evt.usage.prompt_tokens || 0; outputTokens = evt.usage.completion_tokens || 0; }
+                } catch { /* skip */ }
+              }
             }
           }
-        } else {
-          const baseUrls: Record<string, string> = { deepseek: "https://api.deepseek.com/v1", openai: "https://api.openai.com/v1", qwen: "https://dashscope.aliyuncs.com/compatible-mode/v1" };
-          const baseUrl = baseUrls[discussLlm.provider] || "https://api.openai.com/v1";
-          const aiRes = await fetch(`${baseUrl}/chat/completions`, {
-            method: "POST",
-            headers: { "Authorization": `Bearer ${discussLlm.key}`, "content-type": "application/json" },
-            body: JSON.stringify({ model: discussLlm.model, max_tokens: 1200, temperature: 0.7, stream: true, messages: [{ role: "system", content: discussSystemPrompt }, ...llmMessages] }),
-          });
-          if (!aiRes.ok || !aiRes.body) throw new Error(`${discussLlm.provider}: ${await aiRes.text()}`);
-          const reader = aiRes.body.getReader(); const dec = new TextDecoder(); let buf = "";
-          while (true) {
-            const { done, value } = await reader.read(); if (done) break;
-            buf += dec.decode(value, { stream: true });
-            const lines = buf.split("\n"); buf = lines.pop() || "";
-            for (const line of lines) {
-              if (!line.startsWith("data: ")) continue;
-              const raw = line.slice(6).trim(); if (raw === "[DONE]") continue;
-              try {
-                const evt = JSON.parse(raw);
-                const chunk = evt.choices?.[0]?.delta?.content;
-                if (chunk) { fullReply += chunk; sseWrite(res, "chunk", { text: chunk }); }
-                if (evt.usage) { inputTokens = evt.usage.prompt_tokens || 0; outputTokens = evt.usage.completion_tokens || 0; }
-              } catch { /* skip */ }
-            }
-          }
+          usedLlm = candidate;
+          providerOk = true;
+        } catch (err: any) {
+          pipelineLog('discuss:provider:exception', { provider: candidate.provider, error: err.message?.slice(0, 100) });
+          // continue to next provider
         }
-      } catch (err: any) {
-        pipelineLog('discuss:error', { error: err.message });
-        sseWrite(res, "error", { message: err.message });
+
+        if (providerOk) break; // success — no need to try more
+      }
+
+      if (!fullReply) {
+        sseWrite(res, "error", { message: "Tous les modèles IA sont temporairement indisponibles. Réessaie dans quelques instants." });
         res.end(); return;
       }
 
@@ -1699,7 +1730,7 @@ INTERDICTIONS ABSOLUES :
       }
 
       sseWrite(res, "done", { reply: fullReply, discuss: true });
-      pipelineLog('discuss:done', { tokens: inputTokens + outputTokens, len: fullReply.length });
+      pipelineLog('discuss:done', { provider: usedLlm.provider, tokens: inputTokens + outputTokens, len: fullReply.length });
       res.end();
       return;
     }
@@ -2132,7 +2163,7 @@ ${agentPlan ? `\n══ PLAN D'ACTION ══\n${agentPlan}` : ""}${qwenDraft ? `
             headers: { "x-api-key": execLlm.key, "anthropic-version": "2023-06-01", "anthropic-beta": "prompt-caching-2024-07-31", "content-type": "application/json" },
             body: JSON.stringify({ model: execLlm.model, max_tokens: 16000, temperature: 0.3, stream: true, system: [{ type: "text", text: systemPrompt, cache_control: { type: "ephemeral" } }], messages: llmMessages }),
           });
-          if (!aiRes.ok || !aiRes.body) { sseWrite(res, "error", { message: `Erreur API: ${await aiRes.text()}` }); res.end(); return; }
+          if (!aiRes.ok || !aiRes.body) { sseWrite(res, "error", { message: parseLlmError(await aiRes.text(), execLlm.provider) }); res.end(); return; }
           const reader = aiRes.body.getReader(); const dec = new TextDecoder(); let buf = "";
           while (true) {
             const { done, value } = await reader.read(); if (done) break;
@@ -2158,7 +2189,7 @@ ${agentPlan ? `\n══ PLAN D'ACTION ══\n${agentPlan}` : ""}${qwenDraft ? `
             headers: { "Authorization": `Bearer ${execLlm.key}`, "content-type": "application/json" },
             body: JSON.stringify({ model: execLlm.model, max_tokens: 16000, temperature: 0.3, stream: true, response_format: { type: "json_object" }, messages: [{ role: "system", content: systemPrompt }, ...wrappedMessages] }),
           });
-          if (!aiRes.ok || !aiRes.body) { sseWrite(res, "error", { message: `Erreur ${execLlm.provider}: ${await aiRes.text()}` }); res.end(); return; }
+          if (!aiRes.ok || !aiRes.body) { sseWrite(res, "error", { message: parseLlmError(await aiRes.text(), execLlm.provider) }); res.end(); return; }
           const reader = aiRes.body.getReader(); const dec = new TextDecoder(); let buf = "";
           while (true) {
             const { done, value } = await reader.read(); if (done) break;
@@ -2588,7 +2619,7 @@ Retourne UNIQUEMENT ce JSON brut (pas de markdown, pas de \`\`\`):
           headers: { "x-api-key": execKey, "anthropic-version": "2023-06-01", "content-type": "application/json" },
           body: JSON.stringify({ model: execModel, max_tokens: 16000, system: systemPrompt, messages: [{ role: "user", content: userMessage }] }),
         });
-        if (!aiRes.ok || !aiRes.body) { sseWrite(res, "error", { message: `Erreur Claude: ${await aiRes.text()}` }); res.end(); return; }
+        if (!aiRes.ok || !aiRes.body) { sseWrite(res, "error", { message: parseLlmError(await aiRes.text(), "Claude") }); res.end(); return; }
         const reader = aiRes.body.getReader(); const dec = new TextDecoder(); let buf = "";
         while (true) {
           const { done, value } = await reader.read(); if (done) break;
@@ -2612,7 +2643,7 @@ Retourne UNIQUEMENT ce JSON brut (pas de markdown, pas de \`\`\`):
           headers: { "Authorization": `Bearer ${execKey}`, "content-type": "application/json" },
           body: JSON.stringify({ model: execModel, max_tokens: 16000, temperature: 0.2, response_format: { type: "json_object" }, messages: [{ role: "system", content: systemPrompt }, { role: "user", content: userMessage }] }),
         });
-        if (!aiRes.ok || !aiRes.body) { sseWrite(res, "error", { message: `Erreur ${execProvider}: ${await aiRes.text()}` }); res.end(); return; }
+        if (!aiRes.ok || !aiRes.body) { sseWrite(res, "error", { message: parseLlmError(await aiRes.text(), execProvider) }); res.end(); return; }
         const reader = aiRes.body.getReader(); const dec = new TextDecoder(); let buf = "";
         while (true) {
           const { done, value } = await reader.read(); if (done) break;
