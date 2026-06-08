@@ -22,6 +22,7 @@ import { formatDistanceToNow } from "date-fns";
 import { fr } from "date-fns/locale";
 import ProjectCardMenu from "@/components/ProjectCardMenu";
 import { TEMPLATES, TEMPLATE_CATEGORIES, type Template, type TemplateCategory } from "@/data/templates";
+import { TemplatePreviewThumb } from "@/components/TemplatePreviewThumb";
 
 const SITE_TYPES = [
   "Landing page", "Site vitrine", "Portfolio", "Restaurant",
@@ -81,6 +82,7 @@ export default function Projects() {
   const [activeCategory, setActiveCategory] = useState<TemplateCategory>("Tous");
   const [selectedTpl, setSelectedTpl] = useState<Template | null>(null);
   const [tplProjectName, setTplProjectName] = useState("");
+  const [additionalPrompt, setAdditionalPrompt] = useState("");
   const [isDictating, setIsDictating] = useState(false);
   const dictRecognitionRef = useRef<any>(null);
   const [form, setForm] = useState({
@@ -145,14 +147,16 @@ export default function Projects() {
   const handleSelectTemplate = (tpl: Template) => {
     setSelectedTpl(tpl);
     setTplProjectName(tpl.name);
+    setAdditionalPrompt("");
     setTab("tpl-confirm");
   };
 
   const handleCreateFromTemplate = () => {
     if (!selectedTpl) return;
+    const extra = additionalPrompt.trim();
     createProject.mutate({
       name: tplProjectName.trim() || selectedTpl.name,
-      description: selectedTpl.prompt,
+      description: selectedTpl.prompt + (extra ? `\n\n---\nInstructions personnalisées :\n${extra}` : ""),
       siteType: selectedTpl.siteType,
       style: selectedTpl.style,
       colorPalette: selectedTpl.colorPalette,
@@ -485,24 +489,30 @@ export default function Projects() {
                     ))}
                   </div>
                   {/* Grid */}
-                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 max-h-[60vh] overflow-y-auto pr-1">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 max-h-[65vh] overflow-y-auto pr-1">
                     {filteredTpls.map((tpl) => (
                       <div
                         key={tpl.id}
-                        className="group p-4 rounded-xl border border-border/60 bg-card/50 hover:border-primary/30 hover:bg-card transition-all flex flex-col gap-2 cursor-pointer"
+                        className="group rounded-xl border border-border/60 bg-card/50 hover:border-primary/30 hover:bg-card transition-all flex flex-col cursor-pointer overflow-hidden"
                         onClick={() => handleSelectTemplate(tpl)}
                       >
-                        <div className="flex items-start justify-between gap-2">
-                          <div className="w-9 h-9 rounded-lg bg-primary/10 flex items-center justify-center text-xl flex-shrink-0">{tpl.emoji}</div>
-                          <Badge variant="outline" className={`text-[10px] font-medium flex-shrink-0 ${CATEGORY_COLORS[tpl.category]}`}>{tpl.category}</Badge>
-                        </div>
-                        <div className="flex-1">
-                          <h3 className="font-semibold text-foreground text-sm mb-0.5">{tpl.name}</h3>
+                        {/* Miniature preview */}
+                        <TemplatePreviewThumb template={tpl} />
+
+                        {/* Info */}
+                        <div className="p-3 flex flex-col gap-2 flex-1">
+                          <div className="flex items-start justify-between gap-2">
+                            <div className="flex items-center gap-2">
+                              <span className="text-base">{tpl.emoji}</span>
+                              <h3 className="font-semibold text-foreground text-sm leading-tight">{tpl.name}</h3>
+                            </div>
+                            <Badge variant="outline" className={`text-[10px] font-medium flex-shrink-0 ${CATEGORY_COLORS[tpl.category]}`}>{tpl.category}</Badge>
+                          </div>
                           <p className="text-xs text-muted-foreground line-clamp-2 leading-relaxed">{tpl.description}</p>
-                        </div>
-                        <div className="flex items-center justify-between pt-1 border-t border-border/30">
-                          <span className="text-[10px] text-muted-foreground uppercase tracking-wide">{tpl.framework.toUpperCase()} · {tpl.style}</span>
-                          <ArrowRight className="w-3.5 h-3.5 text-muted-foreground opacity-0 group-hover:opacity-100 group-hover:text-primary transition-all" />
+                          <div className="flex items-center justify-between pt-1 border-t border-border/30 mt-auto">
+                            <span className="text-[10px] text-muted-foreground uppercase tracking-wide">{tpl.framework.toUpperCase()} · {tpl.style}</span>
+                            <ArrowRight className="w-3.5 h-3.5 text-muted-foreground opacity-0 group-hover:opacity-100 group-hover:text-primary transition-all" />
+                          </div>
                         </div>
                       </div>
                     ))}
@@ -513,9 +523,20 @@ export default function Projects() {
               {/* ── Tab: Confirm template ── */}
               {tab === "tpl-confirm" && selectedTpl && (
                 <div className="space-y-4 pt-1">
+                  {/* Mini preview band */}
+                  <div className="rounded-xl overflow-hidden border border-border/40" style={{ height: 80 }}>
+                    <div style={{ height: 80, pointerEvents: "none" }}>
+                      <div className="w-full h-full">
+                        <TemplatePreviewThumb template={selectedTpl} />
+                      </div>
+                    </div>
+                  </div>
+
                   <p className="text-sm text-muted-foreground">
-                    Mar-ia va générer ce {selectedTpl.category === "Mobile" ? "app mobile" : "site"} en partant de ce template. Tu peux modifier le nom du projet.
+                    Mar-ia va générer ce{selectedTpl.category === "Mobile" ? "tte app mobile" : " site"} à partir du template <strong className="text-foreground">{selectedTpl.name}</strong>.
                   </p>
+
+                  {/* Project name */}
                   <div>
                     <Label className="text-sm text-foreground mb-1.5 block">Nom du projet</Label>
                     <Input
@@ -527,6 +548,29 @@ export default function Projects() {
                       autoFocus
                     />
                   </div>
+
+                  {/* Additional prompt */}
+                  <div>
+                    <Label className="text-sm text-foreground mb-1.5 block">
+                      Instructions personnalisées <span className="text-muted-foreground font-normal">(optionnel)</span>
+                    </Label>
+                    <textarea
+                      value={additionalPrompt}
+                      onChange={(e) => setAdditionalPrompt(e.target.value)}
+                      placeholder={
+                        selectedTpl.category === "Mobile"
+                          ? "Ex : Appelle l'app « RideFast », utilise le vert comme couleur principale, ajoute un écran de connexion avec Google…"
+                          : "Ex : Le site s'appelle « TechFlow », palette bleue/cyan, ajoute une section vidéo dans le hero, le CTA doit aller vers /contact…"
+                      }
+                      rows={3}
+                      className="w-full rounded-lg bg-input border border-border/60 px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground/60 focus:outline-none focus:ring-2 focus:ring-primary/40 resize-none"
+                    />
+                    <p className="text-[11px] text-muted-foreground mt-1 flex items-center gap-1">
+                      <Sparkles className="w-3 h-3" />
+                      Précise le nom, les couleurs, les sections spécifiques, l'architecture…
+                    </p>
+                  </div>
+
                   <div className="flex gap-2">
                     <Button variant="outline" className="flex-1 border-border/60" onClick={() => setTab("template")}>
                       <ArrowLeft className="w-3.5 h-3.5 mr-1.5" /> Retour
