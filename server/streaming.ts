@@ -5,7 +5,8 @@
 import type { Express, Request, Response } from "express";
 import { sdk } from "./_core/sdk";
 import { getDb } from "./db";
-import { projects, versions, chatMessages, apiKeys, users, usageLogs, platformApiKeys } from "../drizzle/schema";
+import { projects, versions, chatMessages, apiKeys, users, usageLogs, platformApiKeys, userIntegrations } from "../drizzle/schema";
+import { getIntegrationKey } from "./routers/integrations";
 import { eq, and, desc, count, sum, gte } from "drizzle-orm";
 import crypto from "crypto";
 import { buildInspirationContext } from "./inspiration";
@@ -1567,6 +1568,49 @@ Retourne UNIQUEMENT le code HTML, sans explication, sans markdown, sans backtick
     // 6000 chars gives the agent enough context to identify existing classes/functions/variables
     const codeSnippet = fullCode.slice(0, 6000);
 
+    // ── API INTENT DETECTION (before reason phase) ────────────────────────
+    // Detect if the user wants to connect an API → emit api_key_request if key not stored yet
+    const API_KEYWORDS = [
+      "connecte", "intègre", "intégrer", "intégration", "connect", "integrate", "api",
+      "stripe", "paypal", "twilio", "sendgrid", "mailgun", "openai", "firebase",
+      "supabase", "airtable", "notion", "slack", "discord", "google maps", "mapbox",
+      "youtube", "twitter", "facebook", "instagram", "shopify", "brevo", "resend",
+      "paiement", "payment", "sms", "email", "newsletter", "webhook", "oauth",
+    ];
+    const msgLower = message.toLowerCase();
+    const hasApiIntent = API_KEYWORDS.some((kw) => msgLower.includes(kw));
+
+    if (hasApiIntent && phase === "reason") {
+      // Try to identify the API name from the message
+      const knownApis: Record<string, string> = {
+        stripe: "Stripe", paypal: "PayPal", twilio: "Twilio", sendgrid: "SendGrid",
+        mailgun: "Mailgun", openai: "OpenAI", firebase: "Firebase", supabase: "Supabase",
+        airtable: "Airtable", notion: "Notion", slack: "Slack", discord: "Discord",
+        "google maps": "Google Maps", mapbox: "Mapbox", youtube: "YouTube",
+        twitter: "Twitter/X", facebook: "Facebook", instagram: "Instagram",
+        shopify: "Shopify", brevo: "Brevo", resend: "Resend",
+      };
+      let detectedApiName: string | null = null;
+      let detectedApiLabel: string | null = null;
+      for (const [k, label] of Object.entries(knownApis)) {
+        if (msgLower.includes(k)) { detectedApiName = k.replace(" ", "_"); detectedApiLabel = label; break; }
+      }
+
+      if (detectedApiName) {
+        // Check if key already stored
+        const existing = await getIntegrationKey(user.id, detectedApiName, projectId);
+        if (!existing) {
+          // Emit api_key_request — frontend will show inline input
+          sseWrite(res, "api_key_request", {
+            apiName: detectedApiName,
+            apiLabel: detectedApiLabel,
+            message: `Pour connecter ${detectedApiLabel} à votre site, j'ai besoin de votre clé API. Elle sera chiffrée et ne sera jamais exposée dans le code.`,
+          });
+          // Continue with normal reasoning — user will provide the key in parallel
+        }
+      }
+    }
+
     // ── PHASE 1: RAISONNEMENT ──────────────────────────────────────────────
     if (phase === "reason") {
       pipelineLog('reason:start', { project: project[0].name, plan: userPlan, consoleErrors: consoleErrors?.length || 0, isExpo });
@@ -1701,6 +1745,21 @@ SI UNE IMAGE EST JOINTE (priorité absolue) :
       const totalVersions = versionCount[0]?.count || 0;
 
       await db.insert(chatMessages).values({ projectId, userId: user.id, role: "user", content: message });
+
+      // ── Load user integrations for this project (inject into executor context) ──
+      const storedIntegrations = await db
+        .select({
+          apiName: userIntegrations.apiName,
+          apiLabel: userIntegrations.apiLabel,
+          baseUrl: userIntegrations.baseUrl,
+          docSummary: userIntegrations.docSummary,
+        })
+        .from(userIntegrations)
+        .where(eq(userIntegrations.userId, user.id));
+
+      const integrationContext = storedIntegrations.length > 0
+        ? `\n\n══ INTÉGRATIONS API DISPONIBLES ══\nL'utilisateur a configuré les clés API suivantes. Pour les appeler, utilise TOUJOURS le proxy /api/proxy/call (JAMAIS directement l'API) afin de ne pas exposer la clé dans le code source.\n\nFormat d'appel proxy :\nfetch('/api/proxy/call', {\n  method: 'POST',\n  headers: {'Content-Type':'application/json'},\n  credentials: 'include',\n  body: JSON.stringify({ projectId: ${projectId}, apiName: 'NOM_API', endpoint: '/endpoint', method: 'POST', body: {...} })\n})\n\nIntégrations disponibles :\n${storedIntegrations.map(i => `• ${i.apiLabel} (apiName: "${i.apiName}")${i.baseUrl ? ` — base URL: ${i.baseUrl}` : ''}${i.docSummary ? `\n  Doc: ${i.docSummary}` : ''}`).join('\n')}\n⚠️ Ne jamais écrire de clé API en dur dans le code — toujours passer par /api/proxy/call.`
+        : "";
 
       // No history for execute phase — system prompt already contains task + current code + plan.
       // History only causes confusion (old sessions, wrong tasks).
@@ -1902,7 +1961,7 @@ Si une image est jointe ET que le plan d'action liste des éléments numérotés
 
 ══ CODE ACTUEL (v${currentVersion[0].versionNumber}) — LIS ATTENTIVEMENT AVANT D'ÉCRIRE ══
 ${currentVersion[0].generatedCode || ""}
-${agentPlan ? `\n══ PLAN D'ACTION ══\n${agentPlan}` : ""}${qwenDraft ? `\n\n══ SNIPPETS PRÉPARÉS ══\n${qwenDraft}` : ""}${consoleErrors && consoleErrors.length > 0 ? `\n\n══ ERREURS JS ACTIVES DANS LA PREVIEW (console navigateur) ══\n${consoleErrors.slice(0, 8).map((e, i) => `${i + 1}. ${e}`).join('\n')}\n⚠️ Corrige TOUTES ces erreurs JS en plus de la tâche principale.` : ""}`;
+${agentPlan ? `\n══ PLAN D'ACTION ══\n${agentPlan}` : ""}${qwenDraft ? `\n\n══ SNIPPETS PRÉPARÉS ══\n${qwenDraft}` : ""}${consoleErrors && consoleErrors.length > 0 ? `\n\n══ ERREURS JS ACTIVES DANS LA PREVIEW (console navigateur) ══\n${consoleErrors.slice(0, 8).map((e, i) => `${i + 1}. ${e}`).join('\n')}\n⚠️ Corrige TOUTES ces erreurs JS en plus de la tâche principale.` : ""}${integrationContext}`;
 
         const llmMessages: Array<{ role: "user" | "assistant"; content: any }> = history
           .filter(m => m.content?.trim())
@@ -2538,6 +2597,143 @@ Retourne UNIQUEMENT ce JSON brut (pas de markdown, pas de \`\`\`):
       res.json({ suggestions });
     } catch {
       res.json({ suggestions: [] });
+    }
+  });
+
+  // ── POST /api/proxy/call ──────────────────────────────────────────────────
+  // Proxy HTTP requests on behalf of a user's stored integration key.
+  // Called by the generated site code so the real API key is never exposed.
+  //
+  // Body: { projectId, apiName, endpoint, method?, headers?, body? }
+  // The projectId is used to look up the right integration key.
+  app.post("/api/proxy/call", async (req: Request, res: Response) => {
+    const user = await authenticate(req, res);
+    if (!user) return;
+
+    const { projectId, apiName, endpoint, method = "GET", headers: extraHeaders = {}, body: proxyBody } = req.body as {
+      projectId?: number;
+      apiName: string;
+      endpoint: string;
+      method?: string;
+      headers?: Record<string, string>;
+      body?: unknown;
+    };
+
+    if (!apiName || !endpoint) {
+      res.status(400).json({ error: "apiName et endpoint requis" });
+      return;
+    }
+
+    // Look up stored integration key
+    const integration = await getIntegrationKey(user.id, apiName, projectId);
+    if (!integration) {
+      res.status(404).json({ error: `Aucune clé API trouvée pour "${apiName}". Ajoutez-la depuis l'éditeur.` });
+      return;
+    }
+
+    // Build target URL — use stored baseUrl or the endpoint as-is if it's a full URL
+    let targetUrl: string;
+    try {
+      new URL(endpoint); // throws if not a full URL
+      targetUrl = endpoint;
+    } catch {
+      const base = integration.baseUrl?.replace(/\/$/, "") || "";
+      targetUrl = base + (endpoint.startsWith("/") ? endpoint : "/" + endpoint);
+    }
+
+    // Security: block SSRF to internal addresses
+    const blocked = /^https?:\/\/(localhost|127\.|10\.|192\.168\.|169\.254\.|::1)/i;
+    if (blocked.test(targetUrl)) {
+      res.status(403).json({ error: "Cible non autorisée" });
+      return;
+    }
+
+    try {
+      pipelineLog("proxy:call", { apiName, endpoint: targetUrl, method, userId: user.id });
+
+      const fetchRes = await fetch(targetUrl, {
+        method,
+        headers: {
+          "Authorization": `Bearer ${integration.key}`,
+          "Content-Type": "application/json",
+          ...extraHeaders,
+        },
+        body: proxyBody && method !== "GET" && method !== "HEAD"
+          ? JSON.stringify(proxyBody)
+          : undefined,
+      });
+
+      const contentType = fetchRes.headers.get("content-type") || "application/json";
+      const raw = await fetchRes.text();
+
+      res.status(fetchRes.status)
+        .header("Content-Type", contentType)
+        .send(raw);
+    } catch (err: any) {
+      res.status(502).json({ error: `Proxy error: ${err.message}` });
+    }
+  });
+
+  // ── POST /api/integrations/search-doc ──────────────────────────────────────
+  // Given an API name, ask the LLM to return a brief integration guide +
+  // the official base URL — used to pre-fill the docSummary when saving a key.
+  app.post("/api/integrations/search-doc", async (req: Request, res: Response) => {
+    const user = await authenticate(req, res);
+    if (!user) return;
+
+    const { apiName } = req.body as { apiName: string };
+    if (!apiName) { res.status(400).json({ error: "apiName requis" }); return; }
+
+    // Use the best available LLM to describe the API
+    const [claudeKey, openaiKey, deepseekKey] = await Promise.all([
+      getPlatformKey("anthropic"),
+      getPlatformKey("openai"),
+      getPlatformKey("deepseek"),
+    ]);
+    const llmKey = claudeKey || openaiKey || deepseekKey;
+    if (!llmKey) { res.status(400).json({ error: "Aucune clé LLM disponible" }); return; }
+
+    const provider = claudeKey ? "anthropic" : openaiKey ? "openai" : "deepseek";
+    const model = claudeKey ? "claude-haiku-4-5" : openaiKey ? "gpt-4o-mini" : "deepseek-chat";
+
+    const prompt = `Tu es un expert en intégrations API. Pour l'API "${apiName}", réponds UNIQUEMENT avec ce JSON (sans markdown) :
+{
+  "label": "Nom officiel de l'API",
+  "baseUrl": "https://api.example.com/v1",
+  "docUrl": "https://docs.example.com",
+  "authType": "Bearer|ApiKey|Basic|OAuth2",
+  "keyHeader": "Authorization",
+  "summary": "Description courte en 2 phrases de ce que fait cette API et comment l'authentification fonctionne.",
+  "exampleEndpoint": "/endpoint-le-plus-commun",
+  "exampleMethod": "GET"
+}`;
+
+    try {
+      let result = "";
+      if (provider === "anthropic") {
+        const r = await fetch("https://api.anthropic.com/v1/messages", {
+          method: "POST",
+          headers: { "x-api-key": llmKey, "anthropic-version": "2023-06-01", "content-type": "application/json" },
+          body: JSON.stringify({ model, max_tokens: 400, messages: [{ role: "user", content: prompt }] }),
+        });
+        const d = await r.json() as any;
+        result = d.content?.[0]?.text || "{}";
+      } else {
+        const baseUrl = provider === "deepseek" ? "https://api.deepseek.com/v1" : "https://api.openai.com/v1";
+        const r = await fetch(`${baseUrl}/chat/completions`, {
+          method: "POST",
+          headers: { "Authorization": `Bearer ${llmKey}`, "content-type": "application/json" },
+          body: JSON.stringify({ model, max_tokens: 400, messages: [{ role: "user", content: prompt }] }),
+        });
+        const d = await r.json() as any;
+        result = d.choices?.[0]?.message?.content || "{}";
+      }
+
+      const clean = result.replace(/```json\n?/gi, "").replace(/```\n?/g, "").trim();
+      const info = JSON.parse(clean);
+      res.json(info);
+    } catch {
+      res.json({ label: apiName, baseUrl: null, docUrl: null, summary: "API inconnue.", exampleEndpoint: "/", exampleMethod: "GET" });
     }
   });
 }

@@ -21,11 +21,11 @@ import { useAuth } from "@/_core/hooks/useAuth";
 import { getLoginUrl } from "@/const";
 import AppLayout from "@/components/AppLayout";
 import {
-  Sparkles, Send, Eye, Code2, History, Smartphone, Tablet, Monitor,
+  Sparkles, Send, Eye, EyeOff, Code2, History, Smartphone, Tablet, Monitor,
   Loader2, ArrowLeft, Globe, RotateCcw, Save, CheckCircle2, MessageSquare,
   Rocket, Share2, Tag, MousePointer2, Copy, Check, PencilRuler, Upload,
   PanelLeftClose, PanelLeftOpen, Mic, MicOff, Paperclip, Camera, X as XIcon, Image as ImageIcon, Trash2,
-  ExternalLink, Download, Plus, GripVertical
+  ExternalLink, Download, Plus, GripVertical, Plug, KeyRound
 } from "lucide-react";
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
@@ -409,6 +409,54 @@ const VE_SCRIPT = `(function(){
   });
 })();`;
 
+/* ── API key input with show/hide toggle ────────────────────────────────── */
+function ApiKeyField({ value, onChange, placeholder }: { value: string; onChange: (v: string) => void; placeholder?: string }) {
+  const [show, setShow] = useState(false);
+  return (
+    <div className="flex-1 flex items-center bg-white/5 border border-white/15 rounded-lg overflow-hidden focus-within:border-emerald-500/60 transition-colors">
+      <input
+        type={show ? "text" : "password"}
+        value={value}
+        onChange={e => onChange(e.target.value)}
+        placeholder={placeholder || "sk_…"}
+        className="flex-1 bg-transparent px-2 py-1.5 text-xs text-white placeholder:text-white/30 outline-none font-mono"
+        autoComplete="off"
+        spellCheck={false}
+      />
+      <button type="button" onClick={() => setShow(v => !v)} className="px-2 text-white/40 hover:text-white/80 transition-colors flex-shrink-0">
+        {show ? <EyeOff className="w-3 h-3" /> : <Eye className="w-3 h-3" />}
+      </button>
+    </div>
+  );
+}
+
+/* ── Add integration form (used in integrations panel) ──────────────────── */
+function AddIntegrationForm({ projectId, onSave, saving }: { projectId: number; onSave: (d: any) => void; saving: boolean }) {
+  const [name, setName] = useState("");
+  const [key, setKey] = useState("");
+  return (
+    <div className="space-y-1.5 border border-dashed border-border/40 rounded-lg p-2">
+      <p className="text-[10px] text-muted-foreground font-medium">Ajouter une intégration</p>
+      <input
+        type="text"
+        placeholder="Nom de l'API (ex: stripe, openai…)"
+        value={name}
+        onChange={e => setName(e.target.value)}
+        className="w-full px-2 py-1.5 text-xs bg-white/5 border border-white/10 rounded-lg placeholder:text-white/30 focus:outline-none focus:border-primary/50"
+      />
+      <ApiKeyField value={key} onChange={setKey} placeholder="Clé API secrète…" />
+      <button
+        disabled={!name.trim() || !key.trim() || saving}
+        onClick={() => { if (name && key) { onSave({ apiName: name.trim().toLowerCase(), apiLabel: name.trim(), key: key.trim(), projectId }); setName(""); setKey(""); }}}
+        className="w-full py-1.5 rounded-lg bg-primary/80 hover:bg-primary disabled:opacity-40 text-white text-[11px] font-medium transition-colors flex items-center justify-center gap-1"
+      >
+        {saving ? <Loader2 className="w-3 h-3 animate-spin" /> : <Plus className="w-3 h-3" />}
+        {saving ? "Sauvegarde…" : "Ajouter"}
+      </button>
+    </div>
+  );
+}
+
 /* ── Visual Editor block palette ────────────────────────────────────────── */
 const VE_BLOCKS = [
   {
@@ -631,6 +679,12 @@ export default function ProjectEditor() {
   /* ── Plan validation before actions (generate/debug) ── */
   const [pendingAction, setPendingAction] = useState<{ summary: string; action: () => void } | null>(null);
   const [localChatItems, setLocalChatItems] = useState<Array<{ id: number; summary: string; timestamp: Date }>>([]);
+
+  /* ── API integrations ── */
+  const [pendingApiRequest, setPendingApiRequest] = useState<{ apiName: string; apiLabel: string; message: string } | null>(null);
+  const [apiKeyInput, setApiKeyInput] = useState("");
+  const [apiKeySaving, setApiKeySaving] = useState(false);
+  const [showIntegrationsPanel, setShowIntegrationsPanel] = useState(false);
 
   /* ── Chat workflow phases ── */
   const [chatPhase, setChatPhase] = useState<"idle" | "reasoning" | "awaiting_validation" | "executing">("idle");
@@ -1020,6 +1074,11 @@ export default function ProjectEditor() {
           try {
             const evt = JSON.parse(line.slice(6));
             if (evt.agent && evt.step) setAgentStep({ agent: evt.agent, step: evt.step, icon: evt.icon || "🧠" });
+            // API key request from server
+            if (evt.apiName && evt.apiLabel) {
+              setPendingApiRequest({ apiName: evt.apiName, apiLabel: evt.apiLabel, message: evt.message || `Clé API requise pour ${evt.apiLabel}` });
+              setApiKeyInput("");
+            }
             if (evt.summary !== undefined) {
               setPendingSummary(evt.summary);
               setSummaryEdit(evt.summary);
@@ -1027,7 +1086,7 @@ export default function ProjectEditor() {
               // Scroll to bottom so validation card is visible
               setTimeout(scrollToBottom, 150);
             }
-            if (evt.message) toast.error(evt.message);
+            if (evt.message && !evt.apiName) toast.error(evt.message);
           } catch { /* skip */ }
         }
       }
@@ -1162,6 +1221,20 @@ export default function ProjectEditor() {
       utils.projects.getVersions.invalidate({ projectId });
     },
     onError: (err: any) => { toast.error(err.message); setRestoreTarget(null); },
+  });
+
+  /* ── Integrations ── */
+  const { data: integrations, refetch: refetchIntegrations } = trpc.integrations.list.useQuery(
+    { projectId },
+    { enabled: showIntegrationsPanel }
+  );
+  const saveIntegration = trpc.integrations.save.useMutation({
+    onSuccess: () => { refetchIntegrations(); toast.success("Clé API sauvegardée 🔐"); },
+    onError: (err: any) => toast.error(err.message),
+  });
+  const deleteIntegration = trpc.integrations.delete.useMutation({
+    onSuccess: () => { refetchIntegrations(); toast.success("Intégration supprimée"); },
+    onError: (err: any) => toast.error(err.message),
   });
 
   const updateCode = trpc.projects.updateCode.useMutation({
@@ -1893,6 +1966,16 @@ ${jsCode}`;
                       Import
                     </Button>
                     <Button
+                      variant={showIntegrationsPanel ? "secondary" : "ghost"}
+                      size="sm"
+                      className="h-6 px-2 text-[10px] gap-1"
+                      title="Gérer les clés API connectées"
+                      onClick={() => setShowIntegrationsPanel(v => !v)}
+                    >
+                      <Plug className="w-3 h-3" />
+                      API
+                    </Button>
+                    <Button
                       variant="ghost"
                       size="sm"
                       className="h-6 px-2 text-[10px] gap-1 text-muted-foreground hover:text-destructive"
@@ -1923,6 +2006,52 @@ ${jsCode}`;
                         utils.projects.get.invalidate({ id: projectId });
                       }}
                     />
+                  </div>
+                )}
+
+                {/* Integrations panel */}
+                {showIntegrationsPanel && (
+                  <div className="border-b border-border/40 bg-muted/20 overflow-y-auto" style={{ maxHeight: '55%' }}>
+                    <div className="p-2">
+                      <div className="flex items-center justify-between mb-2">
+                        <span className="text-[10px] font-medium text-muted-foreground flex items-center gap-1.5">
+                          <Plug className="w-3 h-3" /> Intégrations API
+                        </span>
+                        <button onClick={() => setShowIntegrationsPanel(false)} className="text-[10px] text-muted-foreground hover:text-foreground">✕</button>
+                      </div>
+                      <p className="text-[10px] text-muted-foreground/60 mb-2 leading-relaxed">
+                        Vos clés sont chiffrées. Le code généré appelle <code className="bg-white/10 px-1 rounded">/api/proxy/call</code> — la vraie clé ne sera jamais exposée.
+                      </p>
+
+                      {/* Existing integrations */}
+                      {integrations && integrations.length > 0 && (
+                        <div className="space-y-1 mb-2">
+                          {integrations.map((intg: any) => (
+                            <div key={intg.id} className="flex items-center gap-2 px-2 py-1.5 rounded-lg border border-border/40 bg-background/40">
+                              <Plug className="w-3 h-3 text-emerald-400 flex-shrink-0" />
+                              <div className="flex-1 min-w-0">
+                                <span className="text-xs font-medium">{intg.apiLabel}</span>
+                                <span className="text-[10px] text-muted-foreground ml-1.5 font-mono">{intg.keyHint}</span>
+                              </div>
+                              <button
+                                onClick={() => deleteIntegration.mutate({ id: intg.id })}
+                                className="text-[10px] text-muted-foreground hover:text-destructive p-1 rounded"
+                                title="Supprimer"
+                              >
+                                <Trash2 className="w-3 h-3" />
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+
+                      {/* Add new integration */}
+                      <AddIntegrationForm
+                        projectId={projectId}
+                        onSave={(data) => saveIntegration.mutate(data)}
+                        saving={saveIntegration.isPending}
+                      />
+                    </div>
                   </div>
                 )}
 
@@ -2026,6 +2155,73 @@ ${jsCode}`;
                       </div>
                     </div>
                   ))}
+
+                  {/* ── API key request — inline widget ── */}
+                  {pendingApiRequest && (
+                    <div className="flex gap-1.5 items-start">
+                      <div className="w-5 h-5 rounded-full bg-emerald-500/20 flex items-center justify-center flex-shrink-0 mt-0.5">
+                        <KeyRound className="w-2.5 h-2.5 text-emerald-400" />
+                      </div>
+                      <div className="bg-card border border-emerald-500/30 rounded-xl rounded-tl-sm px-3 py-2.5 max-w-[92%] w-full">
+                        <p className="text-[10px] font-semibold text-emerald-400 mb-1 flex items-center gap-1">
+                          <Plug className="w-3 h-3" /> Clé API requise — {pendingApiRequest.apiLabel}
+                        </p>
+                        <p className="text-[11px] text-muted-foreground mb-2 leading-relaxed">{pendingApiRequest.message}</p>
+                        <div className="flex gap-2">
+                          <ApiKeyField
+                            value={apiKeyInput}
+                            onChange={setApiKeyInput}
+                            placeholder={`Clé ${pendingApiRequest.apiLabel}…`}
+                          />
+                          <button
+                            disabled={!apiKeyInput.trim() || apiKeySaving}
+                            onClick={async () => {
+                              if (!apiKeyInput.trim()) return;
+                              setApiKeySaving(true);
+                              try {
+                                // Search doc info first
+                                const docRes = await fetch("/api/integrations/search-doc", {
+                                  method: "POST",
+                                  headers: { "content-type": "application/json" },
+                                  credentials: "include",
+                                  body: JSON.stringify({ apiName: pendingApiRequest.apiName }),
+                                });
+                                const docInfo = docRes.ok ? await docRes.json() : {};
+
+                                await saveIntegration.mutateAsync({
+                                  apiName: pendingApiRequest.apiName,
+                                  apiLabel: docInfo.label || pendingApiRequest.apiLabel,
+                                  key: apiKeyInput.trim(),
+                                  projectId,
+                                  baseUrl: docInfo.baseUrl || undefined,
+                                  docUrl: docInfo.docUrl || undefined,
+                                  docSummary: docInfo.summary || undefined,
+                                });
+                                setPendingApiRequest(null);
+                                setApiKeyInput("");
+                                toast.success(`✅ ${pendingApiRequest.apiLabel} connecté — Maria peut maintenant l'utiliser`);
+                              } catch (e: any) {
+                                toast.error(e.message);
+                              } finally {
+                                setApiKeySaving(false);
+                              }
+                            }}
+                            className="flex-shrink-0 px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white text-[11px] font-semibold transition-colors flex items-center gap-1"
+                          >
+                            {apiKeySaving ? <Loader2 className="w-3 h-3 animate-spin" /> : <KeyRound className="w-3 h-3" />}
+                            {apiKeySaving ? "Sauvegarde…" : "Connecter"}
+                          </button>
+                          <button
+                            onClick={() => { setPendingApiRequest(null); setApiKeyInput(""); }}
+                            className="flex-shrink-0 p-1.5 rounded-lg hover:bg-white/10 text-muted-foreground text-[11px] transition-colors"
+                            title="Ignorer"
+                          >
+                            <XIcon className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  )}
 
                   {/* Debug report — shown after debugCode completes */}
                   {debugReport && (

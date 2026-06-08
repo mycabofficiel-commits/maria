@@ -7,6 +7,7 @@ import { projectsRouter } from "./routers/projects";
 import { adminRouter } from "./routers/admin";
 import { deployRouter } from "./routers/deploy";
 import { shareRouter } from "./routers/share";
+import { integrationsRouter } from "./routers/integrations";
 
 export const appRouter = router({
   system: systemRouter,
@@ -26,6 +27,7 @@ export const appRouter = router({
   admin: adminRouter,
   deploy: deployRouter,
   share: shareRouter,
+  integrations: integrationsRouter,
 });
 
 export type AppRouter = typeof appRouter;

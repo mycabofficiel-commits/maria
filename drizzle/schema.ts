@@ -202,6 +202,25 @@ export const platformApiKeys = pgTable("platform_api_keys", {
 export type PlatformApiKey = typeof platformApiKeys.$inferSelect;
 export type InsertPlatformApiKey = typeof platformApiKeys.$inferInsert;
 
+// ─── User Integrations (third-party API keys stored per user/project) ────────
+export const userIntegrations = pgTable("user_integrations", {
+  id: serial("id").primaryKey(),
+  userId: integer("userId").notNull(),
+  projectId: integer("projectId"),            // null = global, set = project-specific
+  apiName: varchar("apiName", { length: 64 }).notNull(),   // "stripe", "openai", "twilio"…
+  apiLabel: varchar("apiLabel", { length: 128 }).notNull(), // display name: "Stripe"
+  encryptedKey: text("encryptedKey").notNull(),
+  keyHint: varchar("keyHint", { length: 20 }), // "sk_live_****ab3c"
+  baseUrl: varchar("baseUrl", { length: 512 }), // API base URL (for proxy routing)
+  docUrl: text("docUrl"),                       // official doc URL found
+  docSummary: text("docSummary"),               // brief doc summary for LLM context
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().notNull(),
+});
+
+export type UserIntegration = typeof userIntegrations.$inferSelect;
+export type InsertUserIntegration = typeof userIntegrations.$inferInsert;
+
 // ─── Plans ────────────────────────────────────────────────────────────────────
 export const plans = pgTable("plans", {
   id: serial("id").primaryKey(),
