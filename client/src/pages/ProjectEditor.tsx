@@ -962,7 +962,7 @@ export default function ProjectEditor() {
               const m = accJson.match(/"reply"\s*:\s*"((?:[^"\\]|\\.)*)"/);
               if (m) setStreamingReply(m[1].replace(/\\n/g, "\n").replace(/\\"/g, '"').replace(/\\\\/g, "\\"));
             }
-            if (evt.versionId) { setSelectedVersionId(evt.versionId); toast.success("Site modifié !"); }
+            if (evt.versionId) { setSelectedVersionId(evt.versionId); toast.success(isExpoProject ? "App modifiée !" : "Site modifié !"); }
             if (evt.reply !== undefined) {
               setStreamingReply("");
               utils.projects.getChatMessages.invalidate({ projectId });
@@ -972,6 +972,10 @@ export default function ProjectEditor() {
                 setHtmlCode(extractHtml(evt.generatedCode));
                 setCssCode(extractCss(evt.generatedCode));
                 setJsCode(extractJs(evt.generatedCode));
+                // For Expo projects, also refresh the HTML phone preview
+                if (isExpoProject && evt.action === "modify") {
+                  generateExpoHtmlPreview(evt.generatedCode);
+                }
               } else if (evt.action === "modify") {
                 toast.warning("Code non extrait. Réessaie.");
               }
@@ -990,7 +994,7 @@ export default function ProjectEditor() {
       setAgentStep(null);
       setChatPhase("idle");
     }
-  }, [projectId]);
+  }, [projectId, isExpoProject, generateExpoHtmlPreview]);
 
   /* chatEdit kept for type compatibility */
   const chatEdit = { isPending: isChatPending, mutate: (args: any) => sendChatStream(args.message) };

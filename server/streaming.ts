@@ -890,32 +890,71 @@ export function registerStreamingRoutes(app: Express) {
         body: JSON.stringify({
           model: "deepseek-chat",
           stream: true,
-          max_tokens: 1800,
+          max_tokens: 4000,
           temperature: 0.2,
           messages: [
             {
               role: "system",
-              content: `Convert React Native App.js to a mobile HTML preview. Output ONLY raw HTML, no markdown, no explanation, no backticks.
+              content: `Tu convertis un fichier App.js React Native en une preview HTML mobile fidèle. Retourne UNIQUEMENT du HTML brut — aucun markdown, aucune explication, aucun backtick.
 
-RULES:
-- body: margin:0; font-family:system-ui,sans-serif; width:100%; min-height:100vh; overflow-x:hidden; overflow-y:auto; box-sizing:border-box; background:[copy bg color from App.js]
-- Copy ALL colors, gradients, border-radius, shadows from the StyleSheet
-- Map: View→div, Text→p or span or h2, TouchableOpacity→button, ScrollView→div with overflow-y:auto, FlatList→div, Image→img with object-fit:cover, TextInput→input, LinearGradient→div with background:linear-gradient, SafeAreaView→div, StatusBar→div(height:44px)
-- Inline styles ONLY — no <style> block, no CDN, no classes
-- Bottom tab bar: position:fixed; bottom:0; left:0; right:0; display:flex; background:[nav bg]; border-top:1px solid rgba(0,0,0,.1); z-index:100; padding:8px 0 16px
-- Each tab: flex:1; display:flex; flex-direction:column; align-items:center; gap:3px; font-size:10px; cursor:pointer
-- Active tab: color:[primary]; inactive: color:#888
-- Only the first visible screen (Home screen). No JS navigation needed.
-- Images: use placeholder img tags with bg-color instead of real URLs
-- Reproduce the EXACT layout, spacing, and colors of the app`
+═══ STRUCTURE GÉNÉRALE ═══
+<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<style>
+  * { box-sizing:border-box; margin:0; padding:0; }
+  body { font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',system-ui,sans-serif; background:#f2f2f2; width:100%; min-height:100vh; overflow-x:hidden; }
+  /* copie TOUTES les couleurs, gradients, border-radius, shadows du StyleSheet ici */
+  /* classes pour chaque composant principal */
+</style>
+</head><body>
+  <!-- TOUS les écrans : un <div class="screen" id="screen-NOM"> par écran/onglet -->
+  <!-- Barre d'onglets fixe en bas si présente -->
+  <script>/* navigation entre écrans */</script>
+</body></html>
+
+═══ RÈGLES DE CONVERSION ═══
+React Native → HTML :
+- View → <div>
+- Text (titre h1/h2) → <h1>/<h2> ; Text normal → <p> ou <span>
+- TouchableOpacity / Pressable → <button> avec cursor:pointer, border:none, background:transparent
+- ScrollView → <div style="overflow-y:auto">
+- FlatList → <div> avec les items dedans (génère 3-5 items représentatifs si données dynamiques)
+- Image → <div style="background:#ccc;border-radius:...;overflow:hidden"> ou <img> si src disponible
+- TextInput → <input type="text">
+- LinearGradient → <div style="background:linear-gradient(...)"> (copie direction et couleurs)
+- SafeAreaView → <div style="padding-top:44px">
+- StatusBar → <div style="height:44px;background:[couleur]">
+- Icônes (Ionicons, MaterialIcons, FontAwesome) → emoji équivalent ou SVG inline simple
+
+═══ NAVIGATION & ONGLETS ═══
+Si le composant a plusieurs écrans OU une barre d'onglets (TabBar/BottomTabNavigator) :
+- Crée UN <div class="screen" id="screen-NOM"> par écran avec tout son contenu
+- Affiche le premier écran par défaut (display:block), masque les autres (display:none)
+- Crée la barre d'onglets en position:fixed;bottom:0 avec les bons labels et icônes emoji
+- Ajoute ce JS minimal : function showTab(id){document.querySelectorAll('.screen').forEach(s=>s.style.display='none');document.getElementById(id).style.display='block';document.querySelectorAll('.tab-btn').forEach(b=>b.classList.remove('active'));event.currentTarget.classList.add('active');}
+- Chaque onglet : <button class="tab-btn" onclick="showTab('screen-NOM')">
+
+═══ FIDÉLITÉ VISUELLE ═══
+- Copie EXACTEMENT les couleurs du StyleSheet (primaryColor, backgroundColor, etc.)
+- Respecte les border-radius, padding, margin, fontSize définis dans les styles
+- Si l'app a un fond sombre → body background sombre
+- Barre d'onglets : même fond, même couleur active/inactive que dans le StyleSheet
+- Génère du VRAI contenu représentatif (pas de Lorem ipsum) — si l'app montre des données (trajets VTC, services, prix), invente 3-4 exemples réalistes
+- Card/item : reproduit avec les bonnes ombres (box-shadow), arrondis et espacements
+- Ajoute padding-bottom au dernier écran pour que la barre d'onglets ne cache pas le contenu
+
+═══ INTERDITS ═══
+- Aucune bibliothèque CDN externe
+- Aucun import ES module
+- Aucun placeholder vide (divs sans contenu)
+- Aucune troncature du HTML — le rendu doit être complet jusqu'à </html>`
             },
             {
               role: "user",
-              content: `App.js:\n\n${code.slice(0, 3000)}`
+              content: `App.js (${projectName}):\n\n${code.slice(0, 7000)}`
             }
           ],
         }),
-        signal: AbortSignal.timeout(60000),
+        signal: AbortSignal.timeout(90000),
       });
 
       if (!aiRes.ok || !aiRes.body) {
@@ -1462,6 +1501,9 @@ Retourne UNIQUEMENT le code HTML, sans explication, sans markdown, sans backtick
       .where(and(eq(projects.id, projectId), eq(projects.userId, user.id))).limit(1);
     if (!project[0]) { res.status(404).json({ error: "Projet introuvable" }); return; }
 
+    const projectFramework = project[0]?.framework || "html";
+    const isExpo = projectFramework === "expo";
+
     const currentVersion = await db.select().from(versions)
       .where(eq(versions.id, project[0].currentVersionId!)).limit(1);
     if (!currentVersion[0]) { res.status(400).json({ error: "Aucune version générée" }); return; }
@@ -1504,8 +1546,34 @@ Retourne UNIQUEMENT le code HTML, sans explication, sans markdown, sans backtick
 
     // ── PHASE 1: RAISONNEMENT ──────────────────────────────────────────────
     if (phase === "reason") {
-      pipelineLog('reason:start', { project: project[0].name, plan: userPlan, consoleErrors: consoleErrors?.length || 0 });
-      const reasonerSystemPrompt = `Tu es Mar-ia, experte en développement web. Analyse attentivement le code et la demande avant de répondre.
+      pipelineLog('reason:start', { project: project[0].name, plan: userPlan, consoleErrors: consoleErrors?.length || 0, isExpo });
+      const reasonerSystemPrompt = isExpo
+        ? `Tu es Mar-ia, experte en React Native / Expo. Analyse le code App.js et la demande.
+
+ÉTAPE 1 — CLASSIFIE la demande :
+• Bug d'affichage (écran blanc, crash) → cherche : import manquant, composant mal utilisé, prop incorrecte
+• Erreur JS → cherche : variable undefined, hook mal utilisé, async/await manquant
+• Modification design → identifie les propriétés StyleSheet concernées
+• Ajout de fonctionnalité → identifie l'emplacement d'insertion dans le composant
+• Ajout de navigation → cherche si React Navigation est déjà présent ou s'il faut simuler avec state
+
+ÉTAPE 2 — ANALYSE DU CODE (sois précis, cite le code) :
+• Cite les composants (View, Text, ScrollView, etc.) concernés
+• Pour un bug : cite le composant ou le style problématique
+• Pour une modif : cite le StyleSheet key et la propriété à modifier
+• Pour un ajout : cite la section du code où insérer
+
+ÉTAPE 3 — RÉSUMÉ (120 mots max, format STRICT) :
+**Demande :** [reformulation précise en 1-2 phrases]
+**Diagnostic :** [problèmes concrets trouvés dans le code — cite les éléments réels]
+**Actions prévues :**
+• [action 1 précise]
+• [action 2 précise]
+• [...]
+**Périmètre :** Composants / Styles / Navigation / Data
+
+⚠️ Si la demande est vague, propose 3 améliorations concrètes et demande laquelle.`
+        : `Tu es Mar-ia, experte en développement web. Analyse attentivement le code et la demande avant de répondre.
 
 ARCHITECTURE DU SITE (SPA mono-fichier) :
 • Toutes les pages = <section id="page-id"> dans un seul fichier HTML
@@ -1540,7 +1608,10 @@ ARCHITECTURE DU SITE (SPA mono-fichier) :
       const consoleCtxReason = consoleErrors && consoleErrors.length > 0
         ? `\n\n⚠️ ERREURS JS DÉTECTÉES DANS LE NAVIGATEUR (console de la preview) :\n${consoleErrors.slice(0, 8).map((e, i) => `${i + 1}. ${e}`).join('\n')}\nSi ces erreurs sont liées à la demande, inclus-les dans ton diagnostic et dans les actions prévues.`
         : '';
-      const reasonerUserMsg = `Demande utilisateur: "${message}"\n\nCode actuel du site (${project[0].name}):\n${fullCode.slice(0, 8000)}${consoleCtxReason}`;
+      const codeForReason = isExpo ? fullCode.slice(0, 12000) : fullCode.slice(0, 8000);
+      const reasonerUserMsg = isExpo
+        ? `Demande utilisateur: "${message}"\n\nApp.js actuel (${project[0].name}):\n${codeForReason}${consoleCtxReason}`
+        : `Demande utilisateur: "${message}"\n\nCode actuel du site (${project[0].name}):\n${codeForReason}${consoleCtxReason}`;
 
       // Try reasoner with automatic fallback if quota exceeded or error
       let reasoning: LlmResult | null = null;
@@ -1618,9 +1689,26 @@ SI UNE IMAGE EST JOINTE (priorité absolue) :
         const agentLlm = resolveKey(config.agent, allKeys);
         if (agentLlm) {
           sseWrite(res, "progress", { agent: AGENT_NAMES[agentLlm.provider], step: "Planification des modifications…", icon: "🤖" });
-          const plan = await tryCallSync(
-            agentLlm.provider, agentLlm.model, agentLlm.key,
-            `Tu es un architecte web expert. Analyse le code et produis un plan d'intervention précis (200 mots max).
+          const agentSystemPrompt = isExpo
+            ? `Tu es un architecte React Native expert. Analyse le code App.js et produis un plan d'intervention précis (200 mots max).
+
+ÉTAPE 1 — INVENTAIRE (lis le code et liste) :
+• Composants principaux présents (View, ScrollView, FlatList, etc.)
+• StyleSheet keys existants (ex: container, header, card, button)
+• Couleurs et valeurs définies dans les styles (ex: backgroundColor: '#6C63FF')
+• State hooks présents (ex: const [activeTab, setActiveTab] = useState(0))
+• Fonctions et handlers (ex: handlePress, navigateTo, fetchData)
+
+ÉTAPE 2 — PLAN CHIRURGICAL (ne touche QUE ce qui est demandé) :
+• Composant : cite l'emplacement exact (dans quel View, après quel composant)
+• Style : cite le StyleSheet key et la propriété à modifier avec la nouvelle valeur
+• State : cite les hooks à ajouter ou modifier
+
+ÉTAPE 3 — LISTE DE PRÉSERVATION :
+Ce qui ne doit PAS être touché : [liste les composants et styles existants à conserver]
+
+RÈGLES : N'utilise que les imports Expo SDK. Garde StyleSheet.create(). Pas de bibliothèques tierces.`
+            : `Tu es un architecte web expert. Analyse le code et produis un plan d'intervention précis (200 mots max).
 
 ÉTAPE 1 — INVENTAIRE (lis le code et liste) :
 • Variables CSS définies dans :root {} (ex: --c-primary: #2563eb, --font-display: 'Raleway')
@@ -1637,7 +1725,10 @@ SI UNE IMAGE EST JOINTE (priorité absolue) :
 ÉTAPE 3 — LISTE DE PRÉSERVATION :
 Ce qui ne doit PAS être touché : [liste les éléments existants à conserver absolument]
 
-RÈGLE CRITIQUE : href="#xxx" interdit — navigation = onclick="showPage('id'); return false;" href="#"`,
+RÈGLE CRITIQUE : href="#xxx" interdit — navigation = onclick="showPage('id'); return false;" href="#"`;
+          const plan = await tryCallSync(
+            agentLlm.provider, agentLlm.model, agentLlm.key,
+            agentSystemPrompt,
             `Tâche: ${summary}\n\nCode actuel (extrait):\n${codeSnippet}`,
             900
           );
@@ -1650,12 +1741,18 @@ RÈGLE CRITIQUE : href="#xxx" interdit — navigation = onclick="showPage('id');
           const qwenLlm = resolveKey("qwen", allKeys);
           if (qwenLlm) {
             sseWrite(res, "progress", { agent: AGENT_NAMES[qwenLlm.provider], step: "Préparation des modifications…", icon: "⚙️" });
-            const draft = await tryCallSync(
-              qwenLlm.provider, qwenLlm.model, qwenLlm.key,
-              `Tu es un développeur frontend expert. Génère les snippets précis à intégrer dans le code existant (pas le HTML complet).
+            const qwenSystemPrompt = isExpo
+              ? `Tu es un développeur React Native expert. Génère les snippets précis à intégrer dans le code App.js existant.
+Pour chaque snippet : indique l'emplacement exact (dans quel composant, après quelle ligne).
+Réutilise les StyleSheet keys existants. N'utilise que des imports Expo SDK.
+Pas de bibliothèques tierces. Garde StyleSheet.create() pour tous les styles.`
+              : `Tu es un développeur frontend expert. Génère les snippets précis à intégrer dans le code existant (pas le HTML complet).
 Pour chaque snippet : indique l'emplacement exact (après quelle balise / dans quelle classe CSS / dans quelle fonction JS).
 Réutilise les variables CSS et classes existantes. Respecte le style du code actuel.
-NAVIGATION : onclick="showPage('id'); return false;" — jamais href="#quelquechose"`,
+NAVIGATION : onclick="showPage('id'); return false;" — jamais href="#quelquechose"`;
+            const draft = await tryCallSync(
+              qwenLlm.provider, qwenLlm.model, qwenLlm.key,
+              qwenSystemPrompt,
               `Plan: ${agentPlan}\nTâche: ${summary}\nCode existant:\n${codeSnippet}`,
               1200
             );
@@ -1670,7 +1767,52 @@ NAVIGATION : onclick="showPage('id'); return false;" — jamais href="#quelquech
 
         sseWrite(res, "progress", { agent: AGENT_NAMES[execLlm.provider], step: "Génération du code complet…", icon: "💻" });
 
-        const systemPrompt = `Tu es Mar-ia, développeuse web senior. Tu travailles sur le projet "${project[0].name}".
+        const systemPrompt = isExpo
+          ? `Tu es Mar-ia, développeuse React Native / Expo senior. Tu travailles sur l'app "${project[0].name}".
+
+TÂCHE : ${summary}
+
+FORMAT DE RÉPONSE — UN SEUL JSON BRUT, RIEN AVANT, RIEN APRÈS :
+• Modification du code → {"action":"modify","reply":"[1-2 phrases décrivant le changement]","code":"import React from 'react';\n..."}
+• Question conversationnelle (aucun changement de code) → {"action":"chat","reply":"[réponse]"}
+⚠️ Tout changement visuel, ajout de composant, correction de bug → action="modify" OBLIGATOIRE.
+
+══ RÈGLE 1 — LIRE AVANT D'ÉCRIRE ══
+Analyse le code App.js actuel ci-dessous. Identifie EXACTEMENT :
+• Les composants importés (View, Text, ScrollView, TouchableOpacity, etc.) → GARDE CES IMPORTS
+• Les StyleSheet keys existants (container, header, card, etc.) → RÉUTILISE-LES
+• Les couleurs définies dans les styles → PRÉSERVE LA PALETTE
+• Les hooks useState/useEffect existants → CONSERVE-LES si non modifiés
+• Les fonctions handler existantes → CONSERVE-LES si non modifiées
+
+══ RÈGLE 2 — MODIFICATION CHIRURGICALE ══
+Change UNIQUEMENT ce que la tâche demande. Préserve intégralement :
+composants existants, styles, couleurs, logique métier, imports non modifiés.
+N'ajoute rien de non demandé. N'efface rien qui fonctionne.
+
+══ RÈGLE 3 — CODE EXPO VALIDE ══
+• N'utilise QUE des composants et APIs disponibles dans Expo SDK (react-native, expo, expo-status-bar, expo-linear-gradient, etc.)
+• PAS de bibliothèques tierces non disponibles dans Expo Snack (pas de react-navigation seul, pas de axios, etc.)
+• Tous les styles dans StyleSheet.create() — pas de styles inline complexes
+• Garde les dimensions relatives (flex, %, Dimensions.get) — pas de valeurs px absolues qui cassent sur différents écrans
+• Platform.OS pour les différences iOS/Android si nécessaire
+
+══ RÈGLE 4 — CODE 100% COMPLET ══
+Retourne le fichier App.js ENTIER. Jamais tronqué. Jamais raccourci avec "// reste du code".
+La dernière ligne doit être "export default App;" ou équivalent.
+Si le code actuel fait 3000 caractères, ta réponse doit faire au moins autant.
+
+══ RÈGLE 5 — QUALITÉ VISUELLE PREMIUM ══
+• Nouvelles sections : StyleSheet cohérent avec l'existant (mêmes rayons, ombres, couleurs)
+• Texte réaliste et dense — JAMAIS de placeholder "Lorem ipsum" ou "Texte ici"
+• Boutons avec activeOpacity={0.8}, padding suffisant, border-radius cohérent
+• ScrollView avec showsVerticalScrollIndicator={false} pour un look propre
+• Icônes : utilise des emojis ou @expo/vector-icons si déjà importé
+
+══ APP.JS ACTUEL (v${currentVersion[0].versionNumber}) — LIS ATTENTIVEMENT AVANT D'ÉCRIRE ══
+${currentVersion[0].generatedCode || ""}
+${agentPlan ? `\n══ PLAN D'ACTION ══\n${agentPlan}` : ""}${qwenDraft ? `\n\n══ SNIPPETS PRÉPARÉS ══\n${qwenDraft}` : ""}${consoleErrors && consoleErrors.length > 0 ? `\n\n══ ERREURS DÉTECTÉES (console) ══\n${consoleErrors.slice(0, 8).map((e, i) => `${i + 1}. ${e}`).join('\n')}\n⚠️ Corrige TOUTES ces erreurs en plus de la tâche principale.` : ""}`
+          : `Tu es Mar-ia, développeuse web senior. Tu travailles sur le projet "${project[0].name}".
 
 TÂCHE : ${summary}
 
@@ -1856,7 +1998,7 @@ ${agentPlan ? `\n══ PLAN D'ACTION ══\n${agentPlan}` : ""}${qwenDraft ? `
         // instead of regenerating the whole HTML. This is reliable for scrollbar,
         // colour, spacing, animation changes.
         const agentExt = agentResponse as { action: string; code?: string; reply: string; css?: string };
-        if (agentExt.action === "style-patch" && agentExt.css) {
+        if (!isExpo && agentExt.action === "style-patch" && agentExt.css) {
           const existingCode = currentVersion[0].generatedCode || "";
           const cssBlock = `\n/* === patch — ${summary.slice(0, 60)} === */\n${agentExt.css}\n`;
           // Inject before the LAST </style> tag so it overrides earlier rules
@@ -1869,7 +2011,8 @@ ${agentPlan ? `\n══ PLAN D'ACTION ══\n${agentPlan}` : ""}${qwenDraft ? `
         }
 
         // ── D : Validation + boucle auto-correction (max 2 passes) ────
-        if (agentResponse.action === "modify" && agentResponse.code) {
+        // Skip HTML-specific validation for Expo/React Native code (App.js never has </html>)
+        if (!isExpo && agentResponse.action === "modify" && agentResponse.code) {
           const controlLlm = resolveKey(config.controller, allKeys);
 
           for (let pass = 1; pass <= 2; pass++) {
