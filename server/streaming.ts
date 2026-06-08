@@ -2212,10 +2212,11 @@ Règles :
     const user = await authenticate(req, res);
     if (!user) return;
 
-    const { projectId, screenshot, screenshotMimeType = "image/jpeg" } = req.body as {
+    const { projectId, screenshot, screenshotMimeType = "image/jpeg", consoleErrors } = req.body as {
       projectId: number;
       screenshot?: string;       // base64, no data: prefix
       screenshotMimeType?: string;
+      consoleErrors?: string[];
     };
     if (!projectId) { res.status(400).json({ error: "projectId requis" }); return; }
 
@@ -2246,7 +2247,7 @@ Règles :
     res.setHeader("Connection", "keep-alive");
     res.flushHeaders();
 
-    pipelineLog('debug:start', { project: project[0].name, hasScreenshot: !!screenshot, screenshotLen: screenshot?.length || 0 });
+    pipelineLog('debug:start', { project: project[0].name, hasScreenshot: !!screenshot, screenshotLen: screenshot?.length || 0, consoleErrors: consoleErrors?.length || 0 });
 
     const startTime = Date.now();
     let totalTokens = 0;
@@ -2356,6 +2357,10 @@ Si la page paraît correcte visuellement, réponds "VISUELLEMENT OK".` }
         ? `\n\n══ PROBLÈMES VISUELS DÉTECTÉS (capture d'écran) ══\n${visualFindings}\n⚠️ Corrige ces problèmes visuels EN PRIORITÉ.`
         : "";
 
+      const consoleSection = consoleErrors && consoleErrors.length > 0
+        ? `\n\n══ ERREURS JS CAPTURÉES (console du navigateur) ══\n${consoleErrors.slice(0, 10).map((e, i) => `${i + 1}. ${e}`).join('\n')}\n⚠️ Ces erreurs DOIVENT être réparées en PRIORITÉ ABSOLUE — elles cassent le site pour l'utilisateur.`
+        : "";
+
       const systemPrompt = `Tu es un expert en qualité web et débogage. Analyse le code HTML/CSS/JS fourni et corrige TOUS les problèmes détectés.
 
 CORRECTIONS OBLIGATOIRES:
@@ -2367,7 +2372,7 @@ CORRECTIONS OBLIGATOIRES:
 6. CONTENU: remplace Lorem ipsum par du vrai contenu cohérent avec le site
 7. RESPONSIVE: assure que le site s'affiche correctement sur mobile (meta viewport, media queries)
 8. SHOWPAGE: si le site a plusieurs <section id="page-...">, la fonction showPage() DOIT exister
-${visualSection}
+${consoleSection}${visualSection}
 
 Retourne UNIQUEMENT ce JSON brut (pas de markdown, pas de \`\`\`):
 {"fixed_code":"<!DOCTYPE html>...code HTML complet corrigé...","report":"• Problème 1 corrigé\\n• Problème 2 corrigé"}`;

@@ -24,8 +24,8 @@ import {
   Sparkles, Send, Eye, Code2, History, Smartphone, Tablet, Monitor,
   Loader2, ArrowLeft, Globe, RotateCcw, Save, CheckCircle2, MessageSquare,
   Rocket, Share2, Tag, MousePointer2, Copy, Check, PencilRuler, Upload,
-  PanelLeftClose, PanelLeftOpen, Bug, Mic, MicOff, Paperclip, Camera, X as XIcon, Image as ImageIcon, Trash2,
-  ExternalLink, Download
+  PanelLeftClose, PanelLeftOpen, Mic, MicOff, Paperclip, Camera, X as XIcon, Image as ImageIcon, Trash2,
+  ExternalLink, Download, Plus, GripVertical
 } from "lucide-react";
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
@@ -109,7 +109,7 @@ const cmTheme = EditorView.theme({
 
 // ── Visual Editor script injected into iframe via contentDocument ──
 const VE_SCRIPT = `(function(){
-  var sel=null,deb=null,dragEl=null,overlay=null,resizing=null;
+  var sel=null,deb=null,dragEl=null,overlay=null,resizing=null,dropIndicator=null,dropTarget=null;
 
   var vs=document.createElement('style');
   vs.id='__ve_s__';
@@ -118,7 +118,7 @@ const VE_SCRIPT = `(function(){
 
   function cleanHtml(){
     var clone=document.documentElement.cloneNode(true);
-    ['#__ve__','#__ve_s__','#__ve_ov__','#__ve_preload__','#__ve_htip__','#__ve_dim__'].forEach(function(id){
+    ['#__ve__','#__ve_s__','#__ve_ov__','#__ve_preload__','#__ve_htip__','#__ve_dim__','#__ve_drop__'].forEach(function(id){
       var el=clone.querySelector(id);if(el&&el.parentNode)el.parentNode.removeChild(el);
     });
     Array.from(clone.querySelectorAll('[data-veh],[data-ves],[data-vedrag],[draggable],[contenteditable]')).forEach(function(el){
@@ -179,6 +179,28 @@ const VE_SCRIPT = `(function(){
   function removeOverlay(){
     if(overlay&&overlay.parentNode)overlay.parentNode.removeChild(overlay);
     overlay=null;resizing=null;
+  }
+
+  function showDropLine(e,el){
+    if(!el||!el.tagName||el===document.body||el===document.documentElement)return;
+    if(!dropIndicator){
+      dropIndicator=document.createElement('div');
+      dropIndicator.id='__ve_drop__';
+      dropIndicator.style.cssText='position:fixed;pointer-events:none;z-index:100001;height:3px;background:linear-gradient(90deg,#6366f1,#06b6d4);border-radius:2px;box-shadow:0 0 8px rgba(99,102,241,.8);';
+      document.body.appendChild(dropIndicator);
+    }
+    var r=el.getBoundingClientRect();
+    var pos=(e.clientY-r.top)<r.height/2?'before':'after';
+    dropIndicator.style.left=r.left+'px';
+    dropIndicator.style.top=(pos==='before'?r.top:r.bottom)-1.5+'px';
+    dropIndicator.style.width=r.width+'px';
+    dropIndicator.style.display='block';
+    dropTarget={el:el,pos:pos};
+  }
+
+  function hideDropLine(){
+    if(dropIndicator)dropIndicator.style.display='none';
+    dropTarget=null;
   }
 
   function getBodyChildren(){
@@ -287,22 +309,33 @@ const VE_SCRIPT = `(function(){
   document.addEventListener('mouseup',function(){if(resizing){resizing=null;push();}},true);
   document.addEventListener('scroll',updateOverlay,true);
 
-  document.addEventListener('dragstart',function(e){if(e.target===sel){dragEl=sel;e.target.setAttribute('data-vedrag','1');e.dataTransfer.effectAllowed='move';}},true);
-  document.addEventListener('dragover',function(e){if(dragEl){e.preventDefault();e.dataTransfer.dropEffect='move';}},true);
+  document.addEventListener('dragstart',function(e){
+    if(e.target===sel){dragEl=sel;e.target.setAttribute('data-vedrag','1');e.dataTransfer.effectAllowed='move';}
+  },true);
+  document.addEventListener('dragover',function(e){
+    if(!dragEl)return;
+    e.preventDefault();e.dataTransfer.dropEffect='move';
+    var t=e.target;
+    if(!t||!t.tagName||t===dragEl||dragEl.contains(t)||(t.getAttribute&&t.getAttribute('data-vehandle'))||t.id==='__ve_drop__')return;
+    showDropLine(e,t);
+  },true);
   document.addEventListener('drop',function(e){
     if(!dragEl)return;
     e.preventDefault();e.stopPropagation();
-    var t=e.target;
-    while(t&&t!==document.body){if(t.parentElement===dragEl.parentElement&&t!==dragEl)break;t=t.parentElement;}
-    if(t&&t!==dragEl&&t.parentElement===dragEl.parentElement){
-      var siblings=Array.from(dragEl.parentElement.children);
-      if(siblings.indexOf(dragEl)<siblings.indexOf(t))dragEl.parentElement.insertBefore(dragEl,t.nextSibling);
-      else dragEl.parentElement.insertBefore(dragEl,t);
-      push();
+    var dropped=dragEl;
+    if(dropTarget){
+      var dt=dropTarget;
+      if(dt.pos==='before'&&dt.el.parentElement)dt.el.parentElement.insertBefore(dropped,dt.el);
+      else if(dt.el.parentElement){var nxt=dt.el.nextSibling;if(nxt)dt.el.parentElement.insertBefore(dropped,nxt);else dt.el.parentElement.appendChild(dropped);}
     }
-    dragEl.removeAttribute('data-vedrag');dragEl=null;updateOverlay();
+    dropped.removeAttribute('data-vedrag');dragEl=null;
+    hideDropLine();selectEl(dropped);push();sendLayers();
   },true);
-  document.addEventListener('dragend',function(){if(dragEl)dragEl.removeAttribute('data-vedrag');dragEl=null;},true);
+  document.addEventListener('dragleave',function(e){
+    if(!dragEl)return;
+    if(!e.relatedTarget||!document.documentElement.contains(e.relatedTarget))hideDropLine();
+  },true);
+  document.addEventListener('dragend',function(){if(dragEl)dragEl.removeAttribute('data-vedrag');dragEl=null;hideDropLine();},true);
 
   document.addEventListener('input',function(){
     push();
@@ -364,8 +397,82 @@ const VE_SCRIPT = `(function(){
       ensurePositioned(el2);el2.style.zIndex=(curZ+e.data.delta)+'';push();sendLayers();
     }
     if(e.data.type==='VE_GET_LAYERS'){sendLayers();}
+    if(e.data.type==='VE_INSERT_BLOCK'){
+      var tmp=document.createElement('div');
+      tmp.innerHTML=e.data.html;
+      var newEl=tmp.firstElementChild;
+      if(!newEl){newEl=document.createElement('div');newEl.innerHTML=e.data.html;}
+      if(sel){var nxs=sel.nextElementSibling;if(nxs)sel.parentElement.insertBefore(newEl,nxs);else sel.parentElement.appendChild(newEl);}
+      else{document.body.appendChild(newEl);}
+      selectEl(newEl);push();sendLayers();
+    }
   });
 })();`;
+
+/* ── Visual Editor block palette ────────────────────────────────────────── */
+const VE_BLOCKS = [
+  {
+    id: "hero", label: "Hero", icon: "🏠", category: "sections",
+    html: `<section style="padding:80px 40px;text-align:center;background:linear-gradient(135deg,#6366f1,#4f46e5);color:white;"><h1 style="font-size:2.8em;font-weight:700;margin:0 0 16px">Titre Principal</h1><p style="font-size:1.15em;opacity:.85;margin:0 0 32px">Sous-titre accrocheur qui décrit votre proposition de valeur</p><a href="#" style="background:white;color:#6366f1;padding:14px 32px;border-radius:50px;font-weight:700;text-decoration:none;display:inline-block">Commencer →</a></section>`,
+  },
+  {
+    id: "cta", label: "CTA", icon: "📣", category: "sections",
+    html: `<section style="padding:60px 40px;text-align:center;background:#fafafa;border-top:1px solid #e5e7eb;border-bottom:1px solid #e5e7eb;"><h2 style="font-size:2em;font-weight:700;color:#111;margin:0 0 12px">Prêt à commencer ?</h2><p style="color:#6b7280;margin:0 0 28px;font-size:1.05em">Rejoignez des milliers d'utilisateurs satisfaits.</p><a href="#" style="background:#6366f1;color:white;padding:14px 32px;border-radius:8px;font-weight:600;text-decoration:none;display:inline-block;font-size:1em">Démarrer gratuitement</a></section>`,
+  },
+  {
+    id: "features", label: "Features 3 col", icon: "✨", category: "sections",
+    html: `<section style="padding:60px 40px;"><h2 style="text-align:center;font-size:2em;font-weight:700;margin:0 0 40px;color:#111">Nos fonctionnalités</h2><div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:24px;"><div style="padding:28px;background:#f9fafb;border-radius:12px;text-align:center;border:1px solid #e5e7eb;"><div style="font-size:2.4em;margin-bottom:14px">⚡</div><h3 style="font-weight:600;margin:0 0 8px;color:#111">Rapide</h3><p style="color:#6b7280;font-size:.9em;margin:0">Description de cette fonctionnalité importante.</p></div><div style="padding:28px;background:#f9fafb;border-radius:12px;text-align:center;border:1px solid #e5e7eb;"><div style="font-size:2.4em;margin-bottom:14px">🔒</div><h3 style="font-weight:600;margin:0 0 8px;color:#111">Sécurisé</h3><p style="color:#6b7280;font-size:.9em;margin:0">Description de cette fonctionnalité importante.</p></div><div style="padding:28px;background:#f9fafb;border-radius:12px;text-align:center;border:1px solid #e5e7eb;"><div style="font-size:2.4em;margin-bottom:14px">🌐</div><h3 style="font-weight:600;margin:0 0 8px;color:#111">Accessible</h3><p style="color:#6b7280;font-size:.9em;margin:0">Description de cette fonctionnalité importante.</p></div></div></section>`,
+  },
+  {
+    id: "text2col", label: "2 colonnes", icon: "📐", category: "sections",
+    html: `<section style="padding:60px 40px;display:grid;grid-template-columns:1fr 1fr;gap:48px;align-items:center;"><div><h2 style="font-size:1.9em;font-weight:700;color:#111;margin:0 0 16px">Titre de la section</h2><p style="color:#4b5563;line-height:1.75;margin:0 0 20px">Paragraphe décrivant en détail les avantages ou fonctionnalités clés. Soyez précis et convaincant.</p><a href="#" style="color:#6366f1;font-weight:600;text-decoration:none;">En savoir plus →</a></div><div style="background:#f3f4f6;border-radius:16px;padding:48px 32px;text-align:center;color:#9ca3af;font-size:.9em;">Image ou contenu</div></section>`,
+  },
+  {
+    id: "testimonial", label: "Témoignage", icon: "💬", category: "sections",
+    html: `<section style="padding:60px 40px;background:#faf5ff;"><blockquote style="max-width:680px;margin:0 auto;text-align:center;"><p style="font-size:1.35em;font-style:italic;color:#4c1d95;line-height:1.75;margin:0 0 28px">"Ce produit a complètement transformé notre façon de travailler. Je le recommande sans hésitation à toute l'équipe."</p><footer style="color:#7c3aed;font-weight:600;">Marie Dupont <span style="font-weight:400;color:#6b7280">— Directrice Marketing, Entreprise XYZ</span></footer></blockquote></section>`,
+  },
+  {
+    id: "pricing", label: "Tarifs", icon: "💰", category: "sections",
+    html: `<section style="padding:60px 40px;"><h2 style="text-align:center;font-size:2em;font-weight:700;margin:0 0 40px;color:#111">Nos tarifs</h2><div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:24px;max-width:860px;margin:0 auto;"><div style="border:1px solid #e5e7eb;border-radius:16px;padding:32px;text-align:center;"><h3 style="font-weight:600;margin:0 0 8px;color:#374151">Starter</h3><p style="font-size:2.5em;font-weight:700;color:#111;margin:0 0 4px">0€<span style="font-size:.4em;font-weight:400;color:#6b7280">/mois</span></p><p style="color:#6b7280;font-size:.85em;margin:0 0 24px">Idéal pour débuter</p><a href="#" style="display:block;border:1px solid #6366f1;color:#6366f1;padding:10px;border-radius:8px;text-decoration:none;font-weight:600;">Commencer</a></div><div style="border:2px solid #6366f1;border-radius:16px;padding:32px;text-align:center;background:#fafaff;"><p style="font-size:.75em;font-weight:600;color:#6366f1;margin:0 0 8px;text-transform:uppercase">Recommandé</p><h3 style="font-weight:600;margin:0 0 8px;color:#374151">Pro</h3><p style="font-size:2.5em;font-weight:700;color:#111;margin:0 0 4px">29€<span style="font-size:.4em;font-weight:400;color:#6b7280">/mois</span></p><p style="color:#6b7280;font-size:.85em;margin:0 0 24px">Pour les professionnels</p><a href="#" style="display:block;background:#6366f1;color:white;padding:10px;border-radius:8px;text-decoration:none;font-weight:600;">Choisir Pro</a></div></div></section>`,
+  },
+  {
+    id: "contact", label: "Contact", icon: "✉️", category: "forms",
+    html: `<section style="padding:60px 40px;max-width:640px;margin:0 auto;"><h2 style="font-size:1.9em;font-weight:700;margin:0 0 28px;text-align:center;color:#111">Contactez-nous</h2><form style="display:flex;flex-direction:column;gap:16px;" onsubmit="event.preventDefault();this.innerHTML='<p style=text-align:center;padding:32px;color:#059669;font-weight:600;font-size:1.1em>✅ Message envoyé !</p>';"><input placeholder="Votre nom" style="padding:12px 16px;border:1px solid #d1d5db;border-radius:8px;font-size:1em;outline:none;font-family:inherit;" /><input type="email" placeholder="Votre email" style="padding:12px 16px;border:1px solid #d1d5db;border-radius:8px;font-size:1em;outline:none;font-family:inherit;" /><textarea rows="4" placeholder="Votre message…" style="padding:12px 16px;border:1px solid #d1d5db;border-radius:8px;font-size:1em;resize:vertical;outline:none;font-family:inherit;"></textarea><button type="submit" style="background:#6366f1;color:white;padding:14px;border:none;border-radius:8px;font-size:1em;font-weight:600;cursor:pointer;font-family:inherit;">Envoyer →</button></form></section>`,
+  },
+  {
+    id: "gallery", label: "Galerie", icon: "🖼️", category: "media",
+    html: `<section style="padding:60px 40px;"><h2 style="text-align:center;font-size:1.8em;font-weight:700;margin:0 0 32px;color:#111">Galerie</h2><div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:12px;"><img src="https://images.unsplash.com/photo-1506905925346-21bda4d32df4?w=400&q=75" style="width:100%;aspect-ratio:4/3;object-fit:cover;border-radius:8px;" /><img src="https://images.unsplash.com/photo-1469474968028-56623f02e42e?w=400&q=75" style="width:100%;aspect-ratio:4/3;object-fit:cover;border-radius:8px;" /><img src="https://images.unsplash.com/photo-1441974231531-c6227db76b6e?w=400&q=75" style="width:100%;aspect-ratio:4/3;object-fit:cover;border-radius:8px;" /><img src="https://images.unsplash.com/photo-1501854140801-50d01698950b?w=400&q=75" style="width:100%;aspect-ratio:4/3;object-fit:cover;border-radius:8px;" /></div></section>`,
+  },
+  {
+    id: "text", label: "Texte riche", icon: "📝", category: "content",
+    html: `<section style="padding:48px 40px;max-width:720px;margin:0 auto;"><h2 style="font-size:1.8em;font-weight:700;color:#111;margin:0 0 16px">Titre de section</h2><p style="color:#374151;line-height:1.8;margin:0 0 16px">Premier paragraphe avec votre contenu principal. Expliquez votre sujet de manière claire et engageante pour vos visiteurs.</p><p style="color:#374151;line-height:1.8;margin:0">Second paragraphe avec des informations supplémentaires. N'hésitez pas à ajouter des détails pertinents.</p></section>`,
+  },
+  {
+    id: "divider", label: "Séparateur", icon: "—", category: "layout",
+    html: `<div style="padding:0 40px;"><hr style="border:none;border-top:1px solid #e5e7eb;margin:0;" /></div>`,
+  },
+  {
+    id: "spacer", label: "Espace", icon: "↕", category: "layout",
+    html: `<div style="height:80px;"></div>`,
+  },
+] as const;
+
+const VE_BLOCK_CATEGORIES = [
+  { id: "sections", label: "Sections" },
+  { id: "forms",    label: "Formulaires" },
+  { id: "media",    label: "Médias" },
+  { id: "content",  label: "Contenu" },
+  { id: "layout",   label: "Mise en page" },
+] as const;
+
+/* ── Pharmacy cross icon (replaces Bug) ─────────────────────────────────── */
+function PharmacieCross({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" className={className} fill="currentColor" aria-hidden="true">
+      <path d="M19 9h-4V5a1 1 0 0 0-1-1h-4a1 1 0 0 0-1 1v4H5a1 1 0 0 0-1 1v4a1 1 0 0 0 1 1h4v4a1 1 0 0 0 1 1h4a1 1 0 0 0 1-1v-4h4a1 1 0 0 0 1-1v-4a1 1 0 0-1-1z" />
+    </svg>
+  );
+}
 
 /* ── component ───────────────────────────────────────────── */
 export default function ProjectEditor() {
@@ -559,6 +666,8 @@ export default function ProjectEditor() {
   }>(null);
   const [veTextInput, setVeTextInput] = useState("");
   const [showLayers, setShowLayers] = useState(false);
+  const [showBlocksPalette, setShowBlocksPalette] = useState(false);
+  const [blockCategory, setBlockCategory] = useState<string>("sections");
   const [veLayers, setVeLayers] = useState<Array<{ idx: number; tag: string; text: string; zIndex: string; selected: boolean }>>([]);
   const [veLiveDims, setVeLiveDims] = useState<{ w: number; h: number } | null>(null);
   const [dimCopied, setDimCopied] = useState(false);
@@ -1219,6 +1328,7 @@ export default function ProjectEditor() {
           projectId,
           screenshot: screenshot?.data,
           screenshotMimeType: screenshot?.mimeType,
+          consoleErrors: consoleErrors.length > 0 ? consoleErrors : undefined,
         }),
       });
       toast.dismiss("debug-analyze");
@@ -1261,7 +1371,7 @@ export default function ProjectEditor() {
       setIsDebugging(false);
       setAgentStep(null);
     }
-  }, [projectId, captureScreenshot]);
+  }, [projectId, captureScreenshot, consoleErrors]);
 
   /* inspect: listen to messages from iframe */
   useEffect(() => {
@@ -1475,14 +1585,20 @@ export default function ProjectEditor() {
             )}
             {hasCode && (
               <Button size="sm" variant="outline"
-                className="text-xs h-8 px-2 sm:px-3 border-amber-500/40 text-amber-400 hover:bg-amber-500/10 hover:text-amber-300"
+                className={`text-xs h-8 px-2 sm:px-3 ${consoleErrors.length > 0
+                  ? "border-red-500/60 text-red-400 hover:bg-red-500/10 hover:text-red-300"
+                  : "border-amber-500/40 text-amber-400 hover:bg-amber-500/10 hover:text-amber-300"}`}
                 onClick={() => setPendingAction({ summary: "Analyser le code du site, identifier les erreurs et les corriger automatiquement.", action: runDebug })}
                 disabled={isDebugging}
-                title="Analyser et corriger automatiquement les bugs, liens cassés et erreurs">
+                title={consoleErrors.length > 0
+                  ? `${consoleErrors.length} erreur(s) JS détectée(s) — cliquez pour analyser et corriger`
+                  : "Analyser et corriger automatiquement les bugs, liens cassés et erreurs"}>
                 {isDebugging
                   ? <Loader2 className="w-3.5 h-3.5 animate-spin sm:mr-1.5" />
-                  : <Bug className="w-3.5 h-3.5 sm:mr-1.5" />}
-                <span className="hidden sm:inline">{isDebugging ? "Débogage…" : "Débugger"}</span>
+                  : <PharmacieCross className="w-3.5 h-3.5 sm:mr-1.5" />}
+                <span className="hidden sm:inline">
+                  {isDebugging ? "Débogage…" : consoleErrors.length > 0 ? `Réparer (${consoleErrors.length})` : "Débugger"}
+                </span>
               </Button>
             )}
             {hasCode && (
@@ -1915,7 +2031,7 @@ ${jsCode}`;
                   {debugReport && (
                     <div className="flex gap-1.5 items-start">
                       <div className="w-5 h-5 rounded-full bg-amber-500/20 flex items-center justify-center flex-shrink-0 mt-0.5">
-                        <Bug className="w-2.5 h-2.5 text-amber-400" />
+                        <PharmacieCross className="w-2.5 h-2.5 text-amber-400" />
                       </div>
                       <div className="bg-card border border-amber-500/30 rounded-xl rounded-tl-sm px-2.5 py-1.5 max-w-[90%]">
                         <p className="text-[10px] font-semibold text-amber-400 mb-1">Rapport de débogage</p>
@@ -1928,7 +2044,7 @@ ${jsCode}`;
                   {isDebugging && (
                     <div className="flex gap-1.5 items-start">
                       <div className="w-5 h-5 rounded-full bg-amber-500/20 flex items-center justify-center flex-shrink-0">
-                        <Bug className="w-2.5 h-2.5 text-amber-400" />
+                        <PharmacieCross className="w-2.5 h-2.5 text-amber-400" />
                       </div>
                       <div className="bg-card border border-amber-500/30 rounded-xl rounded-tl-sm px-2.5 py-1.5">
                         <div className="flex items-center gap-1.5">
@@ -2180,7 +2296,7 @@ ${jsCode}`;
                       className="flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] bg-red-500/20 text-red-400 hover:bg-red-500/30 transition-colors ml-1"
                       onClick={() => setConsoleErrors([])}
                     >
-                      <Bug className="w-3 h-3" />
+                      <PharmacieCross className="w-3 h-3" />
                       {consoleErrors.length} erreur{consoleErrors.length > 1 ? "s" : ""}
                     </button>
                   )}
@@ -2323,9 +2439,17 @@ ${jsCode}`;
                     {/* Layers panel toggle */}
                     <div className="w-px h-5 bg-white/20" />
                     <button
-                      onClick={() => { setShowLayers(v => !v); sendToIframe({ type: 'VE_GET_LAYERS' }); }}
+                      onClick={() => { setShowLayers(v => !v); if (!showLayers) setShowBlocksPalette(false); sendToIframe({ type: 'VE_GET_LAYERS' }); }}
                       className={`flex items-center gap-1 px-2 h-7 rounded text-[11px] transition-colors ${showLayers ? 'bg-primary/30 text-primary' : 'hover:bg-white/10 text-white/60'}`}>
                       Calques
+                    </button>
+
+                    {/* Blocks palette toggle */}
+                    <div className="w-px h-5 bg-white/20" />
+                    <button
+                      onClick={() => { setShowBlocksPalette(v => !v); if (!showBlocksPalette) setShowLayers(false); }}
+                      className={`flex items-center gap-1 px-2 h-7 rounded text-[11px] transition-colors ${showBlocksPalette ? 'bg-emerald-500/30 text-emerald-300' : 'hover:bg-white/10 text-white/60'}`}>
+                      <Plus className="w-3 h-3" /> Blocs
                     </button>
 
                     {/* Dimensions display */}
@@ -2445,6 +2569,50 @@ ${jsCode}`;
                       }} className="text-xs bg-emerald-600 hover:bg-emerald-500 text-white px-3 py-1 rounded font-medium">
                         💾 Sauvegarder
                       </button>
+                    </div>
+                  )}
+
+                  {/* Blocks palette */}
+                  {showBlocksPalette && (
+                    <div className="border border-emerald-500/20 rounded-lg overflow-hidden bg-black/30">
+                      <div className="flex items-center justify-between px-2 py-1.5 bg-emerald-500/10 border-b border-emerald-500/15">
+                        <span className="text-[10px] font-medium text-emerald-300 flex items-center gap-1.5">
+                          <Plus className="w-3 h-3" /> Insérer un bloc
+                        </span>
+                        <span className="text-[10px] text-white/30">
+                          {veSelection ? `après &lt;${veSelection.tag.toLowerCase()}&gt;` : "en fin de page"}
+                        </span>
+                      </div>
+                      {/* Category tabs */}
+                      <div className="flex gap-0 border-b border-white/10 overflow-x-auto">
+                        {VE_BLOCK_CATEGORIES.map(cat => (
+                          <button key={cat.id}
+                            onClick={() => setBlockCategory(cat.id)}
+                            className={`px-2.5 py-1 text-[10px] whitespace-nowrap flex-shrink-0 transition-colors border-b-2 ${blockCategory === cat.id ? 'border-emerald-400 text-emerald-300 bg-emerald-500/10' : 'border-transparent text-white/40 hover:text-white/70 hover:bg-white/5'}`}>
+                            {cat.label}
+                          </button>
+                        ))}
+                      </div>
+                      {/* Block items */}
+                      <div className="grid grid-cols-3 sm:grid-cols-4 gap-1.5 p-2">
+                        {VE_BLOCKS.filter(b => b.category === blockCategory).map(block => (
+                          <button
+                            key={block.id}
+                            title={`Insérer : ${block.label}`}
+                            onClick={() => {
+                              sendToIframe({ type: 'VE_INSERT_BLOCK', html: block.html });
+                              toast.success(`Bloc "${block.label}" inséré`);
+                            }}
+                            className="flex flex-col items-center gap-1 px-2 py-2.5 rounded-lg border border-white/10 hover:border-emerald-400/40 hover:bg-emerald-500/10 transition-all cursor-pointer group">
+                            <span className="text-lg leading-none">{block.icon}</span>
+                            <span className="text-[9px] text-white/55 group-hover:text-emerald-300 transition-colors text-center leading-tight">{block.label}</span>
+                          </button>
+                        ))}
+                      </div>
+                      <div className="px-2 pb-2 text-[9px] text-white/25 flex items-center gap-1">
+                        <GripVertical className="w-2.5 h-2.5" />
+                        Après insertion, glissez l'élément pour le repositionner
+                      </div>
                     </div>
                   )}
 
