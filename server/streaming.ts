@@ -1733,8 +1733,9 @@ INTERDICTIONS ABSOLUES :
       }
 
       if (detectedApiName) {
-        // Check if key already stored
-        const existing = await getIntegrationKey(user.id, detectedApiName, projectId);
+        // Check if key already stored (safe — returns null on any error including missing table)
+        let existing = null;
+        try { existing = await getIntegrationKey(user.id, detectedApiName, projectId); } catch { /* ignore */ }
         if (!existing) {
           // Emit api_key_request — frontend will show inline input
           sseWrite(res, "api_key_request", {
@@ -1883,15 +1884,18 @@ SI UNE IMAGE EST JOINTE (priorité absolue) :
       await db.insert(chatMessages).values({ projectId, userId: user.id, role: "user", content: message });
 
       // ── Load user integrations for this project (inject into executor context) ──
-      const storedIntegrations = await db
-        .select({
-          apiName: userIntegrations.apiName,
-          apiLabel: userIntegrations.apiLabel,
-          baseUrl: userIntegrations.baseUrl,
-          docSummary: userIntegrations.docSummary,
-        })
-        .from(userIntegrations)
-        .where(eq(userIntegrations.userId, user.id));
+      let storedIntegrations: Array<{ apiName: string; apiLabel: string; baseUrl: string | null; docSummary: string | null }> = [];
+      try {
+        storedIntegrations = await db
+          .select({
+            apiName: userIntegrations.apiName,
+            apiLabel: userIntegrations.apiLabel,
+            baseUrl: userIntegrations.baseUrl,
+            docSummary: userIntegrations.docSummary,
+          })
+          .from(userIntegrations)
+          .where(eq(userIntegrations.userId, user.id));
+      } catch { /* table may not exist yet — safe to ignore */ }
 
       const integrationContext = storedIntegrations.length > 0
         ? `\n\n══ INTÉGRATIONS API DISPONIBLES ══\nL'utilisateur a configuré les clés API suivantes. Pour les appeler, utilise TOUJOURS le proxy /api/proxy/call (JAMAIS directement l'API) afin de ne pas exposer la clé dans le code source.\n\nFormat d'appel proxy :\nfetch('/api/proxy/call', {\n  method: 'POST',\n  headers: {'Content-Type':'application/json'},\n  credentials: 'include',\n  body: JSON.stringify({ projectId: ${projectId}, apiName: 'NOM_API', endpoint: '/endpoint', method: 'POST', body: {...} })\n})\n\nIntégrations disponibles :\n${storedIntegrations.map(i => `• ${i.apiLabel} (apiName: "${i.apiName}")${i.baseUrl ? ` — base URL: ${i.baseUrl}` : ''}${i.docSummary ? `\n  Doc: ${i.docSummary}` : ''}`).join('\n')}\n⚠️ Ne jamais écrire de clé API en dur dans le code — toujours passer par /api/proxy/call.`

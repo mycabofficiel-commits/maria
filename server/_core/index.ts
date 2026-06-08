@@ -90,6 +90,24 @@ async function ensureSchema() {
       END $$;
     `);
 
+    // Table user_integrations (clés API tiers chiffrées par utilisateur/projet)
+    await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS "user_integrations" (
+        "id"           serial PRIMARY KEY NOT NULL,
+        "userId"       integer NOT NULL,
+        "projectId"    integer,
+        "apiName"      varchar(64) NOT NULL,
+        "apiLabel"     varchar(128) NOT NULL,
+        "encryptedKey" text NOT NULL,
+        "keyHint"      varchar(20),
+        "baseUrl"      varchar(512),
+        "docUrl"       text,
+        "docSummary"   text,
+        "createdAt"    timestamp NOT NULL DEFAULT now(),
+        "updatedAt"    timestamp NOT NULL DEFAULT now()
+      )
+    `);
+
     console.log("[DB] Schema patch OK");
   } catch (err) {
     console.warn("[DB] ensureSchema warning:", err);
