@@ -901,27 +901,30 @@ export function registerStreamingRoutes(app: Express) {
 <!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <style>
   * { box-sizing:border-box; margin:0; padding:0; }
-  html, body { height:100%; overflow:hidden; }
-  body { font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',system-ui,sans-serif; background:#f2f2f2; width:100%; }
-  .screen { display:none; height:calc(100vh - 65px); overflow-y:auto; -webkit-overflow-scrolling:touch; padding-bottom:8px; }
-  .screen.active { display:block; }
-  .tab-bar { position:fixed; bottom:0; left:0; right:0; height:65px; display:flex; z-index:100; padding:8px 0 12px; }
-  .tab-btn { flex:1; display:flex; flex-direction:column; align-items:center; gap:3px; font-size:10px; cursor:pointer; border:none; background:transparent; }
-  /* copie TOUTES les couleurs, gradients, border-radius, shadows du StyleSheet ici */
+  html { height:100%; }
+  body { font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',system-ui,sans-serif; height:100%; display:flex; flex-direction:column; overflow:hidden; }
+  #app { flex:1; display:flex; flex-direction:column; min-height:0; }
+  .screen { display:none; flex:1; overflow-y:auto; -webkit-overflow-scrolling:touch; }
+  .screen.active { display:flex; flex-direction:column; }
+  .tab-bar { flex-shrink:0; display:flex; height:60px; padding:6px 0 10px; border-top:1px solid rgba(0,0,0,.1); }
+  .tab-btn { flex:1; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:2px; font-size:10px; cursor:pointer; border:none; background:transparent; padding:0; }
+  /* copie TOUTES les couleurs du StyleSheet ici en variables CSS : --primary, --bg, --card, etc. */
 </style>
-</head><body>
-  <!-- TOUS les écrans : un <div class="screen active" id="screen-NOM"> (premier actif), les autres class="screen" -->
-  <!-- Barre d'onglets : <div class="tab-bar" style="background:[couleur nav]"> -->
-  <script>
-  function showTab(id,btn){
-    document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active'));
-    document.getElementById(id).classList.add('active');
-    document.querySelectorAll('.tab-btn').forEach(b=>b.style.color='#888');
-    if(btn) btn.style.color='var(--primary,#e53e3e)';
-  }
-  // Active le premier onglet au chargement
-  window.onload=function(){ var first=document.querySelector('.tab-btn'); if(first) first.style.color='var(--primary,#e53e3e)'; }
-  </script>
+</head>
+<body>
+<div id="app">
+  <!-- TOUS les écrans : <div class="screen active" id="screen-NOM"> pour le PREMIER, <div class="screen" id="screen-NOM2"> pour les autres -->
+  <!-- Barre d'onglets OBLIGATOIRE si l'app a des onglets : <div class="tab-bar" style="background:[couleur fond nav]"> -->
+</div>
+<script>
+function showTab(id,btn){
+  document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active'));
+  document.getElementById(id).classList.add('active');
+  document.querySelectorAll('.tab-btn').forEach(b=>b.style.opacity='0.5');
+  if(btn){btn.style.opacity='1';btn.style.color=getComputedStyle(document.documentElement).getPropertyValue('--primary')||'#e53e3e';}
+}
+window.onload=function(){var f=document.querySelector('.tab-btn');if(f){f.style.opacity='1';}};
+</script>
 </body></html>
 
 ═══ RÈGLES DE CONVERSION ═══
@@ -939,14 +942,19 @@ React Native → HTML :
 - Icônes (Ionicons, MaterialIcons, FontAwesome) → emoji équivalent ou SVG inline simple
 
 ═══ NAVIGATION & ONGLETS ═══
-Si le composant a plusieurs écrans OU une barre d'onglets (TabBar/BottomTabNavigator) :
-- Crée UN <div class="screen active" id="screen-NOM"> pour le PREMIER écran, <div class="screen" id="screen-NOM2"> pour les suivants (masqués par défaut)
-- La classe CSS .screen gère déjà l'affichage : height:calc(100vh-65px), overflow-y:auto — NE PAS ajouter de style inline display/height
-- Crée la barre d'onglets : <div class="tab-bar" style="background:[couleur fond nav]">
-- Chaque onglet : <button class="tab-btn" onclick="showTab('screen-NOM',this)" style="color:[couleur active ou inactive]">
-  [emoji]\n<span>[Label]</span>
-  </button>
-- Le JS showTab() est déjà défini dans le <script> — ne le redéfinit PAS
+Si l'app a des onglets (TabBar, BottomTabNavigator, ou navigation bas) :
+- STRUCTURE OBLIGATOIRE à placer dans <div id="app"> :
+  1. <div class="screen active" id="screen-NOM1"> ... contenu écran 1 ... </div>
+  2. <div class="screen" id="screen-NOM2"> ... contenu écran 2 ... </div>
+  3. (autant d'écrans que d'onglets)
+  4. <div class="tab-bar" style="background:[couleur du fond de nav bar]">
+       <button class="tab-btn" onclick="showTab('screen-NOM1',this)" style="opacity:1;color:[couleur primaire]">🏠<span>Accueil</span></button>
+       <button class="tab-btn" onclick="showTab('screen-NOM2',this)" style="opacity:0.5">📋<span>Courses</span></button>
+       ...
+     </div>
+- La classe .screen gère déjà overflow-y:auto — NE PAS ajouter de style display/height inline sur les screens
+- La classe .tab-bar est déjà flex avec height:60px — NE PAS utiliser position:fixed
+- showTab() est déjà défini dans le <script> — NE PAS le redéfinir
 
 ═══ FIDÉLITÉ VISUELLE ═══
 - Copie EXACTEMENT les couleurs du StyleSheet (primaryColor, backgroundColor, etc.)
