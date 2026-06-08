@@ -25,7 +25,7 @@ import {
   Loader2, ArrowLeft, Globe, RotateCcw, Save, CheckCircle2, MessageSquare,
   Rocket, Share2, Tag, MousePointer2, Copy, Check, PencilRuler, Upload,
   PanelLeftClose, PanelLeftOpen, Mic, MicOff, Paperclip, Camera, X as XIcon, Image as ImageIcon, Trash2,
-  ExternalLink, Download, Plus, GripVertical, Plug, KeyRound
+  ExternalLink, Download, Plus, GripVertical, Plug, KeyRound, Brain
 } from "lucide-react";
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
@@ -685,6 +685,7 @@ export default function ProjectEditor() {
   const [apiKeyInput, setApiKeyInput] = useState("");
   const [apiKeySaving, setApiKeySaving] = useState(false);
   const [showIntegrationsPanel, setShowIntegrationsPanel] = useState(false);
+  const [discussionMode, setDiscussionMode] = useState(false);
 
   /* ── Chat workflow phases ── */
   const [chatPhase, setChatPhase] = useState<"idle" | "reasoning" | "awaiting_validation" | "executing">("idle");
@@ -1026,7 +1027,7 @@ export default function ProjectEditor() {
     onError: (err: any) => toast.error(err.message),
   });
 
-  /* ── Phase 1: Raisonnement → awaiting_validation ── */
+  /* ── Phase 1: Raisonnement → awaiting_validation (ou discuss direct) ── */
   const sendChatStream = useCallback(async (msg: string) => {
     if (!msg.trim() && attachments.length === 0) return;
     setIsChatPending(true);
@@ -1045,6 +1046,53 @@ export default function ProjectEditor() {
       ...(old || []),
       { id: Date.now(), role: "user", content: msg || "📎 Image jointe", createdAt: new Date().toISOString(), projectId, userId: 0, versionId: null, tokensUsed: null },
     ]);
+
+    // ── Mode Discussion : streaming conversationnel direct ──
+    if (discussionMode) {
+      try {
+        const res = await fetch("/api/stream/chat", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          credentials: "include",
+          body: JSON.stringify({ projectId, message: msg, phase: "discuss" }),
+        });
+        if (!res.ok || !res.body) throw new Error(await res.text());
+        const reader = res.body.getReader();
+        const dec = new TextDecoder();
+        let buf = "";
+        let accReply = "";
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          buf += dec.decode(value, { stream: true });
+          const lines = buf.split("\n");
+          buf = lines.pop() || "";
+          for (const line of lines) {
+            if (!line.startsWith("data: ")) continue;
+            try {
+              const evt = JSON.parse(line.slice(6));
+              if (evt.agent && evt.step) setAgentStep({ agent: evt.agent, step: evt.step, icon: evt.icon || "💬" });
+              if (evt.text !== undefined) { accReply += evt.text; setStreamingReply(accReply); }
+              if (evt.discuss && evt.reply !== undefined) {
+                setStreamingReply("");
+                utils.projects.getChatMessages.invalidate({ projectId });
+                setChatPhase("idle");
+              }
+              if (evt.message) toast.error(evt.message);
+            } catch { /* skip */ }
+          }
+        }
+      } catch (err: any) {
+        toast.error(err.message);
+        setChatPhase("idle");
+      } finally {
+        setIsChatPending(false);
+        setAgentStep(null);
+        setStreamingReply("");
+        setChatPhase("idle");
+      }
+      return;
+    }
 
     try {
       const res = await fetch("/api/stream/chat", {
@@ -1097,7 +1145,7 @@ export default function ProjectEditor() {
       setIsChatPending(false);
       setAgentStep(null);
     }
-  }, [projectId, attachments]);
+  }, [projectId, attachments, discussionMode]);
 
   /* ── Phase 2: Execute après validation ── */
   const executeChatStream = useCallback(async (originalMsg: string, validatedSummary: string) => {
@@ -1976,6 +2024,16 @@ ${jsCode}`;
                       API
                     </Button>
                     <Button
+                      variant={discussionMode ? "secondary" : "ghost"}
+                      size="sm"
+                      className={`h-6 px-2 text-[10px] gap-1 transition-colors ${discussionMode ? "text-sky-400 border-sky-500/40 bg-sky-500/10 hover:bg-sky-500/20" : ""}`}
+                      title={discussionMode ? "Mode Réflexion actif — aucune modification du code" : "Activer le mode Réflexion (discussion sans action)"}
+                      onClick={() => { setDiscussionMode(v => !v); setChatPhase("idle"); setSuggestions([]); }}
+                    >
+                      <Brain className="w-3 h-3" />
+                      {discussionMode ? "Réflexion" : "Réfléchir"}
+                    </Button>
+                    <Button
                       variant="ghost"
                       size="sm"
                       className="h-6 px-2 text-[10px] gap-1 text-muted-foreground hover:text-destructive"
@@ -2316,7 +2374,7 @@ ${jsCode}`;
                   )}
 
                   {/* ── Carte de validation du raisonnement ── */}
-                  {chatPhase === "awaiting_validation" && (
+                  {chatPhase === "awaiting_validation" && !discussionMode && (
                     <div className="mx-2 mb-1.5 rounded-xl border border-primary/40 bg-primary/5 p-3 space-y-2">
                       <div className="flex items-start gap-2">
                         <Sparkles className="w-3.5 h-3.5 text-primary mt-0.5 flex-shrink-0" />
@@ -2401,8 +2459,16 @@ ${jsCode}`;
                       ))}
                     </div>
                   )}
+                  {/* Discussion mode banner */}
+                  {discussionMode && (
+                    <div className="flex items-center gap-1.5 mb-1.5 px-1 py-1 rounded-lg bg-sky-500/10 border border-sky-500/20 text-sky-400 text-[10px]">
+                      <Brain className="w-3 h-3 flex-shrink-0" />
+                      <span className="font-medium">Mode Réflexion</span>
+                      <span className="text-sky-400/60">— Discutons du projet, sans modifier le code</span>
+                    </div>
+                  )}
                   {/* Input pill */}
-                  <div className="flex items-end gap-1 bg-[#1a1a2e] border border-[#2e2e4e] rounded-2xl px-2 py-1.5">
+                  <div className={`flex items-end gap-1 rounded-2xl px-2 py-1.5 transition-colors ${discussionMode ? "bg-[#0e1a2e] border border-sky-500/30" : "bg-[#1a1a2e] border border-[#2e2e4e]"}`}>
                     {/* Mic — dictation */}
                     <button
                       onClick={toggleDictation}
@@ -2420,7 +2486,7 @@ ${jsCode}`;
                     {/* Textarea input */}
                     <textarea
                       rows={2}
-                      placeholder={isRecording ? "🎤 Dictée en cours…" : "Parlez à Mar-ia…"}
+                      placeholder={isRecording ? "🎤 Dictée en cours…" : discussionMode ? "Réfléchissons ensemble au projet…" : "Parlez à Mar-ia…"}
                       value={chatMessage}
                       onChange={(e) => {
                         setChatMessage(e.target.value);
@@ -2440,7 +2506,7 @@ ${jsCode}`;
                     <button
                       onClick={() => { if (chatMessage.trim() || attachments.length > 0) sendChatStream(chatMessage); }}
                       disabled={chatEdit.isPending || (!chatMessage.trim() && attachments.length === 0)}
-                      className="w-7 h-7 rounded-full bg-primary flex items-center justify-center flex-shrink-0 disabled:opacity-40 hover:bg-primary/90 transition-colors">
+                      className={`w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0 disabled:opacity-40 transition-colors ${discussionMode ? "bg-sky-500 hover:bg-sky-400" : "bg-primary hover:bg-primary/90"}`}>
                       {chatEdit.isPending ? <Loader2 className="w-3 h-3 animate-spin text-white" /> : <Send className="w-3 h-3 text-white" />}
                     </button>
                   </div>

@@ -1508,7 +1508,7 @@ Retourne UNIQUEMENT le code HTML, sans explication, sans markdown, sans backtick
     const { projectId, message, phase = "reason", validatedSummary, images, consoleErrors } = req.body as {
       projectId: number;
       message: string;
-      phase?: "reason" | "execute";
+      phase?: "reason" | "execute" | "discuss";
       validatedSummary?: string;
       images?: Array<{ base64: string; mimeType: string }>;
       consoleErrors?: string[];
@@ -1567,6 +1567,142 @@ Retourne UNIQUEMENT le code HTML, sans explication, sans markdown, sans backtick
     const fullCode = currentVersion[0].generatedCode || "";
     // 6000 chars gives the agent enough context to identify existing classes/functions/variables
     const codeSnippet = fullCode.slice(0, 6000);
+
+    // ── PHASE DISCUSS : Réflexion projet — aucune modification de code ────
+    if (phase === "discuss") {
+      pipelineLog('discuss:start', { project: project[0].name, plan: userPlan });
+
+      // Load last 12 chat messages for conversational context
+      const chatHistory = await db
+        .select()
+        .from(chatMessages)
+        .where(eq(chatMessages.projectId, projectId))
+        .orderBy(desc(chatMessages.createdAt))
+        .limit(12);
+      chatHistory.reverse();
+
+      // Pick best available LLM (prefer Claude for nuance, fallback chain)
+      const discussLlm =
+        resolveKey("anthropic", allKeys) ??
+        resolveKey("openai", allKeys) ??
+        resolveKey("qwen", allKeys) ??
+        resolveKey("deepseek", allKeys);
+      if (!discussLlm) { sseWrite(res, "error", { message: "Aucun LLM disponible" }); res.end(); return; }
+
+      const projectDesc = [
+        project[0].siteType ? `Type : ${project[0].siteType}` : null,
+        project[0].style    ? `Style : ${project[0].style}`   : null,
+        project[0].language ? `Langue : ${project[0].language}` : null,
+        project[0].description ? `Description : ${project[0].description}` : null,
+      ].filter(Boolean).join(" | ");
+
+      const discussSystemPrompt = `Tu es Mar-ia en mode **Réflexion Projet**. Tu es une conseillère stratégique et créative pour le projet "${project[0].name}"${projectDesc ? ` (${projectDesc})` : ""}.
+
+TON RÔLE DANS CE MODE :
+• Discuter, explorer et conseiller — JAMAIS générer de code ni modifier le site
+• Comprendre et affiner la vision de l'utilisateur pour ce projet
+• Suggérer des idées de pages, fonctionnalités, contenus adaptés au projet
+• Identifier ce qui est réalisable rapidement vs complexe vs risqué
+• Pointer les pièges à éviter (UX, technique, contenu, légal si pertinent)
+• Évaluer les demandes : faisabilité, pertinence, priorité
+• Poser des questions pour clarifier la vision si besoin
+
+FORMAT DE RÉPONSE :
+• Réponds en français, ton bienveillant et expert
+• Utilise des listes (✅ / ⚠️ / ❌) quand tu compares des options ou listes des risques
+• Sections courtes et claires — évite les blocs de texte denses
+• Pose AU MAXIMUM 1-2 questions par réponse
+• Utilise **gras** pour les points clés
+
+INTERDICTIONS ABSOLUES :
+❌ N'écris JAMAIS de code HTML, CSS, JavaScript, JSX
+❌ Ne propose pas de "modifier directement", "générer" ou "créer" du code
+❌ Ne décris pas d'implémentation technique en détail
+❌ Ne sors jamais du contexte du projet "${project[0].name}"`;
+
+      // Build conversation messages
+      const llmMessages: Array<{ role: "user" | "assistant"; content: string }> = [
+        ...chatHistory
+          .filter(m => m.content?.trim())
+          .map(m => ({ role: m.role as "user" | "assistant", content: m.content })),
+        { role: "user" as const, content: message },
+      ];
+
+      // Save user message
+      await db.insert(chatMessages).values({ projectId, userId: user.id, role: "user", content: message });
+
+      sseWrite(res, "progress", { agent: AGENT_NAMES[discussLlm.provider], step: "Réflexion…", icon: "💬" });
+
+      let fullReply = "";
+      let inputTokens = 0;
+      let outputTokens = 0;
+
+      try {
+        if (discussLlm.provider === "anthropic") {
+          const aiRes = await fetch("https://api.anthropic.com/v1/messages", {
+            method: "POST",
+            headers: { "x-api-key": discussLlm.key, "anthropic-version": "2023-06-01", "content-type": "application/json" },
+            body: JSON.stringify({ model: discussLlm.model, max_tokens: 1200, temperature: 0.7, stream: true, system: discussSystemPrompt, messages: llmMessages }),
+          });
+          if (!aiRes.ok || !aiRes.body) throw new Error(`Anthropic: ${await aiRes.text()}`);
+          const reader = aiRes.body.getReader(); const dec = new TextDecoder(); let buf = "";
+          while (true) {
+            const { done, value } = await reader.read(); if (done) break;
+            buf += dec.decode(value, { stream: true });
+            const lines = buf.split("\n"); buf = lines.pop() || "";
+            for (const line of lines) {
+              if (!line.startsWith("data: ")) continue;
+              const raw = line.slice(6).trim(); if (raw === "[DONE]") continue;
+              try {
+                const evt = JSON.parse(raw);
+                if (evt.type === "content_block_delta" && evt.delta?.type === "text_delta") { fullReply += evt.delta.text; sseWrite(res, "chunk", { text: evt.delta.text }); }
+                if (evt.type === "message_delta" && evt.usage) outputTokens = evt.usage.output_tokens || 0;
+                if (evt.type === "message_start" && evt.message?.usage) inputTokens = evt.message.usage.input_tokens || 0;
+              } catch { /* skip */ }
+            }
+          }
+        } else {
+          const baseUrls: Record<string, string> = { deepseek: "https://api.deepseek.com/v1", openai: "https://api.openai.com/v1", qwen: "https://dashscope.aliyuncs.com/compatible-mode/v1" };
+          const baseUrl = baseUrls[discussLlm.provider] || "https://api.openai.com/v1";
+          const aiRes = await fetch(`${baseUrl}/chat/completions`, {
+            method: "POST",
+            headers: { "Authorization": `Bearer ${discussLlm.key}`, "content-type": "application/json" },
+            body: JSON.stringify({ model: discussLlm.model, max_tokens: 1200, temperature: 0.7, stream: true, messages: [{ role: "system", content: discussSystemPrompt }, ...llmMessages] }),
+          });
+          if (!aiRes.ok || !aiRes.body) throw new Error(`${discussLlm.provider}: ${await aiRes.text()}`);
+          const reader = aiRes.body.getReader(); const dec = new TextDecoder(); let buf = "";
+          while (true) {
+            const { done, value } = await reader.read(); if (done) break;
+            buf += dec.decode(value, { stream: true });
+            const lines = buf.split("\n"); buf = lines.pop() || "";
+            for (const line of lines) {
+              if (!line.startsWith("data: ")) continue;
+              const raw = line.slice(6).trim(); if (raw === "[DONE]") continue;
+              try {
+                const evt = JSON.parse(raw);
+                const chunk = evt.choices?.[0]?.delta?.content;
+                if (chunk) { fullReply += chunk; sseWrite(res, "chunk", { text: chunk }); }
+                if (evt.usage) { inputTokens = evt.usage.prompt_tokens || 0; outputTokens = evt.usage.completion_tokens || 0; }
+              } catch { /* skip */ }
+            }
+          }
+        }
+      } catch (err: any) {
+        pipelineLog('discuss:error', { error: err.message });
+        sseWrite(res, "error", { message: err.message });
+        res.end(); return;
+      }
+
+      // Save AI reply
+      if (fullReply) {
+        await db.insert(chatMessages).values({ projectId, userId: user.id, role: "assistant", content: fullReply, tokensUsed: inputTokens + outputTokens });
+      }
+
+      sseWrite(res, "done", { reply: fullReply, discuss: true });
+      pipelineLog('discuss:done', { tokens: inputTokens + outputTokens, len: fullReply.length });
+      res.end();
+      return;
+    }
 
     // ── API INTENT DETECTION (before reason phase) ────────────────────────
     // Detect if the user wants to connect an API → emit api_key_request if key not stored yet
