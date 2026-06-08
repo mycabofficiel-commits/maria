@@ -635,8 +635,12 @@ export default function ProjectEditor() {
     if (isGenerating) return;
     autoGenTriggeredRef.current = true;
     shouldAutoGen.current = false;
+    // Set isGenerating=true synchronously with waitingForAutoGen=false
+    // so React batches them and the builder form never flashes
     setWaitingForAutoGen(false);
-    generateSiteStream();
+    setIsGenerating(true);
+    // Small delay ensures the "Génération en cours…" UI renders before the fetch
+    setTimeout(() => generateSiteStream(), 80);
   }, [prompt, project?.id, isGenerating]);
 
   // Scroll vers le dernier message — déclenché à chaque changement de messages ou de panels
