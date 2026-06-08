@@ -145,10 +145,8 @@ export default function Projects() {
   };
 
   const handleSelectTemplate = (tpl: Template) => {
-    setSelectedTpl(tpl);
-    setTplProjectName(tpl.name);
-    setAdditionalPrompt("");
-    setTab("tpl-confirm");
+    setOpen(false);
+    navigate(`/projects/new?template=${tpl.id}`);
   };
 
   const handleCreateFromTemplate = () => {
