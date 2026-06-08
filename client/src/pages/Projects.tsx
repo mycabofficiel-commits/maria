@@ -60,6 +60,7 @@ const CATEGORY_COLORS: Record<string, string> = {
   Créatif: "bg-violet-500/10 text-violet-400 border-violet-500/20",
   Services: "bg-emerald-500/10 text-emerald-400 border-emerald-500/20",
   Tech: "bg-amber-500/10 text-amber-400 border-amber-500/20",
+  Mobile: "bg-rose-500/10 text-rose-400 border-rose-500/20",
 };
 
 const STATUS_CONFIG: Record<string, { label: string; color: string; icon: any }> = {
@@ -513,7 +514,7 @@ export default function Projects() {
               {tab === "tpl-confirm" && selectedTpl && (
                 <div className="space-y-4 pt-1">
                   <p className="text-sm text-muted-foreground">
-                    Mar-ia va générer ce site en partant de ce template. Tu peux modifier le nom du projet.
+                    Mar-ia va générer ce {selectedTpl.category === "Mobile" ? "app mobile" : "site"} en partant de ce template. Tu peux modifier le nom du projet.
                   </p>
                   <div>
                     <Label className="text-sm text-foreground mb-1.5 block">Nom du projet</Label>

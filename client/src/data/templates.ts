@@ -3,11 +3,11 @@ export interface Template {
   name: string;
   description: string;
   emoji: string;
-  category: "Business" | "Créatif" | "Services" | "Tech";
+  category: "Business" | "Créatif" | "Services" | "Tech" | "Mobile";
   siteType: string;
   style: string;
   colorPalette: string;
-  framework: "html" | "react" | "nextjs";
+  framework: "html" | "react" | "nextjs" | "expo";
   language: string;
   tags: string[];
   prompt: string;
@@ -168,6 +168,93 @@ export const TEMPLATES: Template[] = [
     tags: ["app", "mobile", "iOS", "Android"],
     prompt: "Crée une landing page d'application mobile avec : hero avec mockup téléphone central et téléchargements App Store/Google Play, 3 fonctionnalités clés illustrées, section screens (5 captures d'écran simulées), statistiques (utilisateurs, notes, téléchargements), témoignages utilisateurs, section presse/médias, CTA téléchargement final. Design épuré indigo/blanc avec effets glassmorphism.",
   },
+  // ── Templates Mobile (Expo / React Native) ──────────────────────────────
+  {
+    id: "mobile-vtc",
+    name: "App VTC / Transport",
+    description: "Application de réservation de courses type Uber. Accueil, réservation, suivi et historique.",
+    emoji: "🚗",
+    category: "Mobile",
+    siteType: "Application mobile",
+    style: "Moderne",
+    colorPalette: "indigo",
+    framework: "expo",
+    language: "fr",
+    tags: ["vtc", "transport", "uber", "mobile"],
+    prompt: "Crée une app React Native VTC avec : écran Accueil (barre de recherche destination, adresse actuelle, bouton 'Commander'), écran Réservation (carte simulée, type de véhicule Eco/Confort/Premium avec prix, bouton Confirmer), écran Suivi (cercle de progression animé, nom chauffeur, plaque, ETA), écran Historique (liste de courses avec date/montant/statut). Tab bar : Accueil, Réserver, Historique, Profil. Couleurs : indigo/blanc, cartes avec ombre, boutons arrondis.",
+  },
+  {
+    id: "mobile-ecommerce",
+    name: "App E-commerce",
+    description: "Boutique mobile complète avec catalogue, fiches produits, panier et commandes.",
+    emoji: "🛍️",
+    category: "Mobile",
+    siteType: "Application mobile",
+    style: "Moderne",
+    colorPalette: "violet",
+    framework: "expo",
+    language: "fr",
+    tags: ["ecommerce", "boutique", "shop", "mobile"],
+    prompt: "Crée une app React Native e-commerce avec : écran Accueil (bannière promo, catégories horizontales, produits populaires en grille 2 colonnes), écran Catalogue (filtres, liste produits avec prix et note), écran Produit (image grande, nom, prix, couleurs, taille, bouton Ajouter au panier), écran Panier (liste articles, quantités, total, bouton Commander). Tab bar : Accueil, Catalogue, Panier (badge), Profil. Design épuré avec accents violet.",
+  },
+  {
+    id: "mobile-fitness",
+    name: "App Fitness & Sport",
+    description: "Suivi d'entraînement, exercices guidés, progression et statistiques sportives.",
+    emoji: "💪",
+    category: "Mobile",
+    siteType: "Application mobile",
+    style: "Premium",
+    colorPalette: "vert",
+    framework: "expo",
+    language: "fr",
+    tags: ["fitness", "sport", "santé", "mobile"],
+    prompt: "Crée une app React Native fitness avec : écran Tableau de bord (objectifs du jour, calories, pas, anneau de progression), écran Entraînement (liste de séances Cardio/Muscu/Yoga, chaque séance avec durée et difficulté), écran Exercice actif (exercice en cours avec timer, compteur de répétitions, bouton Suivant), écran Stats (graphiques de progression hebdomadaire, record personnels, streak). Tab bar : Dashboard, Entraînements, Stats, Profil. Design sombre avec accents vert néon.",
+  },
+  {
+    id: "mobile-food",
+    name: "App Livraison Food",
+    description: "Application de commande de repas type Uber Eats. Restaurants, menus et suivi.",
+    emoji: "🍔",
+    category: "Mobile",
+    siteType: "Application mobile",
+    style: "Startup",
+    colorPalette: "orange",
+    framework: "expo",
+    language: "fr",
+    tags: ["food", "livraison", "restaurant", "mobile"],
+    prompt: "Crée une app React Native livraison food avec : écran Accueil (barre de recherche, catégories Pizzas/Burgers/Sushi/Healthy avec emojis, restaurants proches avec note et temps de livraison), écran Restaurant (header image, infos, menu par catégories, articles avec prix et bouton +), écran Panier (items, quantités éditables, sous-total, frais livraison, bouton Commander), écran Suivi livraison (timeline : Confirmée → Préparation → En route → Livrée, ETA). Tab bar : Accueil, Recherche, Commandes, Profil. Couleurs chaleureuses orange/blanc.",
+  },
+  {
+    id: "mobile-social",
+    name: "App Réseau Social",
+    description: "Réseau social avec fil d'actualité, profils, stories et messagerie.",
+    emoji: "📸",
+    category: "Mobile",
+    siteType: "Application mobile",
+    style: "Moderne",
+    colorPalette: "rose",
+    framework: "expo",
+    language: "fr",
+    tags: ["social", "réseau", "photo", "mobile"],
+    prompt: "Crée une app React Native réseau social avec : écran Feed (stories horizontales en haut, fil de posts avec photo/vidéo simulée, likes/commentaires/partage), écran Explore (grille de photos en mosaïque 3 colonnes, barre de recherche), écran Créer (bouton central simulant la caméra, options texte/photo/story), écran Notifications (liste : likes, commentaires, abonnements), écran Profil (photo, stats abonnés/abonnements/posts, grille de publications). Tab bar avec icônes. Design blanc/rose, avatars ronds.",
+  },
+  {
+    id: "mobile-services",
+    name: "App Services à domicile",
+    description: "Plateforme de réservation de services : ménage, plombier, électricien, garde d'enfants.",
+    emoji: "🏠",
+    category: "Mobile",
+    siteType: "Application mobile",
+    style: "Premium",
+    colorPalette: "bleu",
+    framework: "expo",
+    language: "fr",
+    tags: ["services", "domicile", "réservation", "mobile"],
+    prompt: "Crée une app React Native services à domicile avec : écran Accueil (catégories de services avec icônes Ménage/Plomberie/Électricité/Jardinage/Baby-sitting, prestataires proches bien notés), écran Service (description, tarif horaire, disponibilités, profils prestataires avec photo et avis), écran Réservation (date/heure, adresse, durée, récapitulatif, bouton Confirmer), écran Mes Réservations (à venir / passées, statut, bouton Annuler). Tab bar : Accueil, Réserver, Mes RDV, Profil. Design professionnel bleu/blanc, cartes avec ombre.",
+  },
+
+  // ── Templates Web ────────────────────────────────────────────────────────
   {
     id: "artisan-local",
     name: "Artisan Local",
@@ -184,5 +271,5 @@ export const TEMPLATES: Template[] = [
   },
 ];
 
-export const TEMPLATE_CATEGORIES = ["Tous", "Business", "Créatif", "Services", "Tech"] as const;
+export const TEMPLATE_CATEGORIES = ["Tous", "Business", "Créatif", "Services", "Tech", "Mobile"] as const;
 export type TemplateCategory = typeof TEMPLATE_CATEGORIES[number];
