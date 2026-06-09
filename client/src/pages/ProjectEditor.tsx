@@ -570,6 +570,7 @@ export default function ProjectEditor() {
   const [expoSnackUrl, setExpoSnackUrl] = useState("");
   const [expoSnackPlatform, setExpoSnackPlatform] = useState<"android" | "ios">("android");
   const [expoSnackLoading, setExpoSnackLoading] = useState(false);
+  const [showQrModal, setShowQrModal] = useState(false);
   const [expoHtmlPreview, setExpoHtmlPreview] = useState("");
   const [expoHtmlLoading, setExpoHtmlLoading] = useState(false);
 
@@ -2995,11 +2996,46 @@ ${jsCode}`;
                       const expUrl = `exp://snack.expo.dev/${snackHash}`;
                       return (
                         <>
-                          {/* QR code scannable — 90px dans la barre */}
-                          <img
-                            src={`https://api.qrserver.com/v1/create-qr-code/?size=360x360&data=${encodeURIComponent(snackUrl)}&bgcolor=ffffff&color=000000&margin=6`}
-                            alt="QR" width={90} height={90} className="rounded border-2 border-white shadow-sm flex-shrink-0"
-                          />
+                          {/* QR code — icône cliquable → modal plein écran fixe */}
+                          <button
+                            onClick={() => setShowQrModal(true)}
+                            className="flex-shrink-0 cursor-pointer hover:opacity-80 transition-opacity"
+                            title="Agrandir le QR code"
+                          >
+                            <img
+                              src={`https://api.qrserver.com/v1/create-qr-code/?size=360x360&data=${encodeURIComponent(snackUrl)}&bgcolor=ffffff&color=000000&margin=6`}
+                              alt="QR" width={32} height={32} className="rounded border border-border/40"
+                            />
+                          </button>
+
+                          {/* Modal QR plein écran — position:fixed échappe tous les overflow:hidden */}
+                          {showQrModal && (
+                            <div
+                              className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/60 backdrop-blur-sm"
+                              onClick={() => setShowQrModal(false)}
+                            >
+                              <div
+                                className="bg-white rounded-2xl shadow-2xl p-6 flex flex-col items-center gap-4"
+                                onClick={e => e.stopPropagation()}
+                              >
+                                <p className="text-sm font-semibold text-gray-700">Scanner avec Expo Go</p>
+                                <img
+                                  src={`https://api.qrserver.com/v1/create-qr-code/?size=600x600&data=${encodeURIComponent(snackUrl)}&bgcolor=ffffff&color=000000&margin=16`}
+                                  alt="QR Expo Go"
+                                  width={280}
+                                  height={280}
+                                  className="rounded-lg"
+                                />
+                                <p className="text-xs text-gray-400 text-center max-w-[280px] break-all">{snackUrl}</p>
+                                <button
+                                  onClick={() => setShowQrModal(false)}
+                                  className="mt-1 px-5 py-2 rounded-full bg-gray-100 hover:bg-gray-200 text-sm text-gray-600 transition-colors"
+                                >
+                                  Fermer
+                                </button>
+                              </div>
+                            </div>
+                          )}
                           <a href={snackUrl} target="_blank" rel="noopener noreferrer"
                             className="flex items-center gap-1 text-xs text-primary hover:underline">
                             <ExternalLink className="w-3 h-3" /> Expo Snack
