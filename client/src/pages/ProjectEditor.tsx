@@ -2995,10 +2995,20 @@ ${jsCode}`;
                       const expUrl = `exp://snack.expo.dev/${snackHash}`;
                       return (
                         <>
-                          <img
-                            src={`https://api.qrserver.com/v1/create-qr-code/?size=64x64&data=${encodeURIComponent(snackUrl)}&bgcolor=ffffff&color=000000&margin=4`}
-                            alt="QR" width={28} height={28} className="rounded border border-border/40"
-                          />
+                          {/* QR code — petit icône dans la barre, grand popup au survol */}
+                          <div className="relative group">
+                            <img
+                              src={`https://api.qrserver.com/v1/create-qr-code/?size=64x64&data=${encodeURIComponent(snackUrl)}&bgcolor=ffffff&color=000000&margin=4`}
+                              alt="QR" width={28} height={28} className="rounded border border-border/40 cursor-pointer"
+                            />
+                            <div className="absolute bottom-10 left-1/2 -translate-x-1/2 hidden group-hover:flex flex-col items-center gap-2 bg-white rounded-xl shadow-2xl border border-gray-200 p-3 z-50 pointer-events-none">
+                              <img
+                                src={`https://api.qrserver.com/v1/create-qr-code/?size=400x400&data=${encodeURIComponent(snackUrl)}&bgcolor=ffffff&color=000000&margin=12`}
+                                alt="QR Expo Go" width={200} height={200} className="rounded"
+                              />
+                              <p className="text-xs text-gray-500 font-medium whitespace-nowrap">Scanner avec Expo Go</p>
+                            </div>
+                          </div>
                           <a href={snackUrl} target="_blank" rel="noopener noreferrer"
                             className="flex items-center gap-1 text-xs text-primary hover:underline">
                             <ExternalLink className="w-3 h-3" /> Expo Snack
