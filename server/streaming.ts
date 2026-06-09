@@ -398,6 +398,38 @@ async function tryCallSync(
 }
 
 /**
+ * Non-streaming LLM call with automatic fallback through the FALLBACK_CHAIN.
+ * Starts from `startFrom` provider and walks forward until one succeeds.
+ * Emits SSE progress events to `res` at each attempt/relay.
+ */
+async function tryCallWithFallback(
+  allKeys: Partial<Record<Provider, string | null>>,
+  systemPrompt: string,
+  userMessage: string,
+  maxTokens: number,
+  res: Response,
+  stepLabel: string,
+  stepIcon: string,
+  startFrom: Provider = "openai"
+): Promise<(LlmResult & { provider: Provider; model: string; key: string }) | null> {
+  const startIdx = FALLBACK_CHAIN.indexOf(startFrom);
+  const chain = startIdx >= 0 ? FALLBACK_CHAIN.slice(startIdx) : [...FALLBACK_CHAIN];
+  for (const provider of chain) {
+    const key = allKeys[provider];
+    if (!key) continue;
+    sseWrite(res, "progress", { agent: AGENT_NAMES[provider], step: stepLabel, icon: stepIcon });
+    const result = await tryCallSync(provider, PROVIDER_MODELS[provider], key, systemPrompt, userMessage, maxTokens);
+    if (result?.text) return { ...result, provider, model: PROVIDER_MODELS[provider], key };
+    // Find next available provider for relay message
+    const nextProvider = chain.slice(chain.indexOf(provider) + 1).find(p => allKeys[p]);
+    if (nextProvider) {
+      sseWrite(res, "progress", { agent: AGENT_NAMES[provider], step: `Indisponible — relais ${AGENT_NAMES[nextProvider]}…`, icon: "⏭️" });
+    }
+  }
+  return null;
+}
+
+/**
  * Multi-agent orchestration — enriches the prompt with briefs from intermediate agents.
  * Each step logs tokens + estimated cost to usageLogs for the admin token counter.
  *
@@ -1992,11 +2024,9 @@ SI UNE IMAGE EST JOINTE (priorité absolue) :
       const history: typeof chatMessages.$inferSelect[] = [];
 
       try {
-        // ── A : Agent / Planning ────────────────────────────────────────
+        // ── A : Agent / Planning — avec chaîne de relais ──────────────
         let agentPlan = "";
-        const agentLlm = resolveKey(config.agent, allKeys);
-        if (agentLlm) {
-          sseWrite(res, "progress", { agent: AGENT_NAMES[agentLlm.provider], step: "Planification des modifications…", icon: "🤖" });
+        {
           const agentSystemPrompt = isExpo
             ? `Tu es un architecte React Native expert. Analyse le code App.js et produis un plan d'intervention précis (200 mots max).
 
@@ -2034,46 +2064,38 @@ RÈGLES : N'utilise que les imports Expo SDK. Garde StyleSheet.create(). Pas de 
 Ce qui ne doit PAS être touché : [liste les éléments existants à conserver absolument]
 
 RÈGLE CRITIQUE : href="#xxx" interdit — navigation = onclick="showPage('id'); return false;" href="#"`;
-          const plan = await tryCallSync(
-            agentLlm.provider, agentLlm.model, agentLlm.key,
-            agentSystemPrompt,
+          const plan = await tryCallWithFallback(
+            allKeys, agentSystemPrompt,
             `Tâche: ${summary}\n\nCode actuel (extrait):\n${codeSnippet}`,
-            900
+            900, res, "Planification des modifications…", "🤖",
+            config.agent
           );
           if (plan) agentPlan = plan.text;
         }
 
-        // ── B : Pré-exécution Qwen (Agency: 2 exécutants) ──────────────
+        // ── B : Pré-exécution (Agency: 2 exécutants) — avec relais ────
         let qwenDraft = "";
         if (config.executors.length > 1) {
-          const qwenLlm = resolveKey("qwen", allKeys);
-          if (qwenLlm) {
-            sseWrite(res, "progress", { agent: AGENT_NAMES[qwenLlm.provider], step: "Préparation des modifications…", icon: "⚙️" });
-            const qwenSystemPrompt = isExpo
-              ? `Tu es un développeur React Native expert. Génère les snippets précis à intégrer dans le code App.js existant.
+          const qwenSystemPrompt = isExpo
+            ? `Tu es un développeur React Native expert. Génère les snippets précis à intégrer dans le code App.js existant.
 Pour chaque snippet : indique l'emplacement exact (dans quel composant, après quelle ligne).
 Réutilise les StyleSheet keys existants. N'utilise que des imports Expo SDK.
 Pas de bibliothèques tierces. Garde StyleSheet.create() pour tous les styles.`
-              : `Tu es un développeur frontend expert. Génère les snippets précis à intégrer dans le code existant (pas le HTML complet).
+            : `Tu es un développeur frontend expert. Génère les snippets précis à intégrer dans le code existant (pas le HTML complet).
 Pour chaque snippet : indique l'emplacement exact (après quelle balise / dans quelle classe CSS / dans quelle fonction JS).
 Réutilise les variables CSS et classes existantes. Respecte le style du code actuel.
 NAVIGATION : onclick="showPage('id'); return false;" — jamais href="#quelquechose"`;
-            const draft = await tryCallSync(
-              qwenLlm.provider, qwenLlm.model, qwenLlm.key,
-              qwenSystemPrompt,
-              `Plan: ${agentPlan}\nTâche: ${summary}\nCode existant:\n${codeSnippet}`,
-              1200
-            );
-            if (draft) qwenDraft = draft.text;
-          }
+          const draft = await tryCallWithFallback(
+            allKeys, qwenSystemPrompt,
+            `Plan: ${agentPlan}\nTâche: ${summary}\nCode existant:\n${codeSnippet}`,
+            1200, res, "Préparation des modifications…", "⚙️",
+            "qwen"
+          );
+          if (draft) qwenDraft = draft.text;
         }
 
-        // ── C : Exécution streaming ─────────────────────────────────────
-        const execProvider = config.executors[config.executors.length - 1];
-        const execLlm = resolveKey(execProvider, allKeys);
-        if (!execLlm) { sseWrite(res, "error", { message: "Aucun LLM d'exécution disponible" }); res.end(); return; }
-
-        sseWrite(res, "progress", { agent: AGENT_NAMES[execLlm.provider], step: "Génération du code complet…", icon: "💻" });
+        // ── C : Exécution streaming — avec chaîne de relais ─────────────
+        const execStartProvider = config.executors[config.executors.length - 1];
 
         const systemPrompt = isExpo
           ? `Tu es Mar-ia, développeuse React Native / Expo senior. Tu travailles sur l'app "${project[0].name}".
@@ -2209,56 +2231,97 @@ ${agentPlan ? `\n══ PLAN D'ACTION ══\n${agentPlan}` : ""}${qwenDraft ? `
           llmMessages.push({ role: "user", content: summary });
         }
 
+        // ── Sélectionne un exécuteur via chaîne de relais (HTTP 200 = ok) ──
+        const execChainStart = FALLBACK_CHAIN.indexOf(execStartProvider);
+        const execChain = (execChainStart >= 0 ? FALLBACK_CHAIN.slice(execChainStart) : [...FALLBACK_CHAIN]) as Provider[];
+        let execLlm: { provider: Provider; model: string; key: string } | null = null;
+        let execAiRes: globalThis.Response | null = null;
+        let execIsAnthropic = false;
+
+        for (const p of execChain) {
+          const k = allKeys[p];
+          if (!k) continue;
+          sseWrite(res, "progress", { agent: AGENT_NAMES[p], step: "Génération du code complet…", icon: "💻" });
+          try {
+            let candidate: globalThis.Response;
+            if (p === "anthropic") {
+              candidate = await fetch("https://api.anthropic.com/v1/messages", {
+                method: "POST",
+                headers: { "x-api-key": k, "anthropic-version": "2023-06-01", "anthropic-beta": "prompt-caching-2024-07-31", "content-type": "application/json" },
+                body: JSON.stringify({ model: PROVIDER_MODELS[p], max_tokens: 16000, temperature: 0.3, stream: true, system: [{ type: "text", text: systemPrompt, cache_control: { type: "ephemeral" } }], messages: llmMessages }),
+              });
+            } else {
+              const baseUrls: Record<string, string> = { deepseek: "https://api.deepseek.com/v1", openai: "https://api.openai.com/v1", qwen: "https://dashscope.aliyuncs.com/compatible-mode/v1" };
+              const baseUrl = baseUrls[p] || "https://api.openai.com/v1";
+              // Adapt image blocks: Anthropic format → OpenAI image_url format
+              const adaptedMsgs = llmMessages.map((m: any) => {
+                if (m.role === "user" && Array.isArray(m.content)) {
+                  return { ...m, content: m.content.map((b: any) => b.type === "image" && b.source?.type === "base64" ? { type: "image_url", image_url: { url: `data:${b.source.media_type};base64,${b.source.data}`, detail: "high" } } : b) };
+                }
+                return m;
+              });
+              const wrappedMessages = adaptedMsgs.map((m: any) => m.role === "assistant" ? { ...m, content: `{"action":"chat","reply":${JSON.stringify(m.content)}}` } : m);
+              candidate = await fetch(`${baseUrl}/chat/completions`, {
+                method: "POST",
+                headers: { "Authorization": `Bearer ${k}`, "content-type": "application/json" },
+                body: JSON.stringify({ model: PROVIDER_MODELS[p], max_tokens: 16000, temperature: 0.3, stream: true, response_format: { type: "json_object" }, messages: [{ role: "system", content: systemPrompt }, ...wrappedMessages] }),
+              });
+            }
+            if (candidate.ok && candidate.body) {
+              execLlm = { provider: p, model: PROVIDER_MODELS[p], key: k };
+              execAiRes = candidate;
+              execIsAnthropic = (p === "anthropic");
+              break;
+            }
+            const errTxt = await candidate.text().catch(() => "");
+            pipelineLog('execute:stream:fail', { provider: p, status: candidate.status, err: errTxt.slice(0, 200) });
+            const nextP = execChain.slice(execChain.indexOf(p) + 1).find(np => allKeys[np]);
+            if (nextP) sseWrite(res, "progress", { agent: AGENT_NAMES[p], step: `Indisponible — relais ${AGENT_NAMES[nextP]}…`, icon: "⏭️" });
+          } catch (fetchErr: any) {
+            pipelineLog('execute:stream:exception', { provider: p, error: fetchErr?.message?.slice(0, 100) });
+            const nextP = execChain.slice(execChain.indexOf(p) + 1).find(np => allKeys[np]);
+            if (nextP) sseWrite(res, "progress", { agent: AGENT_NAMES[p], step: `Indisponible — relais ${AGENT_NAMES[nextP]}…`, icon: "⏭️" });
+          }
+        }
+
+        if (!execLlm || !execAiRes?.body) { sseWrite(res, "error", { message: "Aucun LLM d'exécution disponible" }); res.end(); return; }
+
         const startTime = Date.now();
         let fullRaw = ""; let inputTokens = 0; let outputTokens = 0;
 
-        if (execLlm.provider === "anthropic") {
-          const aiRes = await fetch("https://api.anthropic.com/v1/messages", {
-            method: "POST",
-            headers: { "x-api-key": execLlm.key, "anthropic-version": "2023-06-01", "anthropic-beta": "prompt-caching-2024-07-31", "content-type": "application/json" },
-            body: JSON.stringify({ model: execLlm.model, max_tokens: 16000, temperature: 0.3, stream: true, system: [{ type: "text", text: systemPrompt, cache_control: { type: "ephemeral" } }], messages: llmMessages }),
-          });
-          if (!aiRes.ok || !aiRes.body) { sseWrite(res, "error", { message: parseLlmError(await aiRes.text(), execLlm.provider) }); res.end(); return; }
-          const reader = aiRes.body.getReader(); const dec = new TextDecoder(); let buf = "";
-          while (true) {
-            const { done, value } = await reader.read(); if (done) break;
-            buf += dec.decode(value, { stream: true });
-            const lines = buf.split("\n"); buf = lines.pop() || "";
-            for (const line of lines) {
-              if (!line.startsWith("data: ")) continue;
-              const raw = line.slice(6).trim(); if (raw === "[DONE]") continue;
-              try {
-                const evt = JSON.parse(raw);
-                if (evt.type === "content_block_delta" && evt.delta?.type === "text_delta") { fullRaw += evt.delta.text; sseWrite(res, "chunk", { text: evt.delta.text }); }
-                if (evt.type === "message_delta" && evt.usage) outputTokens = evt.usage.output_tokens || 0;
-                if (evt.type === "message_start" && evt.message?.usage) inputTokens = evt.message.usage.input_tokens || 0;
-              } catch { /* skip */ }
+        {
+          const reader = execAiRes.body.getReader(); const dec = new TextDecoder(); let buf = "";
+          if (execIsAnthropic) {
+            while (true) {
+              const { done, value } = await reader.read(); if (done) break;
+              buf += dec.decode(value, { stream: true });
+              const lines = buf.split("\n"); buf = lines.pop() || "";
+              for (const line of lines) {
+                if (!line.startsWith("data: ")) continue;
+                const raw = line.slice(6).trim(); if (raw === "[DONE]") continue;
+                try {
+                  const evt = JSON.parse(raw);
+                  if (evt.type === "content_block_delta" && evt.delta?.type === "text_delta") { fullRaw += evt.delta.text; sseWrite(res, "chunk", { text: evt.delta.text }); }
+                  if (evt.type === "message_delta" && evt.usage) outputTokens = evt.usage.output_tokens || 0;
+                  if (evt.type === "message_start" && evt.message?.usage) inputTokens = evt.message.usage.input_tokens || 0;
+                } catch { /* skip */ }
+              }
             }
-          }
-        } else {
-          const baseUrls: Record<string, string> = { deepseek: "https://api.deepseek.com/v1", openai: "https://api.openai.com/v1", qwen: "https://dashscope.aliyuncs.com/compatible-mode/v1" };
-          const baseUrl = baseUrls[execLlm.provider] || "https://api.openai.com/v1";
-          const wrappedMessages = llmMessages.map(m => m.role === "assistant" ? { ...m, content: `{"action":"chat","reply":${JSON.stringify(m.content)}}` } : m);
-          const aiRes = await fetch(`${baseUrl}/chat/completions`, {
-            method: "POST",
-            headers: { "Authorization": `Bearer ${execLlm.key}`, "content-type": "application/json" },
-            body: JSON.stringify({ model: execLlm.model, max_tokens: 16000, temperature: 0.3, stream: true, response_format: { type: "json_object" }, messages: [{ role: "system", content: systemPrompt }, ...wrappedMessages] }),
-          });
-          if (!aiRes.ok || !aiRes.body) { sseWrite(res, "error", { message: parseLlmError(await aiRes.text(), execLlm.provider) }); res.end(); return; }
-          const reader = aiRes.body.getReader(); const dec = new TextDecoder(); let buf = "";
-          while (true) {
-            const { done, value } = await reader.read(); if (done) break;
-            buf += dec.decode(value, { stream: true });
-            const lines = buf.split("\n"); buf = lines.pop() || "";
-            for (const line of lines) {
-              if (!line.startsWith("data: ")) continue;
-              const raw = line.slice(6).trim(); if (raw === "[DONE]") continue;
-              try {
-                const evt = JSON.parse(raw);
-                const chunk = evt.choices?.[0]?.delta?.content;
-                if (chunk) { fullRaw += chunk; sseWrite(res, "chunk", { text: chunk }); }
-                if (evt.usage) { inputTokens = evt.usage.prompt_tokens || 0; outputTokens = evt.usage.completion_tokens || 0; }
-              } catch { /* skip */ }
+          } else {
+            while (true) {
+              const { done, value } = await reader.read(); if (done) break;
+              buf += dec.decode(value, { stream: true });
+              const lines = buf.split("\n"); buf = lines.pop() || "";
+              for (const line of lines) {
+                if (!line.startsWith("data: ")) continue;
+                const raw = line.slice(6).trim(); if (raw === "[DONE]") continue;
+                try {
+                  const evt = JSON.parse(raw);
+                  const chunk = evt.choices?.[0]?.delta?.content;
+                  if (chunk) { fullRaw += chunk; sseWrite(res, "chunk", { text: chunk }); }
+                  if (evt.usage) { inputTokens = evt.usage.prompt_tokens || 0; outputTokens = evt.usage.completion_tokens || 0; }
+                } catch { /* skip */ }
+              }
             }
           }
         }
@@ -2321,8 +2384,6 @@ ${agentPlan ? `\n══ PLAN D'ACTION ══\n${agentPlan}` : ""}${qwenDraft ? `
         // ── D : Validation + boucle auto-correction (max 2 passes) ────
         // Skip HTML-specific validation for Expo/React Native code (App.js never has </html>)
         if (!isExpo && agentResponse.action === "modify" && agentResponse.code) {
-          const controlLlm = resolveKey(config.controller, allKeys);
-
           for (let pass = 1; pass <= 2; pass++) {
             // ── D1 : Validateur statique (gratuit, instantané) ─────────
             const staticIssues = validateGeneratedCode(agentResponse.code!);
@@ -2332,10 +2393,9 @@ ${agentPlan ? `\n══ PLAN D'ACTION ══\n${agentPlan}` : ""}${qwenDraft ? `
             // Running the LLM controller on every modification produces false positives
             // and triggers unnecessary correction passes that degrade the output.
             let llmIssues = "";
-            if (controlLlm && staticIssues.length > 0) {
-              sseWrite(res, "progress", { agent: AGENT_NAMES[controlLlm.provider], step: `Vérification qualité (passe ${pass})…`, icon: "🔍" });
-              const ctrl = await tryCallSync(
-                controlLlm.provider, controlLlm.model, controlLlm.key,
+            if (staticIssues.length > 0) {
+              const ctrl = await tryCallWithFallback(
+                allKeys,
                 `Tu es un expert QA développement web. Inspecte ce code HTML/CSS/JS et liste les problèmes CONCRETS.
 Réponds UNIQUEMENT "OK" si tout est correct. Sinon, liste chaque problème en 1 ligne (80 mots max total).
 
@@ -2344,7 +2404,9 @@ VÉRIFIE UNIQUEMENT :
 — showPage() présente dans <script> si le site a plusieurs <section>
 — Balises fermées : </style> </script> </body> </html>
 — Code complet (pas tronqué en milieu de section ou de balise)`,
-                (agentResponse.code || "").slice(0, 10000), 300
+                (agentResponse.code || "").slice(0, 10000), 300,
+                res, `Vérification qualité (passe ${pass})…`, "🔍",
+                config.controller
               );
               if (ctrl && ctrl.text.trim() !== "OK") llmIssues = ctrl.text.trim();
             }
@@ -2370,8 +2432,6 @@ VÉRIFIE UNIQUEMENT :
               break;
             }
 
-            sseWrite(res, "progress", { agent: AGENT_NAMES[execLlm.provider], step: `Correction auto (passe ${pass})…`, icon: "🔄" });
-
             const fixSystemPrompt = `Tu es un expert développeur web. Corrige UNIQUEMENT les problèmes listés dans ce code HTML. Ne modifie rien d'autre.
 FORMAT STRICT — un seul JSON brut :
 {"action":"modify","reply":"Corrections appliquées.","code":"<!DOCTYPE html>...code complet corrigé..."}
@@ -2385,11 +2445,11 @@ RÈGLES DE CORRECTION :
 PROBLÈMES À CORRIGER :
 ${allIssues.map((issue, i) => `${i + 1}. ${issue}`).join('\n')}`;
 
-            const retry = await tryCallSync(
-              execLlm.provider, execLlm.model, execLlm.key,
-              fixSystemPrompt,
+            const retry = await tryCallWithFallback(
+              allKeys, fixSystemPrompt,
               `CODE HTML À CORRIGER :\n${agentResponse.code?.slice(0, 14000) || ""}`,
-              16000
+              16000, res, `Correction auto (passe ${pass})…`, "🔄",
+              execLlm!.provider
             );
             if (!retry) break;
 
@@ -2423,8 +2483,6 @@ ${allIssues.map((issue, i) => `${i + 1}. ${issue}`).join('\n')}`;
         // Equivalent du bloc D HTML mais adapté React Native : vérifie imports interdits
         // et complétude de la tâche. Si problème → Claude corrige + DeepSeek regénère.
         if (isExpo && agentResponse.action === "modify" && agentResponse.code) {
-          const controlLlm = resolveKey(config.controller, allKeys);
-
           // D-EXPO-1 : Check statique — imports interdits détectés par regex
           const FORBIDDEN_EXPO = [
             { pattern: /import.*react-native-maps/i,       fix: "Remplace react-native-maps par react-native-webview + Leaflet HTML inline" },
@@ -2441,13 +2499,12 @@ ${allIssues.map((issue, i) => `${i + 1}. ${issue}`).join('\n')}`;
             }
           }
 
-          // D-EXPO-2 : LLM contrôleur (Claude) — vérifie que la tâche est accomplie
+          // D-EXPO-2 : LLM contrôleur — vérifie que la tâche est accomplie (avec relais)
           let llmIssuesExpo = "";
-          if (controlLlm && staticIssuesExpo.length === 0) {
+          if (staticIssuesExpo.length === 0) {
             // Only run LLM check if static check passed (no forbidden imports)
-            sseWrite(res, "progress", { agent: AGENT_NAMES[controlLlm.provider], step: "Vérification qualité du code…", icon: "🔍" });
-            const ctrl = await tryCallSync(
-              controlLlm.provider, controlLlm.model, controlLlm.key,
+            const ctrl = await tryCallWithFallback(
+              allKeys,
               `Tu es un expert QA React Native / Expo. Vérifie que le code App.js généré accomplit la tâche demandée.
 Réponds UNIQUEMENT "OK" si tout est correct. Sinon, liste chaque problème en 1 ligne (80 mots max total).
 
@@ -2460,7 +2517,8 @@ VÉRIFIE UNIQUEMENT :
 
 TÂCHE DEMANDÉE : ${summary}`,
               `CODE APP.JS GÉNÉRÉ :\n${agentResponse.code.slice(0, 8000)}`,
-              400
+              400, res, "Vérification qualité du code…", "🔍",
+              config.controller
             );
             if (ctrl && ctrl.text.trim() !== "OK") llmIssuesExpo = ctrl.text.trim();
           }
@@ -2469,7 +2527,6 @@ TÂCHE DEMANDÉE : ${summary}`,
 
           if (allIssuesExpo.length > 0) {
             pipelineLog('validate:expo:issues', { issues: allIssuesExpo });
-            sseWrite(res, "progress", { agent: AGENT_NAMES[execLlm.provider], step: "Correction automatique…", icon: "🔄" });
 
             const expoFixPrompt = `Tu es un expert React Native Expo. Corrige UNIQUEMENT les problèmes listés dans ce code App.js.
 Ne modifie rien d'autre que ce qui est demandé dans les corrections.
@@ -2484,11 +2541,11 @@ RAPPEL IMPORTS AUTORISÉS : react-native built-ins, expo-linear-gradient, react-
 RAPPEL NAVIGATION : uniquement via useState, pas de librairie
 RAPPEL ICÔNES : uniquement des emojis`;
 
-            const retry = await tryCallSync(
-              execLlm.provider, execLlm.model, execLlm.key,
-              expoFixPrompt,
+            const retry = await tryCallWithFallback(
+              allKeys, expoFixPrompt,
               `CODE APP.JS À CORRIGER :\n${agentResponse.code.slice(0, 12000)}`,
-              14000
+              14000, res, "Correction automatique…", "🔄",
+              execLlm!.provider
             );
 
             if (retry) {
@@ -2526,7 +2583,7 @@ RAPPEL ICÔNES : uniquement des emojis`;
             label: `Version ${nextVersionNumber} — ${message.slice(0, 50)}`,
             prompt: message, generatedCode: agentResponse.code,
             tokensUsed, generationTimeMs: durationMs,
-            model: usedModels || execLlm.model, status: "ready",
+            model: usedModels || execLlm!.model, status: "ready",
           }).returning({ id: versions.id });
           versionId = versionResult.id;
           await db.update(projects).set({ currentVersionId: versionId }).where(eq(projects.id, projectId));
@@ -2545,12 +2602,9 @@ RAPPEL ICÔNES : uniquement des emojis`;
           action: agentResponse.action, generatedCode: agentResponse.code || null,
         });
 
-        // ── G : Suggestions A/B/C ──────────────────────────────────────
-        const suggesterLlm = resolveKey(config.suggester, allKeys);
-        if (suggesterLlm) {
-          const suggestResult = await tryCallSync(
-            suggesterLlm.provider, suggesterLlm.model, suggesterLlm.key,
-            `Tu es Mar-ia. Propose 3 améliorations concrètes et variées pour continuer à enrichir ce site.
+        // ── G : Suggestions A/B/C — relais silencieux (après "done") ──
+        {
+          const suggestSys = `Tu es Mar-ia. Propose 3 améliorations concrètes et variées pour continuer à enrichir ce site.
 Format JSON STRICT (un seul tableau, rien d'autre) :
 [{"label":"A","text":"..."},{"label":"B","text":"..."},{"label":"C","text":"..."}]
 
@@ -2559,16 +2613,22 @@ Règles :
 • Couvre 3 axes DIFFÉRENTS parmi : contenu, design, fonctionnalité, SEO, conversion, mobile, animation
 • Commence par un verbe d'action : "Ajouter...", "Améliorer...", "Créer...", "Optimiser...", "Intégrer..."
 • Pas de guillemets doubles dans les textes (utilise des apostrophes si besoin)
-• Pas de suggestion déjà faite dans la modification en cours`,
-            `Projet: ${project[0].name} (${project[0].siteType || "site web"})\nDernière modification: ${assistantReply.slice(0, 300)}\nType de site: ${project[0].siteType || "landing page"}`,
-            350
-          );
-          if (suggestResult) {
-            try {
-              const extracted = extractJsonObject(suggestResult.text);
-              const suggestions = JSON.parse(extracted ?? suggestResult.text);
-              if (Array.isArray(suggestions)) sseWrite(res, "suggestions", { suggestions });
-            } catch { /* skip */ }
+• Pas de suggestion déjà faite dans la modification en cours`;
+          const suggestUser = `Projet: ${project[0].name} (${project[0].siteType || "site web"})\nDernière modification: ${assistantReply.slice(0, 300)}\nType de site: ${project[0].siteType || "landing page"}`;
+          // Silent loop — no progress events after "done" was already sent
+          const suggestChainStart = FALLBACK_CHAIN.indexOf(config.suggester);
+          const suggestChain = (suggestChainStart >= 0 ? FALLBACK_CHAIN.slice(suggestChainStart) : [...FALLBACK_CHAIN]) as Provider[];
+          for (const p of suggestChain) {
+            const k = allKeys[p];
+            if (!k) continue;
+            const suggestResult = await tryCallSync(p, PROVIDER_MODELS[p], k, suggestSys, suggestUser, 350);
+            if (suggestResult?.text) {
+              try {
+                const extracted = extractJsonObject(suggestResult.text);
+                const suggestions = JSON.parse(extracted ?? suggestResult.text);
+                if (Array.isArray(suggestions)) { sseWrite(res, "suggestions", { suggestions }); break; }
+              } catch { /* skip malformed */ }
+            }
           }
         }
 
