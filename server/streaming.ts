@@ -671,8 +671,28 @@ async function generateExpoApp(
 • Commence EXACTEMENT par : import React, { useState, useEffect, useRef } from 'react';
 • SEULS imports autorisés :
     - React Native built-ins : View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput, Image, SafeAreaView, StatusBar, FlatList, Modal, Alert, ActivityIndicator, Dimensions, Platform, Switch
-    - Expo : import { LinearGradient } from 'expo-linear-gradient';  ← UNIQUEMENT ce package Expo
+    - Expo : import { LinearGradient } from 'expo-linear-gradient';
+    - Carte/Map : import { WebView } from 'react-native-webview';  ← UNIQUEMENT pour les cartes OSM/Leaflet
 • INTERDIT ABSOLUMENT : react-native-svg, react-navigation, @react-navigation, expo-router, @expo/vector-icons, react-native-vector-icons, react-native-maps, react-native-reanimated, toute lib non listée ci-dessus
+
+══ CARTE OPENSTREETMAP — PATTERN OBLIGATOIRE ══
+Si l'app nécessite une carte (géolocalisation, VTC, livraison, trajets…) :
+• Utilise EXCLUSIVEMENT react-native-webview avec Leaflet.js en HTML inline
+• Pattern :
+  import { WebView } from 'react-native-webview';
+  const mapHtml = \`<!DOCTYPE html><html><head>
+    <meta name="viewport" content="width=device-width,initial-scale=1">
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <style>html,body,#map{margin:0;padding:0;width:100%;height:100%}</style>
+  </head><body><div id="map"></div><script>
+    var map = L.map('map').setView([LAT, LNG], ZOOM);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{attribution:'© OSM'}).addTo(map);
+    L.marker([LAT, LNG]).addTo(map).bindPopup('LABEL').openPopup();
+  </script></body></html>\`;
+  // Rendu : <WebView source={{ html: mapHtml }} style={{ flex:1 }} />
+• ❌ JAMAIS react-native-maps (crash Expo Snack)
+• La WebView permet aussi d'afficher la position GPS réelle via postMessage si besoin
 • Navigation : UNIQUEMENT via useState — PAS de librairie de navigation
 • Icônes : UNIQUEMENT des emojis (✈️ 🏠 👤 ⚙️ ❤️ etc.) — jamais de composant Icon
 • Export default function App() { ... }
@@ -814,6 +834,7 @@ Retourne UNIQUEMENT le code JavaScript complet, sans explication, sans markdown,
             "react": "18.3.1",
             "react-native": "0.76.7",
             "expo-linear-gradient": "~14.0.1",
+            "react-native-webview": "13.10.5",
           },
         }),
         signal: AbortSignal.timeout(20000),
