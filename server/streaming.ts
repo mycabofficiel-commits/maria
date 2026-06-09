@@ -704,14 +704,15 @@ async function generateExpoApp(
 • SEULS imports autorisés :
     - React Native built-ins : View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput, Image, SafeAreaView, StatusBar, FlatList, Modal, Alert, ActivityIndicator, Dimensions, Platform, Switch
     - Expo : import { LinearGradient } from 'expo-linear-gradient';
-    - Carte/Map : import { WebView } from 'react-native-webview';  ← UNIQUEMENT pour les cartes OSM/Leaflet
+    - Carte/Map : const WebViewNative = Platform.OS !== 'web' ? require('react-native-webview').WebView : null;  ← chargement dynamique OBLIGATOIRE (pas d'import statique)
 • INTERDIT ABSOLUMENT : react-native-svg, react-navigation, @react-navigation, expo-router, @expo/vector-icons, react-native-vector-icons, react-native-maps, react-native-reanimated, toute lib non listée ci-dessus
 
 ══ CARTE OPENSTREETMAP — PATTERN OBLIGATOIRE ══
 Si l'app nécessite une carte (géolocalisation, VTC, livraison, trajets…) :
-• Utilise EXCLUSIVEMENT react-native-webview avec Leaflet.js en HTML inline
-• Pattern :
-  import { WebView } from 'react-native-webview';
+• JAMAIS "import { WebView } from 'react-native-webview'" en haut du fichier (crash preview web Snack)
+• TOUJOURS charger WebView dynamiquement via Platform.OS — pattern OBLIGATOIRE :
+
+  const WebViewNative = Platform.OS !== 'web' ? require('react-native-webview').WebView : null;
   const mapHtml = \`<!DOCTYPE html><html><head>
     <meta name="viewport" content="width=device-width,initial-scale=1">
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
@@ -722,9 +723,13 @@ Si l'app nécessite une carte (géolocalisation, VTC, livraison, trajets…) :
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{attribution:'© OSM'}).addTo(map);
     L.marker([LAT, LNG]).addTo(map).bindPopup('LABEL').openPopup();
   </script></body></html>\`;
-  // Rendu : <WebView source={{ html: mapHtml }} style={{ flex:1 }} />
+  // Dans le composant :
+  // if (WebViewNative) return <WebViewNative source={{ html: mapHtml }} style={{ flex:1 }} />;
+  // return <View style={{flex:1,justifyContent:'center',alignItems:'center',backgroundColor:'#e8f4f8'}}><Text style={{fontSize:40}}>🗺️</Text><Text style={{color:'#666',marginTop:8}}>Carte sur mobile</Text></View>;
+
+• Ce pattern : carte réelle sur téléphone (Expo Go) + placeholder carte sur preview web
 • ❌ JAMAIS react-native-maps (crash Expo Snack)
-• La WebView permet aussi d'afficher la position GPS réelle via postMessage si besoin
+• ❌ JAMAIS import statique en haut : import { WebView } from 'react-native-webview'
 • Navigation : UNIQUEMENT via useState — PAS de librairie de navigation
 • Icônes : UNIQUEMENT des emojis (✈️ 🏠 👤 ⚙️ ❤️ etc.) — jamais de composant Icon
 • Export default function App() { ... }
@@ -2123,9 +2128,12 @@ N'ajoute rien de non demandé. N'efface rien qui fonctionne.
 ══ RÈGLE 3 — CODE EXPO VALIDE ══
 • N'utilise QUE des composants et APIs disponibles dans Expo SDK (react-native, expo, expo-status-bar, expo-linear-gradient, etc.)
 • PAS de bibliothèques tierces non disponibles dans Expo Snack (pas de react-navigation seul, pas de axios, etc.)
+• CARTE/MAP — chargement DYNAMIQUE OBLIGATOIRE (l'import statique crash la preview web Snack) :
+  const WebViewNative = Platform.OS !== 'web' ? require('react-native-webview').WebView : null;
+  Puis dans le composant : if (!WebViewNative) return <PlaceholderCarte/>; return <WebViewNative source={{html:mapHtml}} style={{flex:1}}/>;
 • Tous les styles dans StyleSheet.create() — pas de styles inline complexes
 • Garde les dimensions relatives (flex, %, Dimensions.get) — pas de valeurs px absolues qui cassent sur différents écrans
-• Platform.OS pour les différences iOS/Android si nécessaire
+• Platform.OS pour les différences iOS/Android/web si nécessaire
 
 ══ RÈGLE 4 — CODE 100% COMPLET ══
 Retourne le fichier App.js ENTIER. Jamais tronqué. Jamais raccourci avec "// reste du code".
