@@ -1822,27 +1822,45 @@ INTERDICTIONS ABSOLUES :
       const reasonerSystemPrompt = isExpo
         ? `Tu es Mar-ia, experte en React Native / Expo. Analyse le code App.js et la demande.
 
+══ CONTRAINTES TECHNIQUES EXPO SNACK (CRITIQUE) ══
+Ces règles sont non-négociables — un écart = app qui crash dans Expo Snack :
+
+INTERDIT (crash Snack) → SOLUTION CORRECTE :
+• react-native-maps → ❌ CRASH → ✅ react-native-webview + Leaflet.js OSM (HTML inline)
+• react-navigation / expo-router → ❌ CRASH → ✅ navigation via useState uniquement
+• @expo/vector-icons → ❌ CRASH → ✅ emojis uniquement comme icônes
+• axios / fetch vers API externe → ❌ CORS → ✅ fetch via proxy /api/proxy/call
+• TypeScript → ❌ INTERDIT → ✅ JavaScript pur uniquement
+
+PATTERNS CORRECTS à prescrire dans le plan :
+• Carte (OSM, Google Maps, géoloc) → WebView + Leaflet HTML inline + react-native-webview
+• Authentification → DEUX écrans : RegisterScreen (créer compte) + LoginScreen (se connecter) + navigation useState entre les deux
+• Notifications → Alert.alert() de React Native
+• Stockage local → AsyncStorage de @react-native-async-storage/async-storage (disponible Snack)
+• Animations → Animated de React Native, pas Reanimated
+
 ÉTAPE 1 — CLASSIFIE la demande :
 • Bug d'affichage (écran blanc, crash) → cherche : import manquant, composant mal utilisé, prop incorrecte
 • Erreur JS → cherche : variable undefined, hook mal utilisé, async/await manquant
 • Modification design → identifie les propriétés StyleSheet concernées
-• Ajout de fonctionnalité → identifie l'emplacement d'insertion dans le composant
-• Ajout de navigation → cherche si React Navigation est déjà présent ou s'il faut simuler avec state
+• Ajout de fonctionnalité → identifie l'emplacement d'insertion + le pattern correct à utiliser
+• Ajout de carte/map → TOUJOURS prescrire le pattern WebView+Leaflet
 
 ÉTAPE 2 — ANALYSE DU CODE (sois précis, cite le code) :
 • Cite les composants (View, Text, ScrollView, etc.) concernés
 • Pour un bug : cite le composant ou le style problématique
 • Pour une modif : cite le StyleSheet key et la propriété à modifier
-• Pour un ajout : cite la section du code où insérer
+• Pour un ajout : cite la section du code où insérer ET le pattern technique à utiliser
 
 ÉTAPE 3 — RÉSUMÉ (120 mots max, format STRICT) :
 **Demande :** [reformulation précise en 1-2 phrases]
 **Diagnostic :** [problèmes concrets trouvés dans le code — cite les éléments réels]
 **Actions prévues :**
-• [action 1 précise]
+• [action 1 précise avec le pattern technique si applicable]
 • [action 2 précise]
 • [...]
 **Périmètre :** Composants / Styles / Navigation / Data
+**Contraintes techniques :** [liste les patterns obligatoires détectés — ex: "Carte → WebView+Leaflet", "Auth → Register+Login"]
 
 ⚠️ Si la demande est vague, propose 3 améliorations concrètes et demande laquelle.`
         : `Tu es Mar-ia, experte en développement web. Analyse attentivement le code et la demande avant de répondre.
@@ -2398,6 +2416,100 @@ ${allIssues.map((issue, i) => `${i + 1}. ${issue}`).join('\n')}`;
               pipelineLog(`validate:pass${pass}:correction_parse_failed`);
               break;
             }
+          }
+        }
+
+        // ── D-EXPO : Vérification + boucle auto-correction Expo (max 1 passe) ──
+        // Equivalent du bloc D HTML mais adapté React Native : vérifie imports interdits
+        // et complétude de la tâche. Si problème → Claude corrige + DeepSeek regénère.
+        if (isExpo && agentResponse.action === "modify" && agentResponse.code) {
+          const controlLlm = resolveKey(config.controller, allKeys);
+
+          // D-EXPO-1 : Check statique — imports interdits détectés par regex
+          const FORBIDDEN_EXPO = [
+            { pattern: /import.*react-native-maps/i,       fix: "Remplace react-native-maps par react-native-webview + Leaflet HTML inline" },
+            { pattern: /import.*@react-navigation/i,       fix: "Remplace react-navigation par une navigation useState (switchTab ou setScreen)" },
+            { pattern: /import.*expo-router/i,             fix: "Remplace expo-router par une navigation useState" },
+            { pattern: /import.*@expo\/vector-icons/i,     fix: "Remplace @expo/vector-icons par des emojis (ex: 🏠 👤 ⚙️)" },
+            { pattern: /import.*react-native-reanimated/i, fix: "Remplace react-native-reanimated par Animated de React Native" },
+            { pattern: /import.*axios/i,                   fix: "Remplace axios par fetch natif" },
+          ];
+          const staticIssuesExpo: string[] = [];
+          for (const { pattern, fix } of FORBIDDEN_EXPO) {
+            if (pattern.test(agentResponse.code)) {
+              staticIssuesExpo.push(fix);
+            }
+          }
+
+          // D-EXPO-2 : LLM contrôleur (Claude) — vérifie que la tâche est accomplie
+          let llmIssuesExpo = "";
+          if (controlLlm && staticIssuesExpo.length === 0) {
+            // Only run LLM check if static check passed (no forbidden imports)
+            sseWrite(res, "progress", { agent: AGENT_NAMES[controlLlm.provider], step: "Vérification qualité du code…", icon: "🔍" });
+            const ctrl = await tryCallSync(
+              controlLlm.provider, controlLlm.model, controlLlm.key,
+              `Tu es un expert QA React Native / Expo. Vérifie que le code App.js généré accomplit la tâche demandée.
+Réponds UNIQUEMENT "OK" si tout est correct. Sinon, liste chaque problème en 1 ligne (80 mots max total).
+
+VÉRIFIE UNIQUEMENT :
+— La tâche demandée est-elle réalisée ? (fonctionnalité présente dans le code)
+— Si "carte" / "map" demandée → WebView + Leaflet présent ? (pas react-native-maps)
+— Si "auth" / "connexion" / "compte" demandé → RegisterScreen ET LoginScreen présents ?
+— Export default App() présent en fin de fichier ?
+— StyleSheet.create() utilisé pour tous les styles ?
+
+TÂCHE DEMANDÉE : ${summary}`,
+              `CODE APP.JS GÉNÉRÉ :\n${agentResponse.code.slice(0, 8000)}`,
+              400
+            );
+            if (ctrl && ctrl.text.trim() !== "OK") llmIssuesExpo = ctrl.text.trim();
+          }
+
+          const allIssuesExpo = [...staticIssuesExpo, ...(llmIssuesExpo ? [llmIssuesExpo] : [])];
+
+          if (allIssuesExpo.length > 0) {
+            pipelineLog('validate:expo:issues', { issues: allIssuesExpo });
+            sseWrite(res, "progress", { agent: AGENT_NAMES[execLlm.provider], step: "Correction automatique…", icon: "🔄" });
+
+            const expoFixPrompt = `Tu es un expert React Native Expo. Corrige UNIQUEMENT les problèmes listés dans ce code App.js.
+Ne modifie rien d'autre que ce qui est demandé dans les corrections.
+
+FORMAT STRICT — un seul JSON brut :
+{"action":"modify","reply":"Corrections appliquées.","code":"import React..."}
+
+CORRECTIONS À APPLIQUER :
+${allIssuesExpo.map((issue, i) => `${i + 1}. ${issue}`).join('\n')}
+
+RAPPEL IMPORTS AUTORISÉS : react-native built-ins, expo-linear-gradient, react-native-webview
+RAPPEL NAVIGATION : uniquement via useState, pas de librairie
+RAPPEL ICÔNES : uniquement des emojis`;
+
+            const retry = await tryCallSync(
+              execLlm.provider, execLlm.model, execLlm.key,
+              expoFixPrompt,
+              `CODE APP.JS À CORRIGER :\n${agentResponse.code.slice(0, 12000)}`,
+              14000
+            );
+
+            if (retry) {
+              let corrected: { action: string; code?: string; reply: string } | null = null;
+              try { corrected = JSON.parse(retry.text.trim()); }
+              catch {
+                try { corrected = JSON.parse(extractJsonObject(retry.text) ?? retry.text); }
+                catch {
+                  const jsStart = retry.text.indexOf("import React");
+                  if (jsStart >= 0) {
+                    corrected = { action: "modify", reply: "Corrections appliquées.", code: retry.text.slice(jsStart) };
+                  }
+                }
+              }
+              if (corrected?.code) {
+                agentResponse = corrected;
+                pipelineLog('validate:expo:corrected', { codeLen: corrected.code.length });
+              }
+            }
+          } else {
+            pipelineLog('validate:expo:ok');
           }
         }
 
