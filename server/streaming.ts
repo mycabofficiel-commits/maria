@@ -2586,7 +2586,57 @@ RAPPEL ICÔNES : uniquement des emojis`;
             model: usedModels || execLlm!.model, status: "ready",
           }).returning({ id: versions.id });
           versionId = versionResult.id;
-          await db.update(projects).set({ currentVersionId: versionId }).where(eq(projects.id, projectId));
+
+          // ── Expo : republish Snack with updated code + correct dependencies ──
+          // Without this, the Snack still shows the old code after a chat modification,
+          // and any newly imported package (e.g. react-native-webview) causes a red screen.
+          if (isExpo) {
+            try {
+              sseWrite(res, "progress", { agent: "Expo", step: "Mise à jour du Snack…", icon: "🚀" });
+              const snackSaveRes = await fetch("https://exp.host/--/api/v2/snack/save", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                  manifest: {
+                    name: project[0].name,
+                    description: `Application générée par Mar-ia — ${project[0].siteType || "App mobile"}`,
+                    sdkVersion: "54.0.0",
+                  },
+                  code: { "App.js": { type: "CODE", contents: agentResponse.code } },
+                  dependencies: {
+                    "expo": "~54.0.0",
+                    "react": "18.3.1",
+                    "react-native": "0.76.7",
+                    "expo-linear-gradient": "~14.0.1",
+                    "react-native-webview": "13.10.5",
+                  },
+                }),
+                signal: AbortSignal.timeout(20000),
+              });
+              if (snackSaveRes.ok) {
+                const snackData = await snackSaveRes.json() as any;
+                const newSnackId = snackData.hashId || snackData.id || "";
+                if (newSnackId) {
+                  const newSnackUrl = `https://snack.expo.dev/${newSnackId}`;
+                  await db.update(projects).set({ currentVersionId: versionId, previewUrl: newSnackUrl }).where(eq(projects.id, projectId));
+                  pipelineLog("expo:snack:updated", { snackId: newSnackId });
+                  // Inject snackUrl into the done event so client refreshes the QR
+                  (agentResponse as any)._snackUrl = newSnackUrl;
+                  (agentResponse as any)._snackId = newSnackId;
+                } else {
+                  await db.update(projects).set({ currentVersionId: versionId }).where(eq(projects.id, projectId));
+                }
+              } else {
+                pipelineLog("expo:snack:update-failed", { status: snackSaveRes.status });
+                await db.update(projects).set({ currentVersionId: versionId }).where(eq(projects.id, projectId));
+              }
+            } catch (snackErr: any) {
+              pipelineLog("expo:snack:update-error", { error: snackErr?.message });
+              await db.update(projects).set({ currentVersionId: versionId }).where(eq(projects.id, projectId));
+            }
+          } else {
+            await db.update(projects).set({ currentVersionId: versionId }).where(eq(projects.id, projectId));
+          }
         }
 
         // ── F : Livraison ──────────────────────────────────────────────
@@ -2600,6 +2650,9 @@ RAPPEL ICÔNES : uniquement des emojis`;
         sseWrite(res, "done", {
           versionId, tokensUsed, reply: assistantReply,
           action: agentResponse.action, generatedCode: agentResponse.code || null,
+          // Pass new Snack URL if Expo project was re-published (client refreshes QR code)
+          snackUrl: (agentResponse as any)._snackUrl || null,
+          snackId: (agentResponse as any)._snackId || null,
         });
 
         // ── G : Suggestions A/B/C — relais silencieux (après "done") ──
