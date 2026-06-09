@@ -687,6 +687,16 @@ async function generateExpoApp(
 4. Composant App() principal avec useState pour l'écran actif
 5. StatusBar barStyle="light-content" ou "dark-content" selon le fond
 
+══ AUTHENTIFICATION — RÈGLE CRITIQUE ══
+Si l'app inclut un système d'authentification (login, connexion, compte, profil protégé) :
+• OBLIGATOIRE : 2 écrans distincts — RegisterScreen (créer un compte) ET LoginScreen (se connecter)
+• RegisterScreen : champs prénom, nom, email, mot de passe, confirmation MDP + bouton "Créer mon compte" + lien "Déjà un compte ? Se connecter"
+• LoginScreen : champs email + mot de passe + bouton "Se connecter" + lien "Pas encore de compte ? S'inscrire"
+• Navigation croisée via useState entre Register ↔ Login
+• Après inscription/connexion réussie → écran principal de l'app (HomeScreen ou TabBar)
+• L'auth precède toujours le TabBar — l'utilisateur doit être "connecté" pour voir l'app
+• Gérer l'état isLoggedIn / isRegistered avec useState, simuler avec données fictives
+
 ══ DESIGN PREMIUM ══
 • Cards : borderRadius:16, shadowColor:'#000', shadowOffset:{width:0,height:2}, shadowOpacity:0.08, shadowRadius:8, elevation:3
 • Boutons principaux : height:52, borderRadius:26, backgroundColor:COLORS.primary
@@ -712,6 +722,12 @@ STRUCTURE OBLIGATOIRE :
 4. Composant BottomTabBar avec navigation entre les écrans
 5. Composant App() principal avec useState pour gérer l'écran actif
 6. StyleSheet.create({ ... }) avec TOUS les styles en bas du fichier
+
+⚠️ SI L'APP INCLUT UNE AUTHENTIFICATION :
+• Génère IMPÉRATIVEMENT RegisterScreen (créer un compte) ET LoginScreen (se connecter)
+• RegisterScreen en premier — c'est la porte d'entrée naturelle d'un nouvel utilisateur
+• Inclus les liens croisés : "Déjà un compte ?" sur Register → Login, "Pas de compte ?" sur Login → Register
+• Le TabBar n'apparaît QU'APRÈS connexion/inscription réussie (isLoggedIn useState)
 
 QUALITÉ ATTENDUE :
 • Contenu SPÉCIFIQUE au domaine demandé (pas de template générique)
@@ -1185,7 +1201,7 @@ Minimum 4 écrans complets avec du VRAI contenu (pas lorem ipsum) :
 • Accueil/Home : hero adapté + résumé du service + actions rapides
 • Liste/Catalogue : liste de cards ou grille selon le type d'app
 • Détail : fiche détaillée d'un item (ex: chauffeur, produit, article)
-• Profil/Auth : écran connexion ou profil utilisateur
+• Profil/Auth : si auth demandée → DEUX écrans obligatoires : RegisterScreen ("Créer un compte" : prénom, email, MDP, bouton inscription) ET LoginScreen ("Se connecter" : email, MDP, bouton connexion) + lien croisé entre les deux
 
 ══ INTERACTIONS JS ══
 • switchTab(name) : navigation entre écrans
@@ -1306,7 +1322,7 @@ STRUCTURE OBLIGATOIRE :
 • Écran Accueil : header avec avatar/logo + salutation + résumé service + actions rapides
 • Écran Liste/Catalogue : liste de cards scrollable avec avatar/image + info + bouton action
 • Écran Détail : fiche complète d'un élément (ex: chauffeur disponible, produit, profil)
-• Écran Profil/Auth : formulaire de connexion ou profil utilisateur avec photo
+• Écrans Auth (si auth demandée) : DEUX écrans obligatoires — RegisterScreen ("Créer un compte" : prénom, email, MDP, bouton "S'inscrire", lien "Déjà un compte ?") ET LoginScreen ("Se connecter" : email, MDP, bouton "Connexion", lien "Pas encore de compte ?") avec navigation croisée
 • (Optionnel selon app) Écran Carte/Map : simulation visuelle d'une carte avec marqueur CSS
 
 QUALITÉ MOBILE :
