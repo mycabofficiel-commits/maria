@@ -247,24 +247,6 @@ export default function Dashboard() {
           ))}
         </div>
 
-        {/* API Key warning */}
-        {!apiKey && (
-          <div className="flex items-center justify-between p-4 rounded-xl border border-amber-400/20 bg-amber-400/5">
-            <div className="flex items-center gap-3">
-              <AlertCircle className="w-5 h-5 text-amber-400 flex-shrink-0" />
-              <div>
-                <div className="text-sm font-medium text-foreground">Clé API Anthropic requise</div>
-                <div className="text-xs text-muted-foreground">Connectez votre clé pour commencer à générer des sites.</div>
-              </div>
-            </div>
-            <Link href="/api-keys">
-              <Button size="sm" variant="outline" className="border-amber-400/30 text-amber-400 hover:bg-amber-400/10 flex-shrink-0">
-                Configurer
-                <ArrowRight className="ml-1.5 w-3.5 h-3.5" />
-              </Button>
-            </Link>
-          </div>
-        )}
 
         {/* Recent projects */}
         <div>

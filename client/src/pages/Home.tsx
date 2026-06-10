@@ -62,8 +62,8 @@ const FEATURES = [
 const STEPS = [
   {
     num: "01",
-    title: "Connectez votre clé Anthropic",
-    desc: "Ajoutez votre clé API Anthropic personnelle. Elle est chiffrée et n'est jamais exposée côté client.",
+    title: "Créez votre compte gratuitement",
+    desc: "Inscrivez-vous en quelques secondes. Aucune carte bancaire requise.",
   },
   {
     num: "02",

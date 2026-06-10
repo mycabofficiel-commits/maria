@@ -251,7 +251,7 @@ export default function Login() {
       <div className="min-h-screen bg-background flex items-center justify-center p-4">
         <div className="w-full max-w-md space-y-8">
           <div className="flex flex-col items-center text-center">
-            <LogoBrand size="lg" showSlogan />
+            <Link href="/"><LogoBrand size="lg" showSlogan /></Link>
           </div>
 
           <form onSubmit={handleLogin} className="space-y-4">
@@ -301,7 +301,7 @@ export default function Login() {
     <div className="min-h-screen bg-background flex items-center justify-center p-4 py-12">
       <div className="w-full max-w-md space-y-6">
         <div className="flex flex-col items-center text-center space-y-1">
-          <LogoBrand size="lg" showSlogan />
+          <Link href="/"><LogoBrand size="lg" showSlogan /></Link>
           <p className="text-muted-foreground text-sm pt-2">{t("auth_free_start")}</p>
         </div>
 

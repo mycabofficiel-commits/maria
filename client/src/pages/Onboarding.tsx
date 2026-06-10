@@ -123,9 +123,9 @@ export default function Onboarding() {
 
               <div className="space-y-3 mb-6">
                 {[
-                  "Connectez votre clé API Anthropic",
                   "Créez votre premier projet",
-                  "Générez votre site en quelques secondes",
+                  "Décrivez votre site en quelques mots",
+                  "Générez, modifiez et publiez en un clic",
                 ].map((item, i) => (
                   <div key={i} className="flex items-center gap-3 p-3 rounded-lg bg-card border border-border/50">
                     <div className="w-6 h-6 rounded-full bg-primary/10 flex items-center justify-center text-xs font-bold text-primary">
