@@ -3,6 +3,7 @@ import { protectedProcedure, router } from "../_core/trpc";
 import { getDb } from "../db";
 import { projects, versions, chatMessages, projectFiles, usageLogs, users, apiKeys } from "../../drizzle/schema";
 import { eq, desc, and, count, sum } from "drizzle-orm";
+import { PLAN_LIMITS, type PlanName } from "@shared/const";
 import crypto from "crypto";
 import { buildInspirationContext } from "../inspiration";
 
@@ -62,8 +63,8 @@ export const projectsRouter = router({
       // Check plan limits
       const userRow = await db.select().from(users).where(eq(users.id, ctx.user.id)).limit(1);
       const u = userRow[0];
-      const planLimits: Record<string, number> = { free: 1, creator: 5, pro: 20, agency: 9999 };
-      const limit = planLimits[u?.plan || "free"] || 1;
+      const limits = PLAN_LIMITS[(u?.plan || "free") as PlanName] || PLAN_LIMITS.free;
+      const limit = limits.projectsLimit;
       const projectCount = await db.select({ count: count() }).from(projects).where(eq(projects.userId, ctx.user.id));
       if ((projectCount[0]?.count || 0) >= limit) {
         throw new Error(`Limite de projets atteinte pour votre plan (${limit}). Passez à un plan supérieur.`);

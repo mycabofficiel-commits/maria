@@ -10,6 +10,7 @@ import { getIntegrationKey } from "./routers/integrations";
 import { eq, and, desc, count, sum, gte } from "drizzle-orm";
 import crypto from "crypto";
 import { buildInspirationContext } from "./inspiration";
+import { PLAN_LIMITS, type PlanName } from "@shared/const";
 
 const ENCRYPTION_KEY =
   process.env.JWT_SECRET?.slice(0, 32).padEnd(32, "0") ||
@@ -1130,12 +1131,28 @@ Si l'app a des onglets (TabBar, BottomTabNavigator, ou navigation bas) :
     const db = await getDb();
     if (!db) { res.status(500).json({ error: "DB unavailable" }); return; }
 
-    // Check generations limit
+    // ── Check daily generations limit (based on usageLogs for today) ────────
     const userRow = await db.select().from(users).where(eq(users.id, user.id)).limit(1);
     const u = userRow[0];
-    if ((u?.generationsUsed || 0) >= (u?.generationsLimit || 3)) {
-      res.status(403).json({ error: "Limite de générations atteinte. Passez à un plan supérieur." });
-      return;
+    const userPlan = (u?.plan || "free") as PlanName;
+    const planLimits = PLAN_LIMITS[userPlan] || PLAN_LIMITS.free;
+    const planMaxTokens = planLimits.maxTokensPerGen;
+
+    if (planLimits.dailyGenerations > 0) {
+      const todayStart = new Date();
+      todayStart.setHours(0, 0, 0, 0);
+      const todayCount = await db.select({ count: count() }).from(usageLogs)
+        .where(and(
+          eq(usageLogs.userId, user.id),
+          gte(usageLogs.createdAt, todayStart),
+        ));
+      const used = Number(todayCount[0]?.count || 0);
+      if (used >= planLimits.dailyGenerations) {
+        res.status(403).json({
+          error: `Limite de ${planLimits.dailyGenerations} génération(s)/jour atteinte. Revenez demain ou passez à un plan supérieur.`,
+        });
+        return;
+      }
     }
 
     // Check monthly token limit (if set by admin)
@@ -1152,9 +1169,6 @@ Si l'app a des onglets (TabBar, BottomTabNavigator, ou navigation bas) :
         return;
       }
     }
-
-    // ── Platform DeepSeek key (final executor) — fall back to user key ────────
-    const userPlan = u?.plan || "free";
     let deepseekKey = await getPlatformKey("deepseek");
     if (!deepseekKey) {
       // Backward compat: try the user's own stored API key
@@ -1424,7 +1438,7 @@ Retourne UNIQUEMENT le code HTML complet, sans explication, sans markdown, sans 
         headers: { "Authorization": `Bearer ${deepseekKey}`, "content-type": "application/json" },
         body: JSON.stringify({
           model: "deepseek-chat",
-          max_tokens: 14000,
+          max_tokens: planMaxTokens,
           temperature: 0.6,
           stream: true,
           messages: [{ role: "system", content: systemPrompt }, { role: "user", content: userMessage }],
@@ -1628,6 +1642,7 @@ Retourne UNIQUEMENT le code HTML, sans explication, sans markdown, sans backtick
     const u = userRow[0];
     const userPlan = u?.plan || "free";
     const config = PLAN_CONFIGS[userPlan] || PLAN_CONFIGS.free;
+    const chatPlanMaxTokens = (PLAN_LIMITS[userPlan as PlanName] || PLAN_LIMITS.free).maxTokensPerGen;
 
     // Fallback: if no platform deepseek key, try user's stored key
     let deepseekKey = deepseekKeyPlatform;
@@ -2256,7 +2271,7 @@ ${agentPlan ? `\n══ PLAN D'ACTION ══\n${agentPlan}` : ""}${qwenDraft ? `
               candidate = await fetch("https://api.anthropic.com/v1/messages", {
                 method: "POST",
                 headers: { "x-api-key": k, "anthropic-version": "2023-06-01", "anthropic-beta": "prompt-caching-2024-07-31", "content-type": "application/json" },
-                body: JSON.stringify({ model: PROVIDER_MODELS[p], max_tokens: 16000, temperature: 0.3, stream: true, system: [{ type: "text", text: systemPrompt, cache_control: { type: "ephemeral" } }], messages: llmMessages }),
+                body: JSON.stringify({ model: PROVIDER_MODELS[p], max_tokens: chatPlanMaxTokens, temperature: 0.3, stream: true, system: [{ type: "text", text: systemPrompt, cache_control: { type: "ephemeral" } }], messages: llmMessages }),
               });
             } else {
               const baseUrls: Record<string, string> = { deepseek: "https://api.deepseek.com/v1", openai: "https://api.openai.com/v1", qwen: "https://dashscope.aliyuncs.com/compatible-mode/v1" };
@@ -2272,7 +2287,7 @@ ${agentPlan ? `\n══ PLAN D'ACTION ══\n${agentPlan}` : ""}${qwenDraft ? `
               candidate = await fetch(`${baseUrl}/chat/completions`, {
                 method: "POST",
                 headers: { "Authorization": `Bearer ${k}`, "content-type": "application/json" },
-                body: JSON.stringify({ model: PROVIDER_MODELS[p], max_tokens: 16000, temperature: 0.3, stream: true, response_format: { type: "json_object" }, messages: [{ role: "system", content: systemPrompt }, ...wrappedMessages] }),
+                body: JSON.stringify({ model: PROVIDER_MODELS[p], max_tokens: chatPlanMaxTokens, temperature: 0.3, stream: true, response_format: { type: "json_object" }, messages: [{ role: "system", content: systemPrompt }, ...wrappedMessages] }),
               });
             }
             if (candidate.ok && candidate.body) {
@@ -2732,11 +2747,13 @@ Règles :
     if (!currentVersion[0]?.generatedCode) { res.status(400).json({ error: "Aucune version à débugger" }); return; }
 
     // Keys: prefer Claude for vision (it handles images), fall back to OpenAI, then Deepseek for text-only
-    const [claudeKey, openaiKey, deepseekKey] = await Promise.all([
+    const [claudeKey, openaiKey, deepseekKey, debugUserRow] = await Promise.all([
       getPlatformKey("anthropic"),
       getPlatformKey("openai"),
       getPlatformKey("deepseek"),
+      db.select({ plan: users.plan }).from(users).where(eq(users.id, user.id)).limit(1),
     ]);
+    const debugPlanMaxTokens = (PLAN_LIMITS[(debugUserRow[0]?.plan || "free") as PlanName] || PLAN_LIMITS.free).maxTokensPerGen;
 
     const versionCount = await db.select({ count: count() }).from(versions).where(eq(versions.projectId, projectId));
     const nextVersionNumber = (versionCount[0]?.count || 0) + 1;
@@ -2887,7 +2904,7 @@ Retourne UNIQUEMENT ce JSON brut (pas de markdown, pas de \`\`\`):
         const aiRes = await fetch("https://api.anthropic.com/v1/messages", {
           method: "POST",
           headers: { "x-api-key": execKey, "anthropic-version": "2023-06-01", "content-type": "application/json" },
-          body: JSON.stringify({ model: execModel, max_tokens: 16000, system: systemPrompt, messages: [{ role: "user", content: userMessage }] }),
+          body: JSON.stringify({ model: execModel, max_tokens: debugPlanMaxTokens, system: systemPrompt, messages: [{ role: "user", content: userMessage }] }),
         });
         if (!aiRes.ok || !aiRes.body) { sseWrite(res, "error", { message: parseLlmError(await aiRes.text(), "Claude") }); res.end(); return; }
         const reader = aiRes.body.getReader(); const dec = new TextDecoder(); let buf = "";
@@ -2911,7 +2928,7 @@ Retourne UNIQUEMENT ce JSON brut (pas de markdown, pas de \`\`\`):
         const aiRes = await fetch(`${baseUrls[execProvider] || "https://api.openai.com/v1"}/chat/completions`, {
           method: "POST",
           headers: { "Authorization": `Bearer ${execKey}`, "content-type": "application/json" },
-          body: JSON.stringify({ model: execModel, max_tokens: 16000, temperature: 0.2, response_format: { type: "json_object" }, messages: [{ role: "system", content: systemPrompt }, { role: "user", content: userMessage }] }),
+          body: JSON.stringify({ model: execModel, max_tokens: debugPlanMaxTokens, temperature: 0.2, response_format: { type: "json_object" }, messages: [{ role: "system", content: systemPrompt }, { role: "user", content: userMessage }] }),
         });
         if (!aiRes.ok || !aiRes.body) { sseWrite(res, "error", { message: parseLlmError(await aiRes.text(), execProvider) }); res.end(); return; }
         const reader = aiRes.body.getReader(); const dec = new TextDecoder(); let buf = "";
