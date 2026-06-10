@@ -75,7 +75,7 @@ export default function Login() {
   const [, navigate] = useLocation();
   const { t } = useLang();
   const [mode, setMode] = useState<"login" | "register">("login");
-  const [step, setStep] = useState<"form" | "otp">("form");
+  const [step, setStep] = useState<"form" | "otp" | "forgot" | "forgot_otp" | "forgot_newpw">("form");
 
   // Form fields
   const [email, setEmail] = useState("");
@@ -96,6 +96,23 @@ export default function Login() {
   const [otpCode, setOtpCode] = useState("");
   const [resendTimer, setResendTimer] = useState(0);
   const utils = trpc.useUtils();
+
+  // Forgot password
+  const [forgotEmail, setForgotEmail] = useState("");
+  const [resetOtpCode, setResetOtpCode] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmNewPw, setConfirmNewPw] = useState("");
+  const [showNewPwd, setShowNewPwd] = useState(false);
+  const [showConfirmNew, setShowConfirmNew] = useState(false);
+
+  // Password rules for new password (reset flow)
+  const newPwRules = [
+    { label: t("auth_rule_8chars"), ok: newPassword.length >= 8 },
+    { label: t("auth_rule_upper"),  ok: /[A-Z]/.test(newPassword) },
+    { label: t("auth_rule_special"), ok: /[@$!%*?&.#^()\-_=+\[\]{}|;:'",<>/\\`~]/.test(newPassword) },
+  ];
+  const newPwValid = newPwRules.every(r => r.ok);
+  const newPwMatch = newPassword === confirmNewPw && confirmNewPw.length > 0;
 
   // Password rules (translated)
   const pwRules = [
@@ -195,6 +212,63 @@ export default function Login() {
     finally { setLoading(false); }
   }
 
+  /* ── Forgot password — request code ───────────────────────────────────── */
+  async function handleForgotRequest(e: React.FormEvent) {
+    e.preventDefault();
+    if (!forgotEmail.trim()) return;
+    setLoading(true);
+    try {
+      const res = await fetch("/api/auth/forgot-password", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ email: forgotEmail.trim() }),
+      });
+      const data = await res.json();
+      if (!res.ok) { toast.error(data.error || "Erreur."); return; }
+      setStep("forgot_otp");
+      setResetOtpCode("");
+    } catch { toast.error("Erreur réseau, réessaie."); }
+    finally { setLoading(false); }
+  }
+
+  /* ── Forgot password — verify OTP ─────────────────────────────────────── */
+  async function handleForgotVerifyOtp(e: React.FormEvent) {
+    e.preventDefault();
+    if (resetOtpCode.replace(/\s/g, "").length < 6) return;
+    // Just advance to new password step — actual validation happens on submit
+    setStep("forgot_newpw");
+    setNewPassword("");
+    setConfirmNewPw("");
+  }
+
+  /* ── Forgot password — set new password ───────────────────────────────── */
+  async function handleResetPassword(e: React.FormEvent) {
+    e.preventDefault();
+    if (!newPwValid) { toast.error(t("auth_rule_8chars")); return; }
+    if (!newPwMatch) { toast.error(t("auth_pw_mismatch")); return; }
+    setLoading(true);
+    try {
+      const res = await fetch("/api/auth/reset-password", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ email: forgotEmail.trim(), code: resetOtpCode.replace(/\s/g, ""), newPassword }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        toast.error(data.error || "Code invalide ou expiré.");
+        // If code was wrong, go back to OTP step
+        if (res.status === 400 || res.status === 429) setStep("forgot_otp");
+        return;
+      }
+      toast.success(t("auth_reset_success"));
+      setStep("form");
+      setMode("login");
+      setEmail(forgotEmail);
+      setPassword("");
+    } catch { toast.error("Erreur réseau, réessaie."); }
+    finally { setLoading(false); }
+  }
+
   /* ── OTP step ──────────────────────────────────────────────────────────── */
   if (step === "otp") {
     return (
@@ -245,6 +319,136 @@ export default function Login() {
     );
   }
 
+  /* ── Forgot — enter email ──────────────────────────────────────────────── */
+  if (step === "forgot") {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center p-4">
+        <div className="w-full max-w-md space-y-8">
+          <div className="flex flex-col items-center text-center space-y-3">
+            <div className="w-16 h-16 rounded-2xl bg-primary/10 flex items-center justify-center">
+              <Mail className="w-8 h-8 text-primary" />
+            </div>
+            <h1 className="text-2xl font-bold text-foreground">{t("auth_forgot_title")}</h1>
+            <p className="text-muted-foreground text-sm">{t("auth_forgot_sub")}</p>
+          </div>
+          <form onSubmit={handleForgotRequest} className="space-y-4">
+            <div className="space-y-1.5">
+              <Label htmlFor="forgot-email">{t("auth_email")}</Label>
+              <Input id="forgot-email" type="email" placeholder="toi@exemple.com"
+                value={forgotEmail} onChange={e => setForgotEmail(e.target.value)}
+                required autoFocus className="bg-input border-border/60" />
+            </div>
+            <Button type="submit"
+              className="w-full h-11 bg-primary hover:bg-primary/90 font-medium"
+              disabled={loading || !forgotEmail.trim()}>
+              {loading
+                ? <><Loader2 className="w-4 h-4 animate-spin mr-2" />{t("auth_forgot_sending")}</>
+                : t("auth_forgot_email_btn")}
+            </Button>
+          </form>
+          <div className="text-center">
+            <button onClick={() => setStep("form")}
+              className="text-sm text-muted-foreground hover:text-foreground transition-colors">
+              {t("auth_forgot_back_login")}
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  /* ── Forgot — OTP verification ─────────────────────────────────────────── */
+  if (step === "forgot_otp") {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center p-4">
+        <div className="w-full max-w-md space-y-8">
+          <div className="flex flex-col items-center text-center space-y-3">
+            <div className="w-16 h-16 rounded-2xl bg-primary/10 flex items-center justify-center">
+              <Mail className="w-8 h-8 text-primary" />
+            </div>
+            <h1 className="text-2xl font-bold text-foreground">{t("auth_reset_otp_title")}</h1>
+            <p className="text-muted-foreground text-sm">
+              {t("auth_reset_otp_sub")}<br />
+              <strong className="text-foreground">{forgotEmail}</strong>
+            </p>
+          </div>
+          <form onSubmit={handleForgotVerifyOtp} className="space-y-6">
+            <OtpInput value={resetOtpCode} onChange={setResetOtpCode} />
+            <Button type="submit"
+              className="w-full h-11 bg-primary hover:bg-primary/90 font-medium"
+              disabled={resetOtpCode.replace(/\s/g, "").length < 6}>
+              {t("auth_reset_otp_verify_btn")}
+            </Button>
+          </form>
+          <div className="text-center">
+            <button onClick={() => setStep("forgot")}
+              className="text-xs text-muted-foreground hover:text-foreground transition-colors">
+              {t("auth_forgot_back_login")}
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  /* ── Forgot — new password ─────────────────────────────────────────────── */
+  if (step === "forgot_newpw") {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center p-4">
+        <div className="w-full max-w-md space-y-8">
+          <div className="flex flex-col items-center text-center space-y-3">
+            <h1 className="text-2xl font-bold text-foreground">{t("auth_reset_newpw_title")}</h1>
+          </div>
+          <form onSubmit={handleResetPassword} className="space-y-4">
+            <div className="space-y-1.5">
+              <Label htmlFor="new-password">{t("auth_password")}</Label>
+              <div className="relative">
+                <Input id="new-password" type={showNewPwd ? "text" : "password"}
+                  placeholder={t("auth_password_placeholder")}
+                  value={newPassword} onChange={e => setNewPassword(e.target.value)}
+                  required autoFocus className="bg-input border-border/60 pr-10" />
+                <button type="button" onClick={() => setShowNewPwd(!showNewPwd)}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground">
+                  {showNewPwd ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                </button>
+              </div>
+              {newPassword.length > 0 && (
+                <ul className="space-y-1 mt-1.5 pl-1">
+                  {newPwRules.map(r => <PwRule key={r.label} ok={r.ok} label={r.label} />)}
+                </ul>
+              )}
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="confirm-new-password">{t("auth_confirm_password")}</Label>
+              <div className="relative">
+                <Input id="confirm-new-password" type={showConfirmNew ? "text" : "password"}
+                  placeholder="••••••••"
+                  value={confirmNewPw} onChange={e => setConfirmNewPw(e.target.value)}
+                  required className={`bg-input border-border/60 pr-10 ${
+                    confirmNewPw.length > 0 ? (newPwMatch ? "border-emerald-500/60" : "border-red-500/60") : ""
+                  }`} />
+                <button type="button" onClick={() => setShowConfirmNew(!showConfirmNew)}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground">
+                  {showConfirmNew ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                </button>
+              </div>
+              {confirmNewPw.length > 0 && !newPwMatch && (
+                <p className="text-xs text-red-400 mt-1">{t("auth_pw_mismatch")}</p>
+              )}
+            </div>
+            <Button type="submit"
+              className="w-full h-11 bg-primary hover:bg-primary/90 font-medium"
+              disabled={loading || !newPwValid || !newPwMatch}>
+              {loading
+                ? <><Loader2 className="w-4 h-4 animate-spin mr-2" />{t("auth_reset_newpw_saving")}</>
+                : t("auth_reset_newpw_btn")}
+            </Button>
+          </form>
+        </div>
+      </div>
+    );
+  }
+
   /* ── Login form ────────────────────────────────────────────────────────── */
   if (mode === "login") {
     return (
@@ -274,6 +478,14 @@ export default function Login() {
                   {showPwd ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                 </button>
               </div>
+            </div>
+
+            <div className="flex justify-end -mt-1">
+              <button type="button"
+                onClick={() => { setForgotEmail(email); setStep("forgot"); }}
+                className="text-xs text-muted-foreground hover:text-primary transition-colors">
+                {t("auth_forgot_link")}
+              </button>
             </div>
 
             <Button type="submit"

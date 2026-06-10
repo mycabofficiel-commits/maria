@@ -220,6 +220,21 @@ export const translations = {
     auth_otp_resend_btn: "Renvoyer le code",
     auth_otp_back: "← Modifier mon email",
 
+    /* ── Forgot password ── */
+    auth_forgot_link: "Mot de passe oublié ?",
+    auth_forgot_title: "Réinitialiser votre mot de passe",
+    auth_forgot_sub: "Entrez votre email. Si un compte existe, vous recevrez un code.",
+    auth_forgot_email_btn: "Envoyer le code",
+    auth_forgot_sending: "Envoi en cours…",
+    auth_forgot_back_login: "← Retour à la connexion",
+    auth_reset_otp_title: "Code de réinitialisation",
+    auth_reset_otp_sub: "Nous avons envoyé un code à 6 chiffres à",
+    auth_reset_otp_verify_btn: "Confirmer le code",
+    auth_reset_newpw_title: "Nouveau mot de passe",
+    auth_reset_newpw_btn: "Réinitialiser le mot de passe",
+    auth_reset_newpw_saving: "Enregistrement…",
+    auth_reset_success: "Mot de passe réinitialisé ! Vous pouvez vous connecter.",
+
     /* ── Chat demo (hero animation) ── */
     demo_chat_title: "Chat Mar-ia",
     demo_chat_online: "En ligne",
@@ -448,6 +463,21 @@ export const translations = {
     auth_otp_resend_btn: "Resend code",
     auth_otp_back: "← Change my email",
 
+    /* ── Forgot password ── */
+    auth_forgot_link: "Forgot password?",
+    auth_forgot_title: "Reset your password",
+    auth_forgot_sub: "Enter your email. If an account exists, you'll receive a code.",
+    auth_forgot_email_btn: "Send code",
+    auth_forgot_sending: "Sending…",
+    auth_forgot_back_login: "← Back to sign in",
+    auth_reset_otp_title: "Reset code",
+    auth_reset_otp_sub: "We sent a 6-digit code to",
+    auth_reset_otp_verify_btn: "Confirm code",
+    auth_reset_newpw_title: "New password",
+    auth_reset_newpw_btn: "Reset password",
+    auth_reset_newpw_saving: "Saving…",
+    auth_reset_success: "Password reset! You can now sign in.",
+
     /* ── Chat demo (hero animation) ── */
     demo_chat_title: "Mar-ia Chat",
     demo_chat_online: "Online",
@@ -675,6 +705,21 @@ export const translations = {
     auth_otp_resend_wait: "Reenviar código en",
     auth_otp_resend_btn: "Reenviar código",
     auth_otp_back: "← Cambiar mi email",
+
+    /* ── Forgot password ── */
+    auth_forgot_link: "¿Olvidaste la contraseña?",
+    auth_forgot_title: "Restablecer contraseña",
+    auth_forgot_sub: "Introduce tu email. Si existe una cuenta, recibirás un código.",
+    auth_forgot_email_btn: "Enviar código",
+    auth_forgot_sending: "Enviando…",
+    auth_forgot_back_login: "← Volver al inicio de sesión",
+    auth_reset_otp_title: "Código de restablecimiento",
+    auth_reset_otp_sub: "Enviamos un código de 6 dígitos a",
+    auth_reset_otp_verify_btn: "Confirmar código",
+    auth_reset_newpw_title: "Nueva contraseña",
+    auth_reset_newpw_btn: "Restablecer contraseña",
+    auth_reset_newpw_saving: "Guardando…",
+    auth_reset_success: "¡Contraseña restablecida! Ahora puedes iniciar sesión.",
 
     /* ── Chat demo (hero animation) ── */
     demo_chat_title: "Chat Mar-ia",
