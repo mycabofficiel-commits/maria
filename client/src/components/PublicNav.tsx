@@ -58,7 +58,7 @@ export default function PublicNav() {
               className="flex items-center gap-1.5 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors px-2 py-1 rounded-md hover:bg-muted/50"
             >
               <Globe className="w-3.5 h-3.5" />
-              {LANGS.find(l => l.code === lang)?.flag} {lang.toUpperCase()}
+              {lang.toUpperCase()}
             </button>
             {langOpen && (
               <div className="absolute right-0 top-full mt-1 bg-card border border-border/60 rounded-lg shadow-lg overflow-hidden z-50 min-w-[100px]">
