@@ -117,12 +117,8 @@ export default function Home() {
         <div className="container relative">
           <div className="max-w-4xl mx-auto text-center">
             {/* Brain neural animation */}
-            <div className="mb-2 flex flex-col items-center gap-1">
+            <div className="mb-2">
               <BrainAnimation />
-              <span className="text-xs font-medium text-primary/70 tracking-wide flex items-center gap-1.5">
-                <Sparkles className="w-3 h-3" />
-                Propulsé par Claude d'Anthropic
-              </span>
             </div>
 
             <h1 className="text-5xl sm:text-6xl lg:text-7xl font-display font-bold text-foreground mb-6 leading-tight">
