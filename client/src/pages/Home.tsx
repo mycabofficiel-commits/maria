@@ -10,6 +10,7 @@ import {
   Star, CheckCircle2, Layers, Cpu, Palette, Rocket
 } from "lucide-react";
 import PipelineAnimation from "@/components/PipelineAnimation";
+import BrainAnimation from "@/components/BrainAnimation";
 
 const FEATURES = [
   {
@@ -115,13 +116,14 @@ export default function Home() {
 
         <div className="container relative">
           <div className="max-w-4xl mx-auto text-center">
-            <Badge
-              variant="outline"
-              className="mb-6 border-primary/30 text-primary bg-primary/5 px-4 py-1.5 text-sm font-medium"
-            >
-              <Sparkles className="w-3.5 h-3.5 mr-2" />
-              Propulsé par Claude d'Anthropic
-            </Badge>
+            {/* Brain neural animation */}
+            <div className="mb-2 flex flex-col items-center gap-1">
+              <BrainAnimation />
+              <span className="text-xs font-medium text-primary/70 tracking-wide flex items-center gap-1.5">
+                <Sparkles className="w-3 h-3" />
+                Propulsé par Claude d'Anthropic
+              </span>
+            </div>
 
             <h1 className="text-5xl sm:text-6xl lg:text-7xl font-display font-bold text-foreground mb-6 leading-tight">
               Créez votre site web{" "}
