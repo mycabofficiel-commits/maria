@@ -8,4 +8,11 @@ export const ENV = {
   forgeApiUrl: process.env.BUILT_IN_FORGE_API_URL ?? "",
   forgeApiKey: process.env.BUILT_IN_FORGE_API_KEY ?? "",
   resendApiKey: process.env.RESEND_API_KEY ?? "",
+  // Stripe
+  stripeSecretKey: process.env.STRIPE_SECRET_KEY ?? "",
+  stripeWebhookSecret: process.env.STRIPE_WEBHOOK_SECRET ?? "",
+  stripeCreatorPriceId: process.env.STRIPE_PRICE_CREATOR ?? "",
+  stripeProPriceId: process.env.STRIPE_PRICE_PRO ?? "",
+  stripeAgencyPriceId: process.env.STRIPE_PRICE_AGENCY ?? "",
+  appBaseUrl: process.env.APP_BASE_URL || process.env.RENDER_EXTERNAL_URL || "http://localhost:3000",
 };

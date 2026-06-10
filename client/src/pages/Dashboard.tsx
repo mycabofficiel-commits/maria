@@ -55,8 +55,7 @@ export default function Dashboard() {
 
   const utils = trpc.useUtils();
 
-  const planLimits: Record<string, number> = { free: 1, creator: 5, pro: 20, agency: 9999 };
-  const projectLimit = planLimits[(user as any)?.plan || "free"] || 1;
+  const projectLimit = stats?.projectsLimit ?? 1;
   const atLimit = useMemo(() => (projects?.length || 0) >= projectLimit, [projects, projectLimit]);
 
   const createProject = trpc.projects.create.useMutation({
@@ -213,11 +212,13 @@ export default function Dashboard() {
             },
             {
               label: "Générations",
-              value: statsLoading ? "—" : stats?.generationsUsed || 0,
+              value: statsLoading ? "—" : stats?.dailyGenerationsUsed ?? 0,
               icon: Sparkles,
               color: "text-cyan-400",
               bg: "bg-cyan-400/10",
-              sub: `/ ${stats?.generationsLimit || 3} ce mois`,
+              sub: stats?.dailyGenerationsLimit === -1
+                ? "illimitées aujourd'hui"
+                : `/ ${stats?.dailyGenerationsLimit ?? 3} aujourd'hui`,
             },
             {
               label: "Tokens utilisés",

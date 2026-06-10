@@ -2,7 +2,8 @@ import { z } from "zod";
 import { protectedProcedure, router } from "../_core/trpc";
 import { getDb } from "../db";
 import { users, apiKeys, projects, usageLogs } from "../../drizzle/schema";
-import { eq, desc, count, sum } from "drizzle-orm";
+import { eq, desc, count, sum, gte, and } from "drizzle-orm";
+import { PLAN_LIMITS, type PlanName } from "@shared/const";
 import crypto from "crypto";
 
 const ENCRYPTION_KEY = process.env.JWT_SECRET?.slice(0, 32).padEnd(32, "0") || "maria-default-key-32-chars-long!";
@@ -66,17 +67,37 @@ export const userRouter = router({
   // Get usage stats
   getUsageStats: protectedProcedure.query(async ({ ctx }) => {
     const db = await getDb();
-    if (!db) return { generationsUsed: 0, generationsLimit: 3, projectsCount: 0, tokensTotal: 0 };
-    const userRow = await db.select().from(users).where(eq(users.id, ctx.user.id)).limit(1);
+    if (!db) return {
+      generationsUsed: 0, generationsLimit: 3,
+      dailyGenerationsUsed: 0, dailyGenerationsLimit: 3,
+      projectsCount: 0, tokensTotal: 0, plan: "free" as PlanName,
+    };
+
+    const todayStart = new Date();
+    todayStart.setHours(0, 0, 0, 0);
+
+    const [userRow, projectsResult, tokensResult, dailyResult] = await Promise.all([
+      db.select().from(users).where(eq(users.id, ctx.user.id)).limit(1),
+      db.select({ count: count() }).from(projects).where(eq(projects.userId, ctx.user.id)),
+      db.select({ total: sum(usageLogs.tokensUsed) }).from(usageLogs).where(eq(usageLogs.userId, ctx.user.id)),
+      db.select({ count: count() }).from(usageLogs).where(
+        and(eq(usageLogs.userId, ctx.user.id), gte(usageLogs.createdAt, todayStart))
+      ),
+    ]);
+
     const u = userRow[0];
-    const projectsResult = await db.select({ count: count() }).from(projects).where(eq(projects.userId, ctx.user.id));
-    const tokensResult = await db.select({ total: sum(usageLogs.tokensUsed) }).from(usageLogs).where(eq(usageLogs.userId, ctx.user.id));
+    const plan = (u?.plan || "free") as PlanName;
+    const limits = PLAN_LIMITS[plan] || PLAN_LIMITS.free;
+
     return {
       generationsUsed: u?.generationsUsed || 0,
       generationsLimit: u?.generationsLimit || 3,
-      projectsCount: projectsResult[0]?.count || 0,
+      dailyGenerationsUsed: Number(dailyResult[0]?.count || 0),
+      dailyGenerationsLimit: limits.dailyGenerations,   // -1 = illimité
+      projectsCount: Number(projectsResult[0]?.count || 0),
+      projectsLimit: limits.projectsLimit,
       tokensTotal: Number(tokensResult[0]?.total || 0),
-      plan: u?.plan || "free",
+      plan,
     };
   }),
 

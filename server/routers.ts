@@ -8,6 +8,7 @@ import { adminRouter } from "./routers/admin";
 import { deployRouter } from "./routers/deploy";
 import { shareRouter } from "./routers/share";
 import { integrationsRouter } from "./routers/integrations";
+import { billingRouter } from "./routers/billing";
 
 export const appRouter = router({
   system: systemRouter,
@@ -28,6 +29,7 @@ export const appRouter = router({
   deploy: deployRouter,
   share: shareRouter,
   integrations: integrationsRouter,
+  billing: billingRouter,
 });
 
 export type AppRouter = typeof appRouter;

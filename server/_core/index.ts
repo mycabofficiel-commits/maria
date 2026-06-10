@@ -168,6 +168,14 @@ async function startServer() {
   // OAuth callback under /api/oauth/callback
   registerOAuthRoutes(app);
 
+  // Stripe webhook — needs raw body BEFORE express.json() parses it
+  // We register it here with express.raw() so the signature check works
+  {
+    const { registerBillingRoutes } = await import("../routers/billing");
+    app.use("/api/billing/webhook", express.raw({ type: "application/json" }));
+    registerBillingRoutes(app);
+  }
+
   // ── Public site hosting: /p/:slug ──────────────────────────────────────────
   app.get("/p/:slug", async (req, res) => {
     try {
