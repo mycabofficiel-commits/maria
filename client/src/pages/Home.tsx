@@ -10,6 +10,7 @@ import {
   Star, CheckCircle2, Layers, Cpu, Palette, Rocket
 } from "lucide-react";
 import PipelineAnimation from "@/components/PipelineAnimation";
+import ChatDemoAnimation from "@/components/ChatDemoAnimation";
 import BrainAnimation from "@/components/BrainAnimation";
 import { useLang } from "@/i18n/LangContext";
 import SEOHead from "@/components/SEOHead";
@@ -224,32 +225,8 @@ export default function Home() {
                   Live
                 </Badge>
               </div>
-              {/* App preview */}
-              <div className="grid grid-cols-5 min-h-[320px]">
-                {/* Sidebar */}
-                <div className="col-span-1 bg-card/30 border-r border-border/50 p-3 flex flex-col gap-2">
-                  {["index.html", "style.css", "script.js"].map((f, i) => (
-                    <div key={f} className={`flex items-center gap-2 px-2 py-1.5 rounded text-xs font-mono ${i === 0 ? "bg-primary/10 text-primary" : "text-muted-foreground"}`}>
-                      <Code2 className="w-3 h-3" />
-                      {f}
-                    </div>
-                  ))}
-                </div>
-                {/* Preview */}
-                <div className="col-span-4 bg-white/5 flex items-center justify-center p-8">
-                  <div className="text-center">
-                    <div className="w-12 h-12 rounded-xl bg-primary/20 flex items-center justify-center mx-auto mb-3">
-                      <Sparkles className="w-6 h-6 text-primary" />
-                    </div>
-                    <div className="h-3 bg-foreground/20 rounded w-48 mx-auto mb-2" />
-                    <div className="h-2 bg-foreground/10 rounded w-32 mx-auto mb-4" />
-                    <div className="flex gap-2 justify-center">
-                      <div className="h-8 bg-primary/30 rounded-lg w-24" />
-                      <div className="h-8 bg-foreground/10 rounded-lg w-20" />
-                    </div>
-                  </div>
-                </div>
-              </div>
+              {/* App preview — live chat demo */}
+              <ChatDemoAnimation />
             </div>
           </div>
         </div>
