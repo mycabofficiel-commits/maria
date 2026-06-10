@@ -53,18 +53,13 @@ export default function Login() {
     <div className="min-h-screen bg-background flex items-center justify-center p-4">
       <div className="w-full max-w-md space-y-8">
         {/* Logo */}
-        <div className="text-center space-y-2">
-          <div className="flex items-center justify-center mb-4">
-            <LogoBrand size="lg" showSlogan />
-          </div>
-          <h1 className="text-2xl font-bold">
-            {mode === "login" ? "Bon retour !" : "Créer un compte"}
-          </h1>
-          <p className="text-muted-foreground text-sm">
-            {mode === "login"
-              ? "Connecte-toi pour accéder à tes projets."
-              : "Gratuit pour commencer, aucune carte requise."}
-          </p>
+        <div className="flex flex-col items-center text-center space-y-2">
+          <LogoBrand size="lg" showSlogan />
+          {mode === "register" && (
+            <p className="text-muted-foreground text-sm pt-2">
+              Gratuit pour commencer, aucune carte requise.
+            </p>
+          )}
         </div>
 
         {/* Form */}
