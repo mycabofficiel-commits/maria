@@ -131,8 +131,7 @@ export default function BrainAnimation() {
     let rafId = 0;
 
     function tick() {
-      ctx.fillStyle = "rgba(4,13,28,0.94)";
-      ctx.fillRect(0, 0, W, H);
+      ctx.clearRect(0, 0, W, H);
 
       drawBrain();
 
