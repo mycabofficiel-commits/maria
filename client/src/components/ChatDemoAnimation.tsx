@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Code2, Sparkles, Send } from "lucide-react";
 import { useLang } from "@/i18n/LangContext";
 
@@ -146,6 +146,10 @@ interface ChatMsg {
 export default function ChatDemoAnimation() {
   const { t } = useLang();
 
+  // Always up-to-date ref so the animation loop reads the current language
+  const tRef = useRef(t);
+  tRef.current = t;
+
   const [messages, setMessages] = useState<ChatMsg[]>([]);
   const [inputValue, setInputValue] = useState("");
   const [isThinking, setIsThinking] = useState(false);
@@ -153,7 +157,7 @@ export default function ChatDemoAnimation() {
   const [previewVariant, setPreviewVariant] = useState(0);
   const [previewFading, setPreviewFading] = useState(false);
 
-  // Translated site texts (stable refs via t())
+  // Preview texts are reactive (re-render on lang change)
   const siteTexts: SiteTexts = {
     nav: [t("demo_site_nav1"), t("demo_site_nav2"), t("demo_site_nav3")],
     welcome: t("demo_site_welcome"),
@@ -164,24 +168,6 @@ export default function ChatDemoAnimation() {
     tags: [t("demo_site_tag1"), t("demo_site_tag2"), t("demo_site_tag3")],
   };
 
-  const STEPS = [
-    {
-      user: t("demo_step1_user"),
-      ai: t("demo_step1_ai"),
-      variant: 1,
-    },
-    {
-      user: t("demo_step2_user"),
-      ai: t("demo_step2_ai"),
-      variant: 2,
-    },
-    {
-      user: t("demo_step3_user"),
-      ai: t("demo_step3_ai"),
-      variant: 3,
-    },
-  ];
-
   useEffect(() => {
     let active = true;
 
@@ -190,6 +176,14 @@ export default function ChatDemoAnimation() {
 
     async function run() {
       while (active) {
+        // Build STEPS fresh each loop using the current language via tRef
+        const tr = tRef.current;
+        const steps = [
+          { user: tr("demo_step1_user"), ai: tr("demo_step1_ai"), variant: 1 },
+          { user: tr("demo_step2_user"), ai: tr("demo_step2_ai"), variant: 2 },
+          { user: tr("demo_step3_user"), ai: tr("demo_step3_ai"), variant: 3 },
+        ];
+
         // ── Reset ──
         setMessages([]);
         setPreviewVariant(0);
@@ -199,7 +193,7 @@ export default function ChatDemoAnimation() {
 
         await wait(900);
 
-        for (const step of STEPS) {
+        for (const step of steps) {
           if (!active) return;
 
           // 1. Type user message char by char
@@ -256,7 +250,6 @@ export default function ChatDemoAnimation() {
     return () => {
       active = false;
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const previews = [
