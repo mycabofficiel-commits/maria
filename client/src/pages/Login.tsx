@@ -8,14 +8,9 @@ import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
 import { trpc } from "@/lib/trpc";
 import { Link } from "wouter";
+import { useLang } from "@/i18n/LangContext";
 
 /* ── Password rules ──────────────────────────────────────────────────────── */
-const RULES = [
-  { label: "8 caractères minimum", test: (p: string) => p.length >= 8 },
-  { label: "1 majuscule (A-Z)", test: (p: string) => /[A-Z]/.test(p) },
-  { label: "1 caractère spécial (!@#…)", test: (p: string) => /[@$!%*?&.#^()\-_=+\[\]{}|;:'",<>/\\`~]/.test(p) },
-];
-
 function PwRule({ ok, label }: { ok: boolean; label: string }) {
   return (
     <li className="flex items-center gap-1.5 text-xs">
@@ -78,6 +73,7 @@ function OtpInput({ value, onChange }: { value: string; onChange: (v: string) =>
 /* ── Main component ──────────────────────────────────────────────────────── */
 export default function Login() {
   const [, navigate] = useLocation();
+  const { t } = useLang();
   const [mode, setMode] = useState<"login" | "register">("login");
   const [step, setStep] = useState<"form" | "otp">("form");
 
@@ -101,16 +97,21 @@ export default function Login() {
   const [resendTimer, setResendTimer] = useState(0);
   const utils = trpc.useUtils();
 
+  // Password rules (translated)
+  const pwRules = [
+    { label: t("auth_rule_8chars"), ok: password.length >= 8 },
+    { label: t("auth_rule_upper"),  ok: /[A-Z]/.test(password) },
+    { label: t("auth_rule_special"), ok: /[@$!%*?&.#^()\-_=+\[\]{}|;:'",<>/\\`~]/.test(password) },
+  ];
+  const pwValid = pwRules.every(r => r.ok);
+  const pwMatch = password === confirmPw && confirmPw.length > 0;
+
   // Countdown for resend
   useEffect(() => {
     if (resendTimer <= 0) return;
-    const t = setTimeout(() => setResendTimer(r => r - 1), 1000);
-    return () => clearTimeout(t);
+    const timer = setTimeout(() => setResendTimer(r => r - 1), 1000);
+    return () => clearTimeout(timer);
   }, [resendTimer]);
-
-  const pwRules = RULES.map(r => ({ ...r, ok: r.test(password) }));
-  const pwValid = pwRules.every(r => r.ok);
-  const pwMatch = password === confirmPw && confirmPw.length > 0;
 
   /* ── Login handler ─────────────────────────────────────────────────────── */
   async function handleLogin(e: React.FormEvent) {
@@ -135,10 +136,10 @@ export default function Login() {
   /* ── Register → send OTP ───────────────────────────────────────────────── */
   async function handleRegister(e: React.FormEvent) {
     e.preventDefault();
-    if (!pwValid) { toast.error("Le mot de passe ne respecte pas les règles."); return; }
-    if (!pwMatch) { toast.error("Les mots de passe ne correspondent pas."); return; }
-    if (captchaAnswer.trim() !== captcha.answer) { toast.error("Réponse au captcha incorrecte."); return; }
-    if (!acceptCGU || !acceptCGV) { toast.error("Veuillez accepter les conditions."); return; }
+    if (!pwValid) { toast.error(t("auth_rule_8chars")); return; }
+    if (!pwMatch) { toast.error(t("auth_pw_mismatch")); return; }
+    if (captchaAnswer.trim() !== captcha.answer) { toast.error(t("auth_captcha_label")); return; }
+    if (!acceptCGU || !acceptCGV) return;
 
     setLoading(true);
     try {
@@ -153,7 +154,6 @@ export default function Login() {
       setStep("otp");
       setOtpCode("");
       setResendTimer(60);
-      toast.success("Code envoyé ! Vérifiez votre boîte mail.");
     } catch { toast.error("Erreur réseau, réessaie."); }
     finally { setLoading(false); }
   }
@@ -161,7 +161,7 @@ export default function Login() {
   /* ── Verify OTP ────────────────────────────────────────────────────────── */
   async function handleVerifyOtp(e: React.FormEvent) {
     e.preventDefault();
-    if (otpCode.replace(/\s/g, "").length < 6) { toast.error("Entrez le code à 6 chiffres."); return; }
+    if (otpCode.replace(/\s/g, "").length < 6) return;
     setLoading(true);
     try {
       const res = await fetch("/api/auth/verify-otp", {
@@ -173,7 +173,6 @@ export default function Login() {
       const data = await res.json();
       if (!res.ok) { toast.error(data.error || "Code invalide."); return; }
       await utils.auth.me.invalidate();
-      toast.success("Compte créé ! Bienvenue sur Mar-ia 🎉");
       navigate("/dashboard");
     } catch { toast.error("Erreur réseau, réessaie."); }
     finally { setLoading(false); }
@@ -190,7 +189,7 @@ export default function Login() {
         credentials: "include",
         body: JSON.stringify({ email, password, name: name.trim() }),
       });
-      if (res.ok) { setResendTimer(60); toast.success("Nouveau code envoyé !"); }
+      if (res.ok) setResendTimer(60);
       else { const d = await res.json(); toast.error(d.error || "Erreur."); }
     } catch { toast.error("Erreur réseau."); }
     finally { setLoading(false); }
@@ -205,34 +204,32 @@ export default function Login() {
             <div className="w-16 h-16 rounded-2xl bg-primary/10 flex items-center justify-center">
               <Mail className="w-8 h-8 text-primary" />
             </div>
-            <h1 className="text-2xl font-bold text-foreground">Vérification email</h1>
+            <h1 className="text-2xl font-bold text-foreground">{t("auth_otp_title")}</h1>
             <p className="text-muted-foreground text-sm">
-              Nous avons envoyé un code à 6 chiffres à <br />
+              {t("auth_otp_sub")}<br />
               <strong className="text-foreground">{email}</strong>
             </p>
           </div>
 
           <form onSubmit={handleVerifyOtp} className="space-y-6">
             <OtpInput value={otpCode} onChange={setOtpCode} />
-
             <Button
               type="submit"
               className="w-full h-11 bg-primary hover:bg-primary/90 font-medium"
               disabled={loading || otpCode.replace(/\s/g, "").length < 6}
             >
               {loading
-                ? <><Loader2 className="w-4 h-4 animate-spin mr-2" />Vérification…</>
-                : "Vérifier et créer mon compte"
-              }
+                ? <><Loader2 className="w-4 h-4 animate-spin mr-2" />{t("auth_otp_verifying")}</>
+                : t("auth_otp_verify_btn")}
             </Button>
           </form>
 
           <div className="text-center space-y-3">
             <p className="text-sm text-muted-foreground">
               {resendTimer > 0
-                ? `Renvoyer le code dans ${resendTimer}s`
+                ? `${t("auth_otp_resend_wait")} ${resendTimer}s`
                 : <button onClick={handleResend} className="text-primary hover:underline font-medium" disabled={loading}>
-                    Renvoyer le code
+                    {t("auth_otp_resend_btn")}
                   </button>
               }
             </p>
@@ -240,7 +237,7 @@ export default function Login() {
               onClick={() => { setStep("form"); setOtpCode(""); }}
               className="text-xs text-muted-foreground hover:text-foreground transition-colors"
             >
-              ← Modifier mon email
+              {t("auth_otp_back")}
             </button>
           </div>
         </div>
@@ -259,14 +256,14 @@ export default function Login() {
 
           <form onSubmit={handleLogin} className="space-y-4">
             <div className="space-y-1.5">
-              <Label htmlFor="email">Email</Label>
+              <Label htmlFor="email">{t("auth_email")}</Label>
               <Input id="email" type="email" placeholder="toi@exemple.com"
                 value={email} onChange={e => setEmail(e.target.value)}
                 required autoFocus className="bg-input border-border/60" />
             </div>
 
             <div className="space-y-1.5">
-              <Label htmlFor="password">Mot de passe</Label>
+              <Label htmlFor="password">{t("auth_password")}</Label>
               <div className="relative">
                 <Input id="password" type={showPwd ? "text" : "password"}
                   placeholder="••••••••" value={password}
@@ -283,15 +280,15 @@ export default function Login() {
               className="w-full h-11 bg-primary hover:bg-primary/90 font-medium"
               disabled={loading || !email || !password}>
               {loading
-                ? <><Loader2 className="w-4 h-4 animate-spin mr-2" />Connexion…</>
-                : "Se connecter"}
+                ? <><Loader2 className="w-4 h-4 animate-spin mr-2" />{t("auth_logging_in")}</>
+                : t("auth_login_btn")}
             </Button>
           </form>
 
           <p className="text-center text-sm text-muted-foreground">
-            Pas encore de compte ?{" "}
+            {t("auth_no_account")}{" "}
             <button onClick={() => setMode("register")} className="text-primary hover:underline font-medium">
-              S'inscrire
+              {t("auth_register_link")}
             </button>
           </p>
         </div>
@@ -305,27 +302,25 @@ export default function Login() {
       <div className="w-full max-w-md space-y-6">
         <div className="flex flex-col items-center text-center space-y-1">
           <LogoBrand size="lg" showSlogan />
-          <p className="text-muted-foreground text-sm pt-2">
-            Gratuit pour commencer · Aucune carte requise
-          </p>
+          <p className="text-muted-foreground text-sm pt-2">{t("auth_free_start")}</p>
         </div>
 
         <form onSubmit={handleRegister} className="space-y-4">
-          {/* Honeypot anti-bot */}
+          {/* Honeypot */}
           <input type="text" name="website" autoComplete="off" tabIndex={-1}
             style={{ position: "absolute", left: "-9999px" }} aria-hidden="true" />
 
           {/* Nom */}
           <div className="space-y-1.5">
-            <Label htmlFor="name">Nom</Label>
-            <Input id="name" placeholder="Ex: Sophie" value={name}
+            <Label htmlFor="name">{t("auth_name")}</Label>
+            <Input id="name" placeholder={t("auth_name_placeholder")} value={name}
               onChange={e => setName(e.target.value)}
               className="bg-input border-border/60" />
           </div>
 
           {/* Email */}
           <div className="space-y-1.5">
-            <Label htmlFor="reg-email">Email</Label>
+            <Label htmlFor="reg-email">{t("auth_email")}</Label>
             <Input id="reg-email" type="email" placeholder="toi@exemple.com"
               value={email} onChange={e => setEmail(e.target.value)}
               required autoFocus className="bg-input border-border/60" />
@@ -333,10 +328,10 @@ export default function Login() {
 
           {/* Mot de passe */}
           <div className="space-y-1.5">
-            <Label htmlFor="reg-password">Mot de passe</Label>
+            <Label htmlFor="reg-password">{t("auth_password")}</Label>
             <div className="relative">
               <Input id="reg-password" type={showPwd ? "text" : "password"}
-                placeholder="8 car. · 1 maj. · 1 spécial"
+                placeholder={t("auth_password_placeholder")}
                 value={password} onChange={e => setPassword(e.target.value)}
                 required className="bg-input border-border/60 pr-10" />
               <button type="button" onClick={() => setShowPwd(!showPwd)}
@@ -353,7 +348,7 @@ export default function Login() {
 
           {/* Confirmer mot de passe */}
           <div className="space-y-1.5">
-            <Label htmlFor="confirm-password">Confirmer le mot de passe</Label>
+            <Label htmlFor="confirm-password">{t("auth_confirm_password")}</Label>
             <div className="relative">
               <Input id="confirm-password" type={showConfirm ? "text" : "password"}
                 placeholder="••••••••"
@@ -367,30 +362,32 @@ export default function Login() {
               </button>
             </div>
             {confirmPw.length > 0 && !pwMatch && (
-              <p className="text-xs text-red-400 mt-1">Les mots de passe ne correspondent pas.</p>
+              <p className="text-xs text-red-400 mt-1">{t("auth_pw_mismatch")}</p>
             )}
           </div>
 
           {/* Captcha math */}
           <div className="space-y-1.5">
             <Label htmlFor="captcha">
-              Vérification anti-robot — <span className="text-primary font-mono">{captcha.question}</span>
+              {t("auth_captcha_label")} — <span className="text-primary font-mono">{captcha.question}</span>
             </Label>
-            <Input id="captcha" type="text" placeholder="Votre réponse" inputMode="numeric"
+            <Input id="captcha" type="text" placeholder={t("auth_captcha_placeholder")}
+              inputMode="numeric"
               value={captchaAnswer} onChange={e => setCaptchaAnswer(e.target.value)}
               required className="bg-input border-border/60 max-w-[120px]" />
           </div>
 
-          {/* Checkboxes CGU + CGV */}
+          {/* CGU + CGV */}
           <div className="space-y-2.5 pt-1">
-            <label className="flex items-start gap-2.5 cursor-pointer group">
+            <label className="flex items-start gap-2.5 cursor-pointer">
               <input type="checkbox" checked={acceptCGU} onChange={e => setAcceptCGU(e.target.checked)}
                 className="mt-0.5 w-4 h-4 accent-primary rounded flex-shrink-0" />
               <span className="text-xs text-muted-foreground leading-relaxed">
-                J'accepte les{" "}
-                <Link href="/cgu" target="_blank"
-                  className="text-primary hover:underline font-medium">
-                  Conditions Générales d'Utilisation
+                {t("auth_accept_cgu").split("Conditions")[0]}
+                <Link href="/cgu" target="_blank" className="text-primary hover:underline font-medium">
+                  {t("auth_accept_cgu").includes("Terms") ? "Terms of Service" :
+                   t("auth_accept_cgu").includes("Términos") ? "Términos de Servicio" :
+                   "Conditions Générales d'Utilisation"}
                 </Link>
               </span>
             </label>
@@ -398,10 +395,11 @@ export default function Login() {
               <input type="checkbox" checked={acceptCGV} onChange={e => setAcceptCGV(e.target.checked)}
                 className="mt-0.5 w-4 h-4 accent-primary rounded flex-shrink-0" />
               <span className="text-xs text-muted-foreground leading-relaxed">
-                J'accepte les{" "}
-                <Link href="/pricing" target="_blank"
-                  className="text-primary hover:underline font-medium">
-                  Conditions Générales de Vente
+                {t("auth_accept_cgv").split("Conditions")[0].split("Terms")[0].split("Acepto")[0]}
+                <Link href="/pricing" target="_blank" className="text-primary hover:underline font-medium">
+                  {t("auth_accept_cgv").includes("Terms of Sale") ? "Terms of Sale" :
+                   t("auth_accept_cgv").includes("Condiciones") ? "Condiciones de Venta" :
+                   "Conditions Générales de Vente"}
                 </Link>
               </span>
             </label>
@@ -411,15 +409,15 @@ export default function Login() {
             className="w-full h-11 bg-primary hover:bg-primary/90 font-medium"
             disabled={loading || !email || !pwValid || !pwMatch || !acceptCGU || !acceptCGV || captchaAnswer.trim() !== captcha.answer}>
             {loading
-              ? <><Loader2 className="w-4 h-4 animate-spin mr-2" />Envoi du code…</>
-              : "Créer mon compte →"}
+              ? <><Loader2 className="w-4 h-4 animate-spin mr-2" />{t("auth_sending")}</>
+              : t("auth_create_btn")}
           </Button>
         </form>
 
         <p className="text-center text-sm text-muted-foreground">
-          Déjà un compte ?{" "}
+          {t("auth_have_account")}{" "}
           <button onClick={() => setMode("login")} className="text-primary hover:underline font-medium">
-            Se connecter
+            {t("auth_login_btn")}
           </button>
         </p>
       </div>

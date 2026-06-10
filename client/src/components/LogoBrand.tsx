@@ -2,11 +2,12 @@
  * LogoBrand — Mar-ia.net — horizontal logo (dark/transparent background)
  * Matches the official banner: M gradient icon + "Mar-ia.net" + optional slogan
  */
+import { useLang } from "@/i18n/LangContext";
 
 interface LogoBrandProps {
   size?: "sm" | "md" | "lg";
   showText?: boolean;
-  /** show "CRÉEZ. PUBLIEZ. INNOVEZ. SANS CODE." below the name */
+  /** show slogan below the name */
   showSlogan?: boolean;
   className?: string;
 }
@@ -34,6 +35,7 @@ export default function LogoBrand({
   showSlogan = false,
   className = "",
 }: LogoBrandProps) {
+  const { t } = useLang();
   const iw = ICON_W[size];
   const ih = ICON_H[size];
 
@@ -69,7 +71,7 @@ export default function LogoBrand({
             <span
               className={`mt-1 tracking-widest font-medium text-slate-400 ${SLOGAN_SIZE[size]}`}
             >
-              CRÉEZ. INNOVEZ ET PUBLIEZ SANS CODE.
+              {t("slogan")}
             </span>
           )}
         </span>
