@@ -11,6 +11,7 @@ import {
 } from "lucide-react";
 import PipelineAnimation from "@/components/PipelineAnimation";
 import BrainAnimation from "@/components/BrainAnimation";
+import { useLang } from "@/i18n/LangContext";
 
 const FEATURES = [
   {
@@ -101,6 +102,22 @@ const TESTIMONIALS = [
 
 export default function Home() {
   const { isAuthenticated } = useAuth();
+  const { t } = useLang();
+
+  const FEATURES_T = [
+    { icon: Cpu,          title: t("feat1_title"), desc: t("feat1_desc"), color: "text-primary",     bg: "bg-primary/10" },
+    { icon: MessageSquare,title: t("feat2_title"), desc: t("feat2_desc"), color: "text-cyan-400",    bg: "bg-cyan-400/10" },
+    { icon: Eye,          title: t("feat3_title"), desc: t("feat3_desc"), color: "text-emerald-400", bg: "bg-emerald-400/10" },
+    { icon: Layers,       title: t("feat4_title"), desc: t("feat4_desc"), color: "text-amber-400",   bg: "bg-amber-400/10" },
+    { icon: Code2,        title: t("feat5_title"), desc: t("feat5_desc"), color: "text-rose-400",    bg: "bg-rose-400/10" },
+    { icon: Globe,        title: t("feat6_title"), desc: t("feat6_desc"), color: "text-violet-400",  bg: "bg-violet-400/10" },
+  ];
+
+  const STEPS_T = [
+    { num: "01", title: t("step1_title"), desc: t("step1_desc") },
+    { num: "02", title: t("step2_title"), desc: t("step2_desc") },
+    { num: "03", title: t("step3_title"), desc: t("step3_desc") },
+  ];
 
   return (
     <div className="min-h-screen bg-background text-foreground">
@@ -122,40 +139,40 @@ export default function Home() {
             </div>
 
             <h1 className="text-5xl sm:text-6xl lg:text-7xl font-display font-bold text-foreground mb-6 leading-tight">
-              Créez votre site web{" "}
-              <span className="gradient-text">par l'IA</span>
-              <br />en quelques minutes
+              {t("hero_title1")}{" "}
+              <span className="gradient-text">{t("hero_title_accent")}</span>
+              <br />{t("hero_title2")}
             </h1>
 
             <p className="text-xl text-muted-foreground mb-10 max-w-2xl mx-auto leading-relaxed">
-              Décrivez votre projet, choisissez votre style, et laissez l'IA générer un site web professionnel. Modifiez par conversation, prévisualisez en live, publiez en un clic.
+              {t("hero_sub")}
             </p>
 
             <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
               {isAuthenticated ? (
                 <Link href="/dashboard">
                   <Button size="lg" className="bg-primary hover:bg-primary/90 text-primary-foreground px-8 h-12 text-base glow-brand">
-                    Accéder au dashboard
+                    {t("hero_cta_dash")}
                     <ArrowRight className="ml-2 w-4 h-4" />
                   </Button>
                 </Link>
               ) : (
                 <a href={getLoginUrl()}>
                   <Button size="lg" className="bg-primary hover:bg-primary/90 text-primary-foreground px-8 h-12 text-base glow-brand">
-                    Commencer gratuitement
+                    {t("hero_cta")}
                     <ArrowRight className="ml-2 w-4 h-4" />
                   </Button>
                 </a>
               )}
               <Link href="/pricing">
                 <Button variant="outline" size="lg" className="px-8 h-12 text-base border-border/60 hover:border-border text-foreground">
-                  Voir les tarifs
+                  {t("hero_pricing")}
                 </Button>
               </Link>
             </div>
 
             <p className="mt-4 text-sm text-muted-foreground">
-              Gratuit pour commencer · Aucune carte bancaire requise
+              {t("hero_free")}
             </p>
           </div>
 
@@ -216,30 +233,30 @@ export default function Home() {
             {/* Texte */}
             <div className="flex-1 max-w-lg">
               <Badge variant="outline" className="mb-4 border-primary/30 text-primary bg-primary/5">
-                Pipeline IA
+                {t("pipeline_badge")}
               </Badge>
               <h2 className="text-4xl font-display font-bold text-foreground mb-5 leading-tight">
-                Une IA qui réfléchit,<br />code et vérifie
+                {t("pipeline_title1")}<br />{t("pipeline_title2")}
               </h2>
               <p className="text-muted-foreground mb-8 leading-relaxed">
-                Chaque demande traverse un pipeline de 4 agents spécialisés qui collaborent en temps réel pour produire un résultat fiable.
+                {t("pipeline_sub")}
               </p>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div className="p-3 rounded-lg border bg-purple-500/10 border-purple-500/20">
-                  <div className="text-xs font-semibold mb-1 text-purple-400">Raisonnement</div>
-                  <div className="text-xs text-muted-foreground">Analyse l'intention et planifie la réponse</div>
+                  <div className="text-xs font-semibold mb-1 text-purple-400">{t("pipeline_reasoning")}</div>
+                  <div className="text-xs text-muted-foreground">{t("pipeline_reasoning_desc")}</div>
                 </div>
                 <div className="p-3 rounded-lg border bg-indigo-500/10 border-indigo-500/20">
-                  <div className="text-xs font-semibold mb-1 text-indigo-400">Orchestration</div>
-                  <div className="text-xs text-muted-foreground">Distribue les tâches et gère le contexte</div>
+                  <div className="text-xs font-semibold mb-1 text-indigo-400">{t("pipeline_orchestration")}</div>
+                  <div className="text-xs text-muted-foreground">{t("pipeline_orchestration_desc")}</div>
                 </div>
                 <div className="p-3 rounded-lg border bg-cyan-500/10 border-cyan-500/20">
-                  <div className="text-xs font-semibold mb-1 text-cyan-400">Génération</div>
-                  <div className="text-xs text-muted-foreground">Produit le code HTML/CSS/JS final</div>
+                  <div className="text-xs font-semibold mb-1 text-cyan-400">{t("pipeline_generation")}</div>
+                  <div className="text-xs text-muted-foreground">{t("pipeline_generation_desc")}</div>
                 </div>
                 <div className="p-3 rounded-lg border bg-emerald-500/10 border-emerald-500/20">
-                  <div className="text-xs font-semibold mb-1 text-emerald-400">Vérification</div>
-                  <div className="text-xs text-muted-foreground">Contrôle la qualité et la cohérence</div>
+                  <div className="text-xs font-semibold mb-1 text-emerald-400">{t("pipeline_verification")}</div>
+                  <div className="text-xs text-muted-foreground">{t("pipeline_verification_desc")}</div>
                 </div>
               </div>
             </div>
@@ -262,18 +279,18 @@ export default function Home() {
         <div className="container">
           <div className="text-center mb-16">
             <Badge variant="outline" className="mb-4 border-border/60 text-muted-foreground">
-              Fonctionnalités
+              {t("features_badge")}
             </Badge>
             <h2 className="text-4xl font-display font-bold text-foreground mb-4">
-              Tout ce dont vous avez besoin
+              {t("features_title")}
             </h2>
             <p className="text-muted-foreground max-w-xl mx-auto">
-              Une plateforme complète pour créer, modifier et publier votre site web avec l'aide de l'IA.
+              {t("features_sub")}
             </p>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {FEATURES.map((f) => (
+            {FEATURES_T.map((f) => (
               <div
                 key={f.title}
                 className="p-6 rounded-xl border border-border/60 bg-card card-hover"
@@ -294,15 +311,15 @@ export default function Home() {
         <div className="container">
           <div className="text-center mb-16">
             <Badge variant="outline" className="mb-4 border-border/60 text-muted-foreground">
-              Comment ça marche
+              {t("steps_badge")}
             </Badge>
             <h2 className="text-4xl font-display font-bold text-foreground mb-4">
-              3 étapes pour votre site
+              {t("steps_title")}
             </h2>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-8 max-w-4xl mx-auto">
-            {STEPS.map((step, i) => (
+            {STEPS_T.map((step, i) => (
               <div key={step.num} className="relative">
                 {i < STEPS.length - 1 && (
                   <div className="hidden md:block absolute top-8 left-full w-full h-px bg-gradient-to-r from-border to-transparent z-0" />
@@ -327,14 +344,14 @@ export default function Home() {
             </div>
             <div className="flex-1">
               <h3 className="text-2xl font-display font-bold text-foreground mb-2">
-                Vos clés API sont en sécurité
+                {t("security_title")}
               </h3>
               <p className="text-muted-foreground">
-                Votre clé Anthropic est chiffrée au repos et n'est jamais exposée côté client. Tous les appels API sont effectués côté serveur avec rate limiting et journalisation des erreurs sans fuite de secrets.
+                {t("security_sub")}
               </p>
             </div>
             <div className="flex flex-col gap-2 flex-shrink-0">
-              {["Chiffrement AES-256", "Appels serveur uniquement", "Rate limiting", "Logs sécurisés"].map((item) => (
+              {([t("security_1"), t("security_2"), t("security_3"), t("security_4")] as string[]).map((item) => (
                 <div key={item} className="flex items-center gap-2 text-sm text-muted-foreground">
                   <CheckCircle2 className="w-4 h-4 text-emerald-400 flex-shrink-0" />
                   {item}
@@ -350,7 +367,7 @@ export default function Home() {
         <div className="container">
           <div className="text-center mb-16">
             <h2 className="text-4xl font-display font-bold text-foreground mb-4">
-              Ils créent avec Mar-ia
+              {t("testimonials_title")}
             </h2>
           </div>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
@@ -385,27 +402,27 @@ export default function Home() {
             <div className="relative">
               <Rocket className="w-12 h-12 text-primary mx-auto mb-6 animate-float" />
               <h2 className="text-4xl font-display font-bold text-foreground mb-4">
-                Prêt à créer votre site ?
+                {t("cta_title")}
               </h2>
               <p className="text-muted-foreground mb-8 max-w-lg mx-auto">
-                Rejoignez des milliers de créateurs qui utilisent Mar-ia pour construire leur présence en ligne avec l'IA.
+                {t("cta_sub")}
               </p>
               {isAuthenticated ? (
                 <Link href="/dashboard">
                   <Button size="lg" className="bg-primary hover:bg-primary/90 text-primary-foreground px-10 h-12 text-base glow-brand">
-                    Accéder au dashboard
+                    {t("cta_btn_dash")}
                     <ArrowRight className="ml-2 w-4 h-4" />
                   </Button>
                 </Link>
               ) : (
                 <a href={getLoginUrl()}>
                   <Button size="lg" className="bg-primary hover:bg-primary/90 text-primary-foreground px-10 h-12 text-base glow-brand">
-                    Commencer gratuitement
+                    {t("cta_btn")}
                     <ArrowRight className="ml-2 w-4 h-4" />
                   </Button>
                 </a>
               )}
-              <p className="mt-3 text-sm text-muted-foreground">Gratuit · Aucune carte bancaire</p>
+              <p className="mt-3 text-sm text-muted-foreground">{t("cta_free")}</p>
             </div>
           </div>
         </div>

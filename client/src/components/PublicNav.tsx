@@ -2,18 +2,28 @@ import { Link, useLocation } from "wouter";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/_core/hooks/useAuth";
 import { getLoginUrl } from "@/const";
-import { Menu, X } from "lucide-react";
+import { Menu, X, Globe } from "lucide-react";
 import LogoBrand from "@/components/LogoBrand";
 import { useState } from "react";
+import { useLang } from "@/i18n/LangContext";
+import type { Lang } from "@/i18n/translations";
+
+const LANGS: { code: Lang; flag: string; label: string }[] = [
+  { code: "fr", flag: "🇫🇷", label: "FR" },
+  { code: "en", flag: "🇬🇧", label: "EN" },
+  { code: "es", flag: "🇪🇸", label: "ES" },
+];
 
 export default function PublicNav() {
   const { isAuthenticated } = useAuth();
   const [location] = useLocation();
   const [open, setOpen] = useState(false);
+  const [langOpen, setLangOpen] = useState(false);
+  const { lang, setLang, t } = useLang();
 
   const navLinks = [
-    { href: "/pricing", label: "Tarifs" },
-    { href: "/faq", label: "FAQ" },
+    { href: "/pricing", label: t("nav_pricing") },
+    { href: "/faq", label: t("nav_faq") },
   ];
 
   return (
@@ -39,24 +49,48 @@ export default function PublicNav() {
           ))}
         </div>
 
-        {/* CTA */}
+        {/* CTA + Lang picker */}
         <div className="hidden md:flex items-center gap-3">
+          {/* Language selector */}
+          <div className="relative">
+            <button
+              onClick={() => setLangOpen(!langOpen)}
+              className="flex items-center gap-1.5 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors px-2 py-1 rounded-md hover:bg-muted/50"
+            >
+              <Globe className="w-3.5 h-3.5" />
+              {LANGS.find(l => l.code === lang)?.flag} {lang.toUpperCase()}
+            </button>
+            {langOpen && (
+              <div className="absolute right-0 top-full mt-1 bg-card border border-border/60 rounded-lg shadow-lg overflow-hidden z-50 min-w-[100px]">
+                {LANGS.map(l => (
+                  <button
+                    key={l.code}
+                    onClick={() => { setLang(l.code); setLangOpen(false); }}
+                    className={`w-full flex items-center gap-2 px-3 py-2 text-sm hover:bg-muted/50 transition-colors ${lang === l.code ? "text-primary font-medium" : "text-muted-foreground"}`}
+                  >
+                    {l.flag} {l.label}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+
           {isAuthenticated ? (
             <Link href="/dashboard">
               <Button size="sm" className="bg-primary hover:bg-primary/90 text-primary-foreground">
-                Dashboard
+                {t("nav_dashboard")}
               </Button>
             </Link>
           ) : (
             <>
               <a href={getLoginUrl()}>
                 <Button variant="ghost" size="sm" className="text-muted-foreground hover:text-foreground">
-                  Connexion
+                  {t("nav_login")}
                 </Button>
               </a>
               <a href={getLoginUrl()}>
                 <Button size="sm" className="bg-primary hover:bg-primary/90 text-primary-foreground glow-brand">
-                  Essai gratuit
+                  {t("nav_trial")}
                 </Button>
               </a>
             </>
