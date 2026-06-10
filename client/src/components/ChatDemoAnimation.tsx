@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect } from "react";
 import { Code2, Sparkles, Send } from "lucide-react";
 
 // ── Mini site previews ────────────────────────────────────────────────────────
@@ -176,13 +176,6 @@ export default function ChatDemoAnimation() {
   const [streamingText, setStreamingText] = useState("");
   const [previewVariant, setPreviewVariant] = useState(0);
   const [previewFading, setPreviewFading] = useState(false);
-  const messagesEndRef = useRef<HTMLDivElement>(null);
-
-  // Auto-scroll chat
-  useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages, streamingText, isThinking]);
-
   useEffect(() => {
     let active = true;
 
@@ -383,7 +376,6 @@ export default function ChatDemoAnimation() {
             </div>
           )}
 
-          <div ref={messagesEndRef} />
         </div>
 
         {/* Input bar */}
