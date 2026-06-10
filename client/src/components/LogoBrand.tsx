@@ -69,7 +69,7 @@ export default function LogoBrand({
             <span
               className={`mt-1 tracking-widest font-medium text-slate-400 ${SLOGAN_SIZE[size]}`}
             >
-              CRÉEZ. PUBLIEZ. INNOVEZ. SANS CODE.
+              CRÉEZ. INNOVEZ ET PUBLIEZ SANS CODE.
             </span>
           )}
         </span>
