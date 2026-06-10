@@ -12,6 +12,7 @@ import {
 import PipelineAnimation from "@/components/PipelineAnimation";
 import BrainAnimation from "@/components/BrainAnimation";
 import { useLang } from "@/i18n/LangContext";
+import SEOHead from "@/components/SEOHead";
 
 const FEATURES = [
   {
@@ -100,9 +101,37 @@ const TESTIMONIALS = [
   },
 ];
 
+const HOME_SEO = {
+  fr: {
+    title: "Mar-ia — Créez votre site web avec l'IA en quelques minutes",
+    description: "Créez un site web professionnel en quelques minutes avec l'IA. Générez, modifiez et publiez grâce à Claude d'Anthropic. Gratuit pour commencer, sans carte bancaire.",
+  },
+  en: {
+    title: "Mar-ia — Build your website with AI in minutes",
+    description: "Build a professional website in minutes with AI. Generate, edit and publish powered by Claude from Anthropic. Free to start, no credit card required.",
+  },
+  es: {
+    title: "Mar-ia — Crea tu sitio web con IA en minutos",
+    description: "Crea un sitio web profesional en minutos con IA. Genera, edita y publica con Claude de Anthropic. Gratis para empezar, sin tarjeta de crédito.",
+  },
+};
+
+const HOME_JSONLD = {
+  "@context": "https://schema.org",
+  "@type": "SoftwareApplication",
+  "name": "Mar-ia",
+  "url": "https://mar-ia.net",
+  "applicationCategory": "WebApplication",
+  "operatingSystem": "Web",
+  "offers": { "@type": "Offer", "price": "0", "priceCurrency": "EUR" },
+  "description": "AI-powered website builder using Claude from Anthropic.",
+  "aggregateRating": { "@type": "AggregateRating", "ratingValue": "5", "reviewCount": "3" },
+};
+
 export default function Home() {
   const { isAuthenticated } = useAuth();
-  const { t } = useLang();
+  const { t, lang } = useLang();
+  const seo = HOME_SEO[lang];
 
   const FEATURES_T = [
     { icon: Cpu,          title: t("feat1_title"), desc: t("feat1_desc"), color: "text-primary",     bg: "bg-primary/10" },
@@ -121,6 +150,7 @@ export default function Home() {
 
   return (
     <div className="min-h-screen bg-background text-foreground">
+      <SEOHead title={seo.title} description={seo.description} path="/" jsonLd={HOME_JSONLD} />
       <PublicNav />
 
       {/* ─── Hero ──────────────────────────────────────────────────────────── */}

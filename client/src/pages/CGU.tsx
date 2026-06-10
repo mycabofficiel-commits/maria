@@ -2,6 +2,7 @@ import PublicNav from "@/components/PublicNav";
 import PublicFooter from "@/components/PublicFooter";
 import { useLang } from "@/i18n/LangContext";
 import type { Lang } from "@/i18n/translations";
+import SEOHead from "@/components/SEOHead";
 
 interface Section { title: string; content: string; }
 
@@ -44,12 +45,20 @@ const SECTIONS: Record<Lang, Section[]> = {
   ],
 };
 
+const CGU_SEO = {
+  fr: { title: "Conditions Générales d'Utilisation — Mar-ia", description: "Les CGU de Mar-ia : conditions d'accès, propriété intellectuelle, facturation et responsabilités." },
+  en: { title: "Terms of Service — Mar-ia", description: "Mar-ia Terms of Service: access conditions, intellectual property, billing and liabilities." },
+  es: { title: "Términos de Servicio — Mar-ia", description: "Términos de Servicio de Mar-ia: condiciones de acceso, propiedad intelectual, facturación y responsabilidades." },
+};
+
 export default function CGU() {
   const { lang, t } = useLang();
   const sections = SECTIONS[lang];
+  const seo = CGU_SEO[lang];
 
   return (
     <div className="min-h-screen bg-background text-foreground">
+      <SEOHead title={seo.title} description={seo.description} path="/cgu" />
       <PublicNav />
       <section className="pt-32 pb-24">
         <div className="container max-w-3xl">

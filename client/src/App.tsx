@@ -5,6 +5,7 @@ import { Route, Switch } from "wouter";
 import ErrorBoundary from "./components/ErrorBoundary";
 import { ThemeProvider } from "./contexts/ThemeContext";
 import { LangProvider } from "@/i18n/LangContext";
+import { HelmetProvider } from "react-helmet-async";
 import Home from "./pages/Home";
 import Login from "@/pages/Login";
 import Pricing from "./pages/Pricing";
@@ -60,6 +61,7 @@ function Router() {
 function App() {
   return (
     <ErrorBoundary>
+      <HelmetProvider>
       <LangProvider>
         <ThemeProvider defaultTheme="dark">
           <TooltipProvider>
@@ -68,6 +70,7 @@ function App() {
           </TooltipProvider>
         </ThemeProvider>
       </LangProvider>
+      </HelmetProvider>
     </ErrorBoundary>
   );
 }

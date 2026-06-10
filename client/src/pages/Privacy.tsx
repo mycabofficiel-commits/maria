@@ -2,6 +2,7 @@ import PublicNav from "@/components/PublicNav";
 import PublicFooter from "@/components/PublicFooter";
 import { useLang } from "@/i18n/LangContext";
 import type { Lang } from "@/i18n/translations";
+import SEOHead from "@/components/SEOHead";
 
 interface Section { title: string; content: string | string[]; list?: string[]; }
 
@@ -41,12 +42,20 @@ const SECTIONS: Record<Lang, Section[]> = {
   ],
 };
 
+const PRIVACY_SEO = {
+  fr: { title: "Politique de confidentialité — Mar-ia", description: "Découvrez comment Mar-ia protège vos données personnelles : chiffrement AES-256, conformité RGPD, aucune revente de données." },
+  en: { title: "Privacy Policy — Mar-ia", description: "Learn how Mar-ia protects your personal data: AES-256 encryption, GDPR compliance, no data reselling." },
+  es: { title: "Política de privacidad — Mar-ia", description: "Descubre cómo Mar-ia protege tus datos personales: cifrado AES-256, conformidad RGPD, sin reventa de datos." },
+};
+
 export default function Privacy() {
   const { lang, t } = useLang();
   const sections = SECTIONS[lang];
+  const seo = PRIVACY_SEO[lang];
 
   return (
     <div className="min-h-screen bg-background text-foreground">
+      <SEOHead title={seo.title} description={seo.description} path="/privacy" />
       <PublicNav />
       <section className="pt-32 pb-24">
         <div className="container max-w-3xl">

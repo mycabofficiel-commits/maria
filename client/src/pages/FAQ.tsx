@@ -7,6 +7,7 @@ import { HelpCircle, ArrowRight } from "lucide-react";
 import { useState } from "react";
 import { ChevronDown } from "lucide-react";
 import { useLang } from "@/i18n/LangContext";
+import SEOHead from "@/components/SEOHead";
 
 function FaqItem({ q, a }: { q: string; a: string }) {
   const [open, setOpen] = useState(false);
@@ -28,8 +29,15 @@ function FaqItem({ q, a }: { q: string; a: string }) {
   );
 }
 
+const FAQ_SEO = {
+  fr: { title: "FAQ — Mar-ia", description: "Toutes vos questions sur Mar-ia : connexion de clé API, génération de site, versioning, publication et facturation." },
+  en: { title: "FAQ — Mar-ia", description: "All your questions about Mar-ia: API key connection, site generation, versioning, publishing and billing." },
+  es: { title: "FAQ — Mar-ia", description: "Todas tus preguntas sobre Mar-ia: conexión de clave API, generación de sitios, versiones, publicación y facturación." },
+};
+
 export default function FAQ() {
-  const { t } = useLang();
+  const { t, lang } = useLang();
+  const seo = FAQ_SEO[lang];
 
   const FAQ_SECTIONS = [
     {
@@ -68,6 +76,22 @@ export default function FAQ() {
 
   return (
     <div className="min-h-screen bg-background text-foreground">
+      <SEOHead
+        title={seo.title}
+        description={seo.description}
+        path="/faq"
+        jsonLd={{
+          "@context": "https://schema.org",
+          "@type": "FAQPage",
+          "mainEntity": FAQ_SECTIONS.flatMap(s =>
+            s.items.map(item => ({
+              "@type": "Question",
+              "name": item.q,
+              "acceptedAnswer": { "@type": "Answer", "text": item.a },
+            }))
+          ),
+        }}
+      />
       <PublicNav />
 
       <section className="pt-32 pb-24">

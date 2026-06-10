@@ -7,10 +7,18 @@ import { getLoginUrl } from "@/const";
 import { Link } from "wouter";
 import { CheckCircle2, Sparkles, ArrowRight, Zap } from "lucide-react";
 import { useLang } from "@/i18n/LangContext";
+import SEOHead from "@/components/SEOHead";
+
+const PRICING_SEO = {
+  fr: { title: "Tarifs — Mar-ia", description: "Plans Free, Creator (19€/mois), Pro (49€/mois) et Agency (99€/mois). Commencez gratuitement avec votre clé Anthropic, sans engagement." },
+  en: { title: "Pricing — Mar-ia", description: "Free, Creator (€19/month), Pro (€49/month) and Agency (€99/month) plans. Start for free with your Anthropic key, no commitment." },
+  es: { title: "Precios — Mar-ia", description: "Planes Gratis, Creator (19€/mes), Pro (49€/mes) y Agency (99€/mes). Comienza gratis con tu clave Anthropic, sin compromiso." },
+};
 
 export default function Pricing() {
   const { isAuthenticated } = useAuth();
-  const { t } = useLang();
+  const { t, lang } = useLang();
+  const seo = PRICING_SEO[lang];
 
   const PLANS = [
     {
@@ -79,6 +87,7 @@ export default function Pricing() {
 
   return (
     <div className="min-h-screen bg-background text-foreground">
+      <SEOHead title={seo.title} description={seo.description} path="/pricing" />
       <PublicNav />
 
       <section className="pt-32 pb-16">

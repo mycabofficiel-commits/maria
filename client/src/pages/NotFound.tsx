@@ -2,6 +2,7 @@ import { Button } from "@/components/ui/button";
 import { AlertCircle, Home } from "lucide-react";
 import { useLocation } from "wouter";
 import { useLang } from "@/i18n/LangContext";
+import SEOHead from "@/components/SEOHead";
 
 export default function NotFound() {
   const [, setLocation] = useLocation();
@@ -9,6 +10,7 @@ export default function NotFound() {
 
   return (
     <div className="min-h-screen w-full flex items-center justify-center bg-background text-foreground">
+      <SEOHead title="404 — Mar-ia" description={t("notfound_sub")} path="/404" />
       <div className="w-full max-w-lg mx-4 text-center">
         <div className="flex justify-center mb-6">
           <div className="relative">
