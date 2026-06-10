@@ -6,106 +6,76 @@ import { useAuth } from "@/_core/hooks/useAuth";
 import { getLoginUrl } from "@/const";
 import { Link } from "wouter";
 import { CheckCircle2, Sparkles, ArrowRight, Zap } from "lucide-react";
-
-const PLANS = [
-  {
-    name: "Free",
-    slug: "free",
-    price: 0,
-    period: "/mois",
-    desc: "Pour découvrir Mar-ia et créer votre premier site.",
-    badge: null,
-    features: [
-      "1 projet",
-      "3 générations par mois",
-      "Prévisualisation limitée",
-      "Branding Mar-ia",
-      "Support communauté",
-    ],
-    cta: "Commencer gratuitement",
-    highlight: false,
-  },
-  {
-    name: "Creator",
-    slug: "creator",
-    price: 19,
-    period: "/mois",
-    desc: "Pour les créateurs et freelances qui veulent aller plus loin.",
-    badge: "Populaire",
-    features: [
-      "5 projets",
-      "30 générations par mois",
-      "Chat d'édition illimité",
-      "Domaine personnalisé",
-      "Sans branding Mar-ia",
-      "Logs standards",
-      "Support email",
-    ],
-    cta: "Choisir Creator",
-    highlight: true,
-  },
-  {
-    name: "Pro",
-    slug: "pro",
-    price: 49,
-    period: "/mois",
-    desc: "Pour les professionnels qui gèrent plusieurs projets.",
-    badge: null,
-    features: [
-      "20 projets",
-      "100 générations par mois",
-      "Historique complet des versions",
-      "Logs avancés",
-      "Debug assisté par IA",
-      "Collaboration basique",
-      "Support prioritaire",
-    ],
-    cta: "Choisir Pro",
-    highlight: false,
-  },
-  {
-    name: "Agency",
-    slug: "agency",
-    price: 99,
-    period: "/mois",
-    desc: "Pour les agences et équipes qui livrent à grande échelle.",
-    badge: null,
-    features: [
-      "Projets illimités",
-      "Générations illimitées",
-      "Multi-clients",
-      "Collaboration équipe",
-      "Marque blanche partielle",
-      "Export code complet",
-      "Analytics avancées",
-      "Support dédié",
-    ],
-    cta: "Contacter les ventes",
-    highlight: false,
-  },
-];
-
-const FAQ_ITEMS = [
-  {
-    q: "Puis-je changer de plan à tout moment ?",
-    a: "Oui, vous pouvez upgrader ou downgrader votre plan à tout moment. La facturation est au prorata.",
-  },
-  {
-    q: "Qu'est-ce qu'une génération ?",
-    a: "Une génération correspond à la création ou modification majeure d'un site via l'IA. Les modifications mineures par chat ne consomment pas de génération.",
-  },
-  {
-    q: "Ma clé Anthropic est-elle nécessaire ?",
-    a: "Oui, vous devez connecter votre propre clé API Anthropic. Cela vous garantit un contrôle total sur vos coûts et votre usage.",
-  },
-  {
-    q: "Y a-t-il un engagement ?",
-    a: "Non, tous les plans sont sans engagement. Vous pouvez annuler à tout moment depuis votre espace billing.",
-  },
-];
+import { useLang } from "@/i18n/LangContext";
 
 export default function Pricing() {
   const { isAuthenticated } = useAuth();
+  const { t } = useLang();
+
+  const PLANS = [
+    {
+      name: "Free",
+      slug: "free",
+      price: 0,
+      desc: t("plan_free_desc"),
+      badge: null,
+      features: [
+        t("plan_free_f1"), t("plan_free_f2"), t("plan_free_f3"),
+        t("plan_free_f4"), t("plan_free_f5"),
+      ],
+      cta: t("plan_free_cta"),
+      highlight: false,
+    },
+    {
+      name: "Creator",
+      slug: "creator",
+      price: 19,
+      desc: t("plan_creator_desc"),
+      badge: t("pricing_popular"),
+      features: [
+        t("plan_creator_f1"), t("plan_creator_f2"), t("plan_creator_f3"),
+        t("plan_creator_f4"), t("plan_creator_f5"), t("plan_creator_f6"),
+        t("plan_creator_f7"),
+      ],
+      cta: t("plan_creator_cta"),
+      highlight: true,
+    },
+    {
+      name: "Pro",
+      slug: "pro",
+      price: 49,
+      desc: t("plan_pro_desc"),
+      badge: null,
+      features: [
+        t("plan_pro_f1"), t("plan_pro_f2"), t("plan_pro_f3"),
+        t("plan_pro_f4"), t("plan_pro_f5"), t("plan_pro_f6"),
+        t("plan_pro_f7"),
+      ],
+      cta: t("plan_pro_cta"),
+      highlight: false,
+    },
+    {
+      name: "Agency",
+      slug: "agency",
+      price: 99,
+      desc: t("plan_agency_desc"),
+      badge: null,
+      features: [
+        t("plan_agency_f1"), t("plan_agency_f2"), t("plan_agency_f3"),
+        t("plan_agency_f4"), t("plan_agency_f5"), t("plan_agency_f6"),
+        t("plan_agency_f7"), t("plan_agency_f8"),
+      ],
+      cta: t("plan_agency_cta"),
+      highlight: false,
+    },
+  ];
+
+  const FAQ_ITEMS = [
+    { q: t("pricing_faq_q1"), a: t("pricing_faq_a1") },
+    { q: t("pricing_faq_q2"), a: t("pricing_faq_a2") },
+    { q: t("pricing_faq_q3"), a: t("pricing_faq_a3") },
+    { q: t("pricing_faq_q4"), a: t("pricing_faq_a4") },
+  ];
 
   return (
     <div className="min-h-screen bg-background text-foreground">
@@ -116,13 +86,13 @@ export default function Pricing() {
           <div className="text-center mb-16">
             <Badge variant="outline" className="mb-4 border-primary/30 text-primary bg-primary/5 px-4 py-1.5">
               <Zap className="w-3.5 h-3.5 mr-2" />
-              Tarification simple
+              {t("pricing_badge")}
             </Badge>
             <h1 className="text-5xl font-display font-bold text-foreground mb-4">
-              Un plan pour chaque besoin
+              {t("pricing_title")}
             </h1>
             <p className="text-xl text-muted-foreground max-w-xl mx-auto">
-              Commencez gratuitement, évoluez selon vos besoins. Connectez votre clé Anthropic et gardez le contrôle de vos coûts.
+              {t("pricing_sub")}
             </p>
           </div>
 
@@ -150,8 +120,10 @@ export default function Pricing() {
                     <h3 className="font-display font-bold text-lg text-foreground">{plan.name}</h3>
                   </div>
                   <div className="flex items-end gap-1 mb-2">
-                    <span className="text-4xl font-display font-bold text-foreground">{plan.price === 0 ? "Gratuit" : `${plan.price}€`}</span>
-                    {plan.price > 0 && <span className="text-muted-foreground mb-1">{plan.period}</span>}
+                    <span className="text-4xl font-display font-bold text-foreground">
+                      {plan.price === 0 ? t("pricing_free_label") : `${plan.price}€`}
+                    </span>
+                    {plan.price > 0 && <span className="text-muted-foreground mb-1">{t("pricing_period")}</span>}
                   </div>
                   <p className="text-sm text-muted-foreground">{plan.desc}</p>
                 </div>
@@ -190,7 +162,9 @@ export default function Pricing() {
 
           {/* FAQ */}
           <div className="mt-24 max-w-2xl mx-auto">
-            <h2 className="text-3xl font-display font-bold text-foreground text-center mb-10">Questions fréquentes</h2>
+            <h2 className="text-3xl font-display font-bold text-foreground text-center mb-10">
+              {t("pricing_faq_title")}
+            </h2>
             <div className="space-y-4">
               {FAQ_ITEMS.map((item) => (
                 <div key={item.q} className="rounded-xl border border-border/60 bg-card p-5">
