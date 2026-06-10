@@ -1,58 +1,63 @@
 import { useState, useEffect } from "react";
 import { Code2, Sparkles, Send } from "lucide-react";
+import { useLang } from "@/i18n/LangContext";
 
 // ── Mini site previews ────────────────────────────────────────────────────────
 
-function SiteV0() {
+interface SiteTexts {
+  nav: [string, string, string];
+  welcome: string;
+  tagline: string;
+  cta1: string;
+  cta2: string;
+  badge: string;
+  tags: [string, string, string];
+}
+
+function SiteV0({ tx }: { tx: SiteTexts }) {
   return (
     <div className="w-full h-full flex flex-col bg-slate-100 text-gray-800 text-[9px]">
       <nav className="h-7 bg-white border-b border-gray-200 flex items-center px-3 gap-2 shrink-0">
         <span className="font-bold text-gray-700">MonSite</span>
         <div className="flex gap-3 ml-auto">
-          {["Accueil", "Services", "Contact"].map((l) => (
+          {tx.nav.map((l) => (
             <span key={l} className="text-gray-400">{l}</span>
           ))}
         </div>
       </nav>
       <div className="flex-1 flex flex-col items-center justify-center gap-2 p-6">
-        <p className="text-[11px] font-bold text-gray-800 text-center">Bienvenue sur mon site</p>
-        <p className="text-gray-400 text-center leading-relaxed max-w-[110px]">
-          Votre partenaire digital de confiance
-        </p>
+        <p className="text-[11px] font-bold text-gray-800 text-center">{tx.welcome}</p>
+        <p className="text-gray-400 text-center leading-relaxed max-w-[110px]">{tx.tagline}</p>
         <div className="flex gap-2 mt-1">
-          <span className="px-3 py-1 bg-blue-500 text-white rounded font-medium">Découvrir</span>
-          <span className="px-3 py-1 border border-gray-300 text-gray-500 rounded">En savoir +</span>
+          <span className="px-3 py-1 bg-blue-500 text-white rounded font-medium">{tx.cta1}</span>
+          <span className="px-3 py-1 border border-gray-300 text-gray-500 rounded">{tx.cta2}</span>
         </div>
       </div>
     </div>
   );
 }
 
-function SiteV1() {
+function SiteV1({ tx }: { tx: SiteTexts }) {
   return (
     <div className="w-full h-full flex flex-col bg-gradient-to-br from-violet-950 via-purple-900 to-indigo-950 text-white text-[9px]">
       <nav className="h-7 bg-white/10 border-b border-white/10 flex items-center px-3 gap-2 shrink-0">
         <span className="font-bold text-white">MonSite</span>
         <div className="flex gap-3 ml-auto">
-          {["Accueil", "Services", "Contact"].map((l) => (
+          {tx.nav.map((l) => (
             <span key={l} className="text-white/50">{l}</span>
           ))}
         </div>
       </nav>
       <div className="flex-1 flex flex-col items-center justify-center gap-2 p-6 relative overflow-hidden">
         <div className="absolute w-40 h-40 bg-violet-500/25 rounded-full blur-3xl top-0 left-1/2 -translate-x-1/2 -translate-y-1/2 pointer-events-none" />
-        <p className="text-[11px] font-bold text-white text-center drop-shadow relative z-10">
-          Bienvenue sur mon site
-        </p>
-        <p className="text-white/50 text-center leading-relaxed max-w-[110px] relative z-10">
-          Votre partenaire digital de confiance
-        </p>
+        <p className="text-[11px] font-bold text-white text-center drop-shadow relative z-10">{tx.welcome}</p>
+        <p className="text-white/50 text-center leading-relaxed max-w-[110px] relative z-10">{tx.tagline}</p>
         <div className="flex gap-2 mt-1 relative z-10">
           <span className="px-3 py-1 bg-gradient-to-r from-violet-500 to-purple-600 text-white rounded font-medium shadow-lg shadow-violet-500/40">
-            Découvrir
+            {tx.cta1}
           </span>
           <span className="px-3 py-1 border border-white/20 text-white/60 rounded backdrop-blur-sm">
-            En savoir +
+            {tx.cta2}
           </span>
         </div>
       </div>
@@ -60,13 +65,13 @@ function SiteV1() {
   );
 }
 
-function SiteV2() {
+function SiteV2({ tx }: { tx: SiteTexts }) {
   return (
     <div className="w-full h-full flex flex-col bg-gradient-to-br from-violet-950 via-purple-900 to-indigo-950 text-white text-[9px]">
       <nav className="h-7 bg-white/10 border-b border-white/10 flex items-center px-3 gap-2 shrink-0">
         <span className="font-bold text-white">MonSite</span>
         <div className="flex gap-3 ml-auto">
-          {["Accueil", "Services", "Contact"].map((l) => (
+          {tx.nav.map((l) => (
             <span key={l} className="text-white/50">{l}</span>
           ))}
         </div>
@@ -74,20 +79,16 @@ function SiteV2() {
       <div className="flex-1 flex flex-col items-center justify-center gap-2 p-6 relative overflow-hidden">
         <div className="absolute w-40 h-40 bg-violet-500/25 rounded-full blur-3xl top-0 left-1/2 -translate-x-1/2 -translate-y-1/2 pointer-events-none" />
         <div className="px-2.5 py-0.5 bg-violet-500/20 border border-violet-400/30 rounded-full text-violet-300 flex items-center gap-1 relative z-10">
-          ✨ Nouveau
+          {tx.badge}
         </div>
-        <p className="text-[11px] font-bold text-white text-center drop-shadow relative z-10">
-          Bienvenue sur mon site
-        </p>
-        <p className="text-white/50 text-center leading-relaxed max-w-[110px] relative z-10">
-          Votre partenaire digital de confiance
-        </p>
+        <p className="text-[11px] font-bold text-white text-center drop-shadow relative z-10">{tx.welcome}</p>
+        <p className="text-white/50 text-center leading-relaxed max-w-[110px] relative z-10">{tx.tagline}</p>
         <div className="flex gap-2 mt-1 relative z-10">
           <span className="px-3 py-1 bg-gradient-to-r from-violet-500 to-purple-600 text-white rounded-full font-medium shadow-lg shadow-violet-500/40">
-            Découvrir
+            {tx.cta1}
           </span>
           <span className="px-3 py-1 border border-white/20 text-white/60 rounded-full backdrop-blur-sm">
-            En savoir +
+            {tx.cta2}
           </span>
         </div>
       </div>
@@ -95,13 +96,13 @@ function SiteV2() {
   );
 }
 
-function SiteV3() {
+function SiteV3({ tx }: { tx: SiteTexts }) {
   return (
     <div className="w-full h-full flex flex-col bg-gradient-to-br from-violet-950 via-purple-900 to-indigo-950 text-white text-[9px]">
       <nav className="h-7 bg-white/10 border-b border-white/10 flex items-center px-3 gap-2 shrink-0">
         <span className="font-bold text-white">MonSite</span>
         <div className="flex gap-3 ml-auto">
-          {["Accueil", "Services", "Contact"].map((l) => (
+          {tx.nav.map((l) => (
             <span key={l} className="text-white/50">{l}</span>
           ))}
         </div>
@@ -109,25 +110,20 @@ function SiteV3() {
       <div className="flex-1 flex flex-col items-center justify-center gap-3 p-6 relative overflow-hidden">
         <div className="absolute w-40 h-40 bg-violet-500/25 rounded-full blur-3xl top-0 left-1/2 -translate-x-1/2 -translate-y-1/2 pointer-events-none" />
         <div className="px-2.5 py-0.5 bg-violet-500/20 border border-violet-400/30 rounded-full text-violet-300 flex items-center gap-1 relative z-10">
-          ✨ Nouveau
+          {tx.badge}
         </div>
-        <p className="text-[12px] font-bold text-white text-center drop-shadow relative z-10">
-          Bienvenue sur mon site
-        </p>
-        <p className="text-white/50 text-center leading-relaxed max-w-[110px] relative z-10">
-          Votre partenaire digital de confiance
-        </p>
+        <p className="text-[12px] font-bold text-white text-center drop-shadow relative z-10">{tx.welcome}</p>
+        <p className="text-white/50 text-center leading-relaxed max-w-[110px] relative z-10">{tx.tagline}</p>
         <div className="flex gap-2 relative z-10">
           <span className="px-3 py-1 bg-gradient-to-r from-violet-500 to-purple-600 text-white rounded-full font-medium shadow-lg shadow-violet-500/40">
-            Découvrir
+            {tx.cta1}
           </span>
           <span className="px-3 py-1 border border-white/20 text-white/60 rounded-full backdrop-blur-sm">
-            En savoir +
+            {tx.cta2}
           </span>
         </div>
-        {/* Extra section */}
-        <div className="flex gap-2 mt-1 relative z-10">
-          {["Rapide", "Fiable", "Élégant"].map((tag) => (
+        <div className="flex gap-2 relative z-10">
+          {tx.tags.map((tag) => (
             <span key={tag} className="px-2 py-0.5 bg-white/10 border border-white/10 rounded-full text-white/50 text-[7px]">
               {tag}
             </span>
@@ -137,28 +133,6 @@ function SiteV3() {
     </div>
   );
 }
-
-const SITE_PREVIEWS = [SiteV0, SiteV1, SiteV2, SiteV3];
-
-// ── Sequence ──────────────────────────────────────────────────────────────────
-
-const STEPS = [
-  {
-    user: "Rends le hero plus impactant, dégradé violet ✨",
-    ai: "Je modifie le hero avec un fond dégradé violet et un effet lumineux. C'est prêt !",
-    variant: 1,
-  },
-  {
-    user: "Ajoute un badge 'Nouveau' et arrondis les boutons",
-    ai: "Parfait ! J'ajoute le badge ✨ et j'applique le style pill sur les boutons. Voilà !",
-    variant: 2,
-  },
-  {
-    user: "Ajoute 3 tags sous les boutons : Rapide, Fiable, Élégant",
-    ai: "J'ajoute les 3 badges en bas. Ça renforce la proposition de valeur visuellement.",
-    variant: 3,
-  },
-];
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -170,12 +144,44 @@ interface ChatMsg {
 // ── Main component ────────────────────────────────────────────────────────────
 
 export default function ChatDemoAnimation() {
+  const { t } = useLang();
+
   const [messages, setMessages] = useState<ChatMsg[]>([]);
   const [inputValue, setInputValue] = useState("");
   const [isThinking, setIsThinking] = useState(false);
   const [streamingText, setStreamingText] = useState("");
   const [previewVariant, setPreviewVariant] = useState(0);
   const [previewFading, setPreviewFading] = useState(false);
+
+  // Translated site texts (stable refs via t())
+  const siteTexts: SiteTexts = {
+    nav: [t("demo_site_nav1"), t("demo_site_nav2"), t("demo_site_nav3")],
+    welcome: t("demo_site_welcome"),
+    tagline: t("demo_site_tagline"),
+    cta1: t("demo_site_cta1"),
+    cta2: t("demo_site_cta2"),
+    badge: t("demo_site_badge"),
+    tags: [t("demo_site_tag1"), t("demo_site_tag2"), t("demo_site_tag3")],
+  };
+
+  const STEPS = [
+    {
+      user: t("demo_step1_user"),
+      ai: t("demo_step1_ai"),
+      variant: 1,
+    },
+    {
+      user: t("demo_step2_user"),
+      ai: t("demo_step2_ai"),
+      variant: 2,
+    },
+    {
+      user: t("demo_step3_user"),
+      ai: t("demo_step3_ai"),
+      variant: 3,
+    },
+  ];
+
   useEffect(() => {
     let active = true;
 
@@ -250,9 +256,15 @@ export default function ChatDemoAnimation() {
     return () => {
       active = false;
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const PreviewComponent = SITE_PREVIEWS[previewVariant] ?? SiteV0;
+  const previews = [
+    <SiteV0 tx={siteTexts} />,
+    <SiteV1 tx={siteTexts} />,
+    <SiteV2 tx={siteTexts} />,
+    <SiteV3 tx={siteTexts} />,
+  ];
 
   return (
     <div className="grid grid-cols-5 min-h-[340px]">
@@ -283,9 +295,8 @@ export default function ChatDemoAnimation() {
           className="w-full h-full transition-opacity duration-500"
           style={{ opacity: previewFading ? 0 : 1 }}
         >
-          <PreviewComponent />
+          {previews[previewVariant] ?? previews[0]}
         </div>
-        {/* Update flash overlay */}
         {previewFading && (
           <div className="absolute inset-0 bg-primary/5 pointer-events-none" />
         )}
@@ -299,10 +310,10 @@ export default function ChatDemoAnimation() {
           <div className="w-5 h-5 rounded-md bg-primary/20 flex items-center justify-center">
             <Sparkles className="w-2.5 h-2.5 text-primary" />
           </div>
-          <span className="text-[11px] font-medium text-foreground">Chat Mar-ia</span>
+          <span className="text-[11px] font-medium text-foreground">{t("demo_chat_title")}</span>
           <div className="ml-auto flex items-center gap-1">
             <div className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-            <span className="text-[9px] text-emerald-400">En ligne</span>
+            <span className="text-[9px] text-emerald-400">{t("demo_chat_online")}</span>
           </div>
         </div>
 
@@ -311,7 +322,7 @@ export default function ChatDemoAnimation() {
           {messages.length === 0 && !isThinking && !streamingText && (
             <div className="flex-1 flex items-center justify-center">
               <p className="text-[10px] text-muted-foreground/50 text-center px-4">
-                Décrivez les modifications à apporter à votre site…
+                {t("demo_chat_idle")}
               </p>
             </div>
           )}
@@ -347,18 +358,9 @@ export default function ChatDemoAnimation() {
                 <Sparkles className="w-2.5 h-2.5 text-primary" />
               </div>
               <div className="bg-card border border-border/60 px-3 py-2 rounded-2xl rounded-bl-sm flex gap-1 items-center">
-                <span
-                  className="w-1.5 h-1.5 bg-muted-foreground/60 rounded-full animate-bounce"
-                  style={{ animationDelay: "0ms" }}
-                />
-                <span
-                  className="w-1.5 h-1.5 bg-muted-foreground/60 rounded-full animate-bounce"
-                  style={{ animationDelay: "160ms" }}
-                />
-                <span
-                  className="w-1.5 h-1.5 bg-muted-foreground/60 rounded-full animate-bounce"
-                  style={{ animationDelay: "320ms" }}
-                />
+                <span className="w-1.5 h-1.5 bg-muted-foreground/60 rounded-full animate-bounce" style={{ animationDelay: "0ms" }} />
+                <span className="w-1.5 h-1.5 bg-muted-foreground/60 rounded-full animate-bounce" style={{ animationDelay: "160ms" }} />
+                <span className="w-1.5 h-1.5 bg-muted-foreground/60 rounded-full animate-bounce" style={{ animationDelay: "320ms" }} />
               </div>
             </div>
           )}
@@ -375,7 +377,6 @@ export default function ChatDemoAnimation() {
               </div>
             </div>
           )}
-
         </div>
 
         {/* Input bar */}
@@ -387,7 +388,7 @@ export default function ChatDemoAnimation() {
                 <span className="inline-block w-0.5 h-3 bg-primary ml-0.5 animate-pulse align-text-bottom rounded-full" />
               </>
             ) : (
-              <span className="text-muted-foreground/50">Modifiez votre site…</span>
+              <span className="text-muted-foreground/50">{t("demo_chat_placeholder")}</span>
             )}
           </div>
           <button
