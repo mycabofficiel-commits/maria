@@ -9,6 +9,7 @@ import {
   Sparkles, Zap, Eye, MessageSquare, Code2, Globe, Shield, ArrowRight,
   Star, CheckCircle2, Layers, Cpu, Palette, Rocket
 } from "lucide-react";
+import PipelineAnimation from "@/components/PipelineAnimation";
 
 const FEATURES = [
   {
@@ -205,6 +206,55 @@ export default function Home() {
                 </div>
               </div>
             </div>
+          </div>
+        </div>
+      </section>
+
+      {/* ─── Pipeline IA ──────────────────────────────────────────────────── */}
+      <section className="py-24 border-t border-border/50 overflow-hidden">
+        <div className="container">
+          <div className="flex flex-col lg:flex-row items-center gap-12 lg:gap-20">
+
+            {/* Texte */}
+            <div className="flex-1 max-w-lg">
+              <Badge variant="outline" className="mb-4 border-primary/30 text-primary bg-primary/5">
+                Pipeline IA
+              </Badge>
+              <h2 className="text-4xl font-display font-bold text-foreground mb-5 leading-tight">
+                Une IA qui réfléchit,<br />code et vérifie
+              </h2>
+              <p className="text-muted-foreground mb-8 leading-relaxed">
+                Chaque demande traverse un pipeline de 4 agents spécialisés qui collaborent en temps réel pour produire un résultat fiable.
+              </p>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div className="p-3 rounded-lg border bg-purple-500/10 border-purple-500/20">
+                  <div className="text-xs font-semibold mb-1 text-purple-400">Raisonnement</div>
+                  <div className="text-xs text-muted-foreground">Analyse l'intention et planifie la réponse</div>
+                </div>
+                <div className="p-3 rounded-lg border bg-indigo-500/10 border-indigo-500/20">
+                  <div className="text-xs font-semibold mb-1 text-indigo-400">Orchestration</div>
+                  <div className="text-xs text-muted-foreground">Distribue les tâches et gère le contexte</div>
+                </div>
+                <div className="p-3 rounded-lg border bg-cyan-500/10 border-cyan-500/20">
+                  <div className="text-xs font-semibold mb-1 text-cyan-400">Génération</div>
+                  <div className="text-xs text-muted-foreground">Produit le code HTML/CSS/JS final</div>
+                </div>
+                <div className="p-3 rounded-lg border bg-emerald-500/10 border-emerald-500/20">
+                  <div className="text-xs font-semibold mb-1 text-emerald-400">Vérification</div>
+                  <div className="text-xs text-muted-foreground">Contrôle la qualité et la cohérence</div>
+                </div>
+              </div>
+            </div>
+
+            {/* Animation canvas */}
+            <div className="flex-1 flex items-center justify-center">
+              <div className="relative">
+                {/* halo d'arrière-plan */}
+                <div className="absolute inset-0 rounded-full bg-primary/5 blur-3xl scale-150 pointer-events-none" />
+                <PipelineAnimation />
+              </div>
+            </div>
+
           </div>
         </div>
       </section>
