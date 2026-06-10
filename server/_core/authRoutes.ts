@@ -119,7 +119,7 @@ async function sendResetEmail(to: string, code: string, name: string): Promise<v
 </body>
 </html>`;
   await resend.emails.send({
-    from: "Mar-ia <contact@mar-ia.net>",
+    from: "Mar-ia <contact@mycabvtc.com>",
     to,
     subject: `${code} — Réinitialisation de votre mot de passe Mar-ia`,
     html,
@@ -173,7 +173,7 @@ async function sendOtpEmail(to: string, code: string, name: string): Promise<voi
 </html>`;
 
   await resend.emails.send({
-    from: "Mar-ia <contact@mar-ia.net>",
+    from: "Mar-ia <contact@mycabvtc.com>",
     to,
     subject: `${code} — Votre code de vérification Mar-ia`,
     html,
