@@ -25,7 +25,7 @@ import {
   Loader2, ArrowLeft, Globe, RotateCcw, Save, CheckCircle2, MessageSquare,
   Rocket, Share2, Tag, MousePointer2, Copy, Check, PencilRuler, Upload,
   PanelLeftClose, PanelLeftOpen, Mic, MicOff, Paperclip, Camera, X as XIcon, Image as ImageIcon, Trash2,
-  ExternalLink, Download, Plus, GripVertical, Plug, KeyRound, Brain
+  ExternalLink, Download, Plus, GripVertical, Plug, KeyRound, Brain, Database, TrendingUp, Link2
 } from "lucide-react";
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
@@ -723,6 +723,15 @@ export default function ProjectEditor() {
   const [veTextInput, setVeTextInput] = useState("");
   const [showLayers, setShowLayers] = useState(false);
   const [showBlocksPalette, setShowBlocksPalette] = useState(false);
+  const [showDbPanel, setShowDbPanel] = useState(false);
+  const [showDomainPanel, setShowDomainPanel] = useState(false);
+  const [showSeoPanel, setShowSeoPanel] = useState(false);
+  const [seoTitle, setSeoTitle] = useState("");
+  const [seoDesc, setSeoDesc] = useState("");
+  const [seoOgTitle, setSeoOgTitle] = useState("");
+  const [seoOgDesc, setSeoOgDesc] = useState("");
+  const [seoKeywords, setSeoKeywords] = useState("");
+  const [domainInput, setDomainInput] = useState("");
   const [blockCategory, setBlockCategory] = useState<string>("sections");
   const [veLayers, setVeLayers] = useState<Array<{ idx: number; tag: string; text: string; zIndex: string; selected: boolean }>>([]);
   const [veLiveDims, setVeLiveDims] = useState<{ w: number; h: number } | null>(null);
@@ -746,7 +755,7 @@ export default function ProjectEditor() {
 
   /* queries */
   const utils = trpc.useUtils();
-  const { data: project, isLoading: projectLoading } = trpc.projects.get.useQuery({ id: projectId }, { enabled: !!projectId });
+  const { data: project, isLoading: projectLoading, refetch: refetchProject } = trpc.projects.get.useQuery({ id: projectId }, { enabled: !!projectId });
   const { data: versions } = trpc.projects.getVersions.useQuery({ projectId }, { enabled: !!projectId });
   const { data: chatMessages } = trpc.projects.getChatMessages.useQuery({ projectId }, { enabled: !!projectId });
   const { data: currentVersionData } = trpc.projects.getVersionCode.useQuery(
@@ -1286,6 +1295,7 @@ export default function ProjectEditor() {
     onError: (err: any) => toast.error(err.message),
   });
 
+  const updateProject = trpc.projects.update.useMutation({ onSuccess: () => refetchProject() });
   const updateCode = trpc.projects.updateCode.useMutation({
     onSuccess: () => toast.success("Code sauvegardé"),
     onError: (err: any) => toast.error(err.message),
@@ -1859,21 +1869,40 @@ export default function ProjectEditor() {
               <div className="flex flex-col border-b border-border/50" style={{ flex: codeCollapsed ? '0 0 0%' : '0 0 60%', minHeight: 0, overflow: 'hidden', transition: isDraggingRef.current ? 'none' : 'flex 0.2s ease' }}>
                 {/* Code toolbar */}
                 <div className="flex items-center gap-1 px-2 py-1 bg-[#252526] border-b border-[#3c3c3c] flex-shrink-0">
-                  {/* Arborescence : src/ > index.html | assets/ > style.css | assets/ > script.js */}
-                  <span className="text-[#858585] text-[10px] mr-1 hidden sm:inline">src/</span>
-                  {(["html", "css", "js"] as CodeTab[]).map((tab) => {
-                    const folder = tab === "html" ? "" : "assets/";
-                    const filename = tab === "html" ? "index.html" : tab === "css" ? "style.css" : "script.js";
-                    return (
-                      <button key={tab} onClick={() => setCodeTab(tab)}
-                        className={`flex items-center gap-1 px-2.5 py-1 text-xs rounded transition-colors ${
-                          codeTab === tab ? "bg-[#1e1e1e] text-white border border-[#3c3c3c]" : "text-[#858585] hover:text-white hover:bg-[#2a2d2e]"
-                        }`}>
-                        <Code2 className="w-3 h-3" />
-                        <span className="text-[#858585] text-[10px] hidden sm:inline">{folder}</span>{filename}
-                      </button>
-                    );
-                  })}
+                  {/* Quick-access: BD · Domaine · SEO */}
+                  <button
+                    onClick={() => setShowDbPanel(true)}
+                    className="flex items-center gap-1 px-2.5 py-1 text-xs rounded transition-colors text-[#858585] hover:text-white hover:bg-[#2a2d2e]"
+                    title="Base de données">
+                    <Database className="w-3 h-3" />
+                    <span className="hidden sm:inline">BD</span>
+                  </button>
+                  <button
+                    onClick={() => { setDomainInput(project?.customDomain ?? ""); setShowDomainPanel(true); }}
+                    className="flex items-center gap-1 px-2.5 py-1 text-xs rounded transition-colors text-[#858585] hover:text-white hover:bg-[#2a2d2e]"
+                    title="Domaine & DNS">
+                    <Link2 className="w-3 h-3" />
+                    <span className="hidden sm:inline">Domaine</span>
+                  </button>
+                  <button
+                    onClick={() => {
+                      const titleM = htmlCode.match(/<title[^>]*>([\s\S]*?)<\/title>/i);
+                      const descM  = htmlCode.match(/<meta\s+name=["']description["']\s+content=["']([\s\S]*?)["']/i) || htmlCode.match(/<meta\s+content=["']([\s\S]*?)["']\s+name=["']description["']/i);
+                      const kwM    = htmlCode.match(/<meta\s+name=["']keywords["']\s+content=["']([\s\S]*?)["']/i);
+                      const ogTM   = htmlCode.match(/<meta\s+property=["']og:title["']\s+content=["']([\s\S]*?)["']/i);
+                      const ogDM   = htmlCode.match(/<meta\s+property=["']og:description["']\s+content=["']([\s\S]*?)["']/i);
+                      setSeoTitle(titleM ? titleM[1] : "");
+                      setSeoDesc(descM ? descM[1] : "");
+                      setSeoKeywords(kwM ? kwM[1] : "");
+                      setSeoOgTitle(ogTM ? ogTM[1] : "");
+                      setSeoOgDesc(ogDM ? ogDM[1] : "");
+                      setShowSeoPanel(true);
+                    }}
+                    className="flex items-center gap-1 px-2.5 py-1 text-xs rounded transition-colors text-[#858585] hover:text-white hover:bg-[#2a2d2e]"
+                    title="SEO — Titre, description, Open Graph">
+                    <TrendingUp className="w-3 h-3" />
+                    <span className="hidden sm:inline">SEO</span>
+                  </button>
                        <div className="ml-auto flex items-center gap-1">
                     {/* Copy button */}
                     <Button size="sm" variant="ghost"
@@ -3120,6 +3149,165 @@ ${jsCode}`;
           </div>
         )}
       </div>
+
+      {/* ── BD panel ────────────────────────────────────────────────────────── */}
+      {showDbPanel && (
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/60 backdrop-blur-sm" onClick={() => setShowDbPanel(false)}>
+          <div className="bg-[#1a1a2e] border border-border/40 rounded-2xl shadow-2xl p-6 w-full max-w-md mx-4 flex flex-col gap-4" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <div className="w-9 h-9 rounded-xl bg-primary/10 flex items-center justify-center">
+                  <Database className="w-5 h-5 text-primary" />
+                </div>
+                <div>
+                  <h2 className="font-semibold text-foreground text-sm">Base de données</h2>
+                  <p className="text-[10px] text-muted-foreground">Stockage & API de données</p>
+                </div>
+              </div>
+              <button onClick={() => setShowDbPanel(false)} className="text-muted-foreground hover:text-foreground transition-colors"><XIcon className="w-4 h-4" /></button>
+            </div>
+            <div className="rounded-xl bg-primary/5 border border-primary/20 p-4 text-center space-y-2">
+              <div className="text-2xl">🗄️</div>
+              <p className="text-sm font-medium text-foreground">Bientôt disponible</p>
+              <p className="text-xs text-muted-foreground leading-relaxed">Connectez une base de données à votre site : stockage de formulaires, liste d'abonnés, catalogue produits — sans backend à gérer.</p>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              {[["Formulaires", "Stockez les soumissions de vos formulaires contact"], ["Abonnés", "Gérez une liste d'emails ou de membres"], ["Catalogue", "Produits, articles, portfolio dynamique"], ["Analytics", "Compteur de vues et événements personnalisés"]].map(([t, d]) => (
+                <div key={t} className="rounded-lg border border-border/40 p-3 opacity-50 cursor-not-allowed">
+                  <p className="text-xs font-medium text-foreground">{t}</p>
+                  <p className="text-[10px] text-muted-foreground mt-0.5">{d}</p>
+                </div>
+              ))}
+            </div>
+            <button onClick={() => setShowDbPanel(false)} className="w-full py-2 rounded-xl bg-primary/10 hover:bg-primary/20 text-primary text-sm font-medium transition-colors">Fermer</button>
+          </div>
+        </div>
+      )}
+
+      {/* ── Domaine / DNS panel ──────────────────────────────────────────────── */}
+      {showDomainPanel && (
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/60 backdrop-blur-sm" onClick={() => setShowDomainPanel(false)}>
+          <div className="bg-[#1a1a2e] border border-border/40 rounded-2xl shadow-2xl p-6 w-full max-w-md mx-4 flex flex-col gap-4" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <div className="w-9 h-9 rounded-xl bg-primary/10 flex items-center justify-center">
+                  <Link2 className="w-5 h-5 text-primary" />
+                </div>
+                <div>
+                  <h2 className="font-semibold text-foreground text-sm">Domaine & DNS</h2>
+                  <p className="text-[10px] text-muted-foreground">Liez votre nom de domaine</p>
+                </div>
+              </div>
+              <button onClick={() => setShowDomainPanel(false)} className="text-muted-foreground hover:text-foreground transition-colors"><XIcon className="w-4 h-4" /></button>
+            </div>
+            {project?.slug && (
+              <div className="rounded-xl bg-emerald-500/10 border border-emerald-500/20 p-3 flex items-center gap-2">
+                <Globe className="w-4 h-4 text-emerald-400 flex-shrink-0" />
+                <div className="min-w-0 flex-1">
+                  <p className="text-[10px] text-muted-foreground">URL publié</p>
+                  <p className="text-xs font-mono text-emerald-400 truncate">{project.slug}.mar-ia.app</p>
+                </div>
+                <button onClick={() => { navigator.clipboard.writeText(`https://${project!.slug}.mar-ia.app`); toast.success("Copié !"); }} className="text-muted-foreground hover:text-foreground flex-shrink-0"><Copy className="w-3 h-3" /></button>
+              </div>
+            )}
+            <div className="space-y-2">
+              <label className="text-xs font-medium text-foreground">Domaine personnalisé</label>
+              <Input
+                placeholder="ex : monsite.com"
+                value={domainInput}
+                onChange={e => setDomainInput(e.target.value)}
+                className="bg-input border-border/60 text-sm h-9 font-mono"
+              />
+              <p className="text-[10px] text-muted-foreground">Entrez uniquement le domaine sans <span className="font-mono">https://</span></p>
+            </div>
+            <div className="rounded-xl bg-[#111] border border-border/30 p-3 space-y-2">
+              <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">Configuration DNS requise</p>
+              {[
+                { type: "A", name: "@", value: "76.76.21.21" },
+                { type: "CNAME", name: "www", value: "cname.mar-ia.app" },
+              ].map(r => (
+                <div key={r.type} className="flex items-center gap-2 font-mono text-xs">
+                  <span className="w-14 px-1.5 py-0.5 rounded bg-primary/10 text-primary text-center">{r.type}</span>
+                  <span className="text-muted-foreground w-10">{r.name}</span>
+                  <span className="text-foreground flex-1 truncate">{r.value}</span>
+                  <button onClick={() => { navigator.clipboard.writeText(r.value); toast.success("Copié !"); }} className="text-muted-foreground hover:text-foreground"><Copy className="w-3 h-3" /></button>
+                </div>
+              ))}
+            </div>
+            <Button className="w-full bg-primary hover:bg-primary/90 text-primary-foreground h-9"
+              disabled={!domainInput.trim()}
+              onClick={() => {
+                updateProject.mutate({ id: projectId, customDomain: domainInput.trim() || undefined });
+                setShowDomainPanel(false);
+                toast.success("Domaine enregistré !");
+              }}>
+              <Save className="w-3.5 h-3.5 mr-1.5" /> Enregistrer le domaine
+            </Button>
+          </div>
+        </div>
+      )}
+
+      {/* ── SEO panel ────────────────────────────────────────────────────────── */}
+      {showSeoPanel && (
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/60 backdrop-blur-sm" onClick={() => setShowSeoPanel(false)}>
+          <div className="bg-[#1a1a2e] border border-border/40 rounded-2xl shadow-2xl p-6 w-full max-w-lg mx-4 flex flex-col gap-4 max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <div className="w-9 h-9 rounded-xl bg-primary/10 flex items-center justify-center">
+                  <TrendingUp className="w-5 h-5 text-primary" />
+                </div>
+                <div>
+                  <h2 className="font-semibold text-foreground text-sm">SEO</h2>
+                  <p className="text-[10px] text-muted-foreground">Titre, description, Open Graph</p>
+                </div>
+              </div>
+              <button onClick={() => setShowSeoPanel(false)} className="text-muted-foreground hover:text-foreground transition-colors"><XIcon className="w-4 h-4" /></button>
+            </div>
+            {/* Fields */}
+            <div className="space-y-3">
+              {([
+                { label: "Titre de la page", key: "title", value: seoTitle, set: setSeoTitle, placeholder: "Mon site — Description courte", hint: "55-60 caractères recommandés", max: 60 },
+                { label: "Meta description", key: "desc", value: seoDesc, set: setSeoDesc, placeholder: "Description de votre site visible dans Google…", hint: "150-160 caractères recommandés", max: 160 },
+                { label: "Mots-clés", key: "kw", value: seoKeywords, set: setSeoKeywords, placeholder: "mot-clé 1, mot-clé 2, …", hint: "Séparés par des virgules", max: 255 },
+                { label: "og:title (réseaux sociaux)", key: "ogt", value: seoOgTitle, set: setSeoOgTitle, placeholder: "Titre pour Facebook, Twitter…", hint: "", max: 95 },
+                { label: "og:description", key: "ogd", value: seoOgDesc, set: setSeoOgDesc, placeholder: "Description pour le partage social…", hint: "", max: 200 },
+              ] as { label:string; key:string; value:string; set:(v:string)=>void; placeholder:string; hint:string; max:number }[]).map(f => (
+                <div key={f.key} className="space-y-1">
+                  <div className="flex items-center justify-between">
+                    <label className="text-xs font-medium text-foreground">{f.label}</label>
+                    <span className={`text-[10px] ${f.value.length > f.max ? "text-red-400" : "text-muted-foreground"}`}>{f.value.length}/{f.max}</span>
+                  </div>
+                  <Input value={f.value} onChange={e => f.set(e.target.value)} placeholder={f.placeholder} className="bg-input border-border/60 text-xs h-8" />
+                  {f.hint && <p className="text-[10px] text-muted-foreground">{f.hint}</p>}
+                </div>
+              ))}
+            </div>
+            <Button className="w-full bg-primary hover:bg-primary/90 text-primary-foreground h-9"
+              onClick={() => {
+                // Inject SEO tags into <head> of htmlCode
+                let code = htmlCode;
+                const injectMeta = (pattern: RegExp, newTag: string, anchor = "</head>") => {
+                  if (pattern.test(code)) { code = code.replace(pattern, newTag); }
+                  else { code = code.replace(anchor, `  ${newTag}\n${anchor}`); }
+                };
+                if (seoTitle) { code = /<title[^>]*>[\s\S]*?<\/title>/i.test(code) ? code.replace(/<title[^>]*>[\s\S]*?<\/title>/i, `<title>${seoTitle}</title>`) : code.replace("</head>", `  <title>${seoTitle}</title>\n</head>`); }
+                if (seoDesc) injectMeta(/<meta\s+name=["']description["'][^>]*>/i, `<meta name="description" content="${seoDesc}">`);
+                if (seoKeywords) injectMeta(/<meta\s+name=["']keywords["'][^>]*>/i, `<meta name="keywords" content="${seoKeywords}">`);
+                if (seoOgTitle) injectMeta(/<meta\s+property=["']og:title["'][^>]*>/i, `<meta property="og:title" content="${seoOgTitle}">`);
+                if (seoOgDesc) injectMeta(/<meta\s+property=["']og:description["'][^>]*>/i, `<meta property="og:description" content="${seoOgDesc}">`);
+                setHtmlCode(code);
+                if (selectedVersionId) {
+                  const combined = `<!-- HTML -->\n${code}\n<!-- CSS -->\n${cssCode}\n<!-- JS -->\n${jsCode}`;
+                  updateCode.mutate({ versionId: selectedVersionId, code: combined });
+                }
+                toast.success("SEO mis à jour et sauvegardé !");
+                setShowSeoPanel(false);
+              }}>
+              <Save className="w-3.5 h-3.5 mr-1.5" /> Appliquer & Sauvegarder
+            </Button>
+          </div>
+        </div>
+      )}
 
       {/* Restore dialog */}
       <AlertDialog open={!!restoreTarget} onOpenChange={() => setRestoreTarget(null)}>
