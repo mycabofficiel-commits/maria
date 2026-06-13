@@ -2908,7 +2908,7 @@ Retourne UNIQUEMENT ce JSON brut (pas de markdown, pas de \`\`\`):
         const aiRes = await fetch("https://api.anthropic.com/v1/messages", {
           method: "POST",
           headers: { "x-api-key": execKey, "anthropic-version": "2023-06-01", "content-type": "application/json" },
-          body: JSON.stringify({ model: execModel, max_tokens: debugPlanMaxTokens, system: systemPrompt, messages: [{ role: "user", content: userMessage }] }),
+          body: JSON.stringify({ model: execModel, max_tokens: debugPlanMaxTokens, stream: true, system: systemPrompt, messages: [{ role: "user", content: userMessage }] }),
         });
         if (!aiRes.ok || !aiRes.body) { sseWrite(res, "error", { message: parseLlmError(await aiRes.text(), "Claude") }); res.end(); return; }
         const reader = aiRes.body.getReader(); const dec = new TextDecoder(); let buf = "";
@@ -2932,7 +2932,7 @@ Retourne UNIQUEMENT ce JSON brut (pas de markdown, pas de \`\`\`):
         const aiRes = await fetch(`${baseUrls[execProvider] || "https://api.openai.com/v1"}/chat/completions`, {
           method: "POST",
           headers: { "Authorization": `Bearer ${execKey}`, "content-type": "application/json" },
-          body: JSON.stringify({ model: execModel, max_tokens: debugPlanMaxTokens, temperature: 0.2, response_format: { type: "json_object" }, messages: [{ role: "system", content: systemPrompt }, { role: "user", content: userMessage }] }),
+          body: JSON.stringify({ model: execModel, max_tokens: debugPlanMaxTokens, temperature: 0.2, stream: true, response_format: { type: "json_object" }, messages: [{ role: "system", content: systemPrompt }, { role: "user", content: userMessage }] }),
         });
         if (!aiRes.ok || !aiRes.body) { sseWrite(res, "error", { message: parseLlmError(await aiRes.text(), execProvider) }); res.end(); return; }
         const reader = aiRes.body.getReader(); const dec = new TextDecoder(); let buf = "";
