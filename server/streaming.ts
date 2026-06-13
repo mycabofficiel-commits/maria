@@ -2020,6 +2020,10 @@ SI UNE IMAGE EST JOINTE (priorité absolue) :
       const totalVersions = versionCount[0]?.count || 0;
 
       await db.insert(chatMessages).values({ projectId, userId: user.id, role: "user", content: message });
+      // Persiste le plan/diagnostic validé pour qu'il reste dans l'historique "en dur"
+      if (validatedSummary && validatedSummary.trim() && validatedSummary.trim() !== message.trim()) {
+        await db.insert(chatMessages).values({ projectId, userId: user.id, role: "assistant", content: validatedSummary.trim() });
+      }
 
       // ── Load user integrations for this project (inject into executor context) ──
       let storedIntegrations: Array<{ apiName: string; apiLabel: string; baseUrl: string | null; docSummary: string | null }> = [];

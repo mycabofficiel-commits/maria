@@ -512,7 +512,7 @@ RÈGLES CODE (à respecter pour chaque modification):
       if (!db) return [];
       return db.select().from(chatMessages)
         .where(eq(chatMessages.projectId, input.projectId))
-        .orderBy(chatMessages.createdAt);
+        .orderBy(chatMessages.createdAt, chatMessages.id);
     }),
 
   // Clear chat history for a project
