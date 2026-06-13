@@ -2078,8 +2078,18 @@ ${jsCode}`;
                   <div className="w-5 h-5 rounded-full bg-primary/20 flex items-center justify-center">
                     <Sparkles className="w-2.5 h-2.5 text-primary" />
                   </div>
-                  <p className="text-xs font-semibold">Maria</p>
-                  <span className="text-[10px] text-muted-foreground">· agent IA</span>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-6 px-2 text-[10px] gap-1 font-semibold"
+                    title={codeCollapsed ? "Afficher la partie code" : "Masquer la partie code"}
+                    onClick={() => setCodeCollapsed(v => !v)}
+                  >
+                    {codeCollapsed
+                      ? <PanelLeftOpen className="w-3 h-3 rotate-90" />
+                      : <PanelLeftClose className="w-3 h-3 rotate-90" />}
+                    Code
+                  </Button>
                   <div className="ml-auto flex gap-1">
                     <Button
                       variant={showVersions ? "secondary" : "ghost"}
