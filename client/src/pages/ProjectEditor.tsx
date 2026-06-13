@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, useCallback } from "react";
+import { useEffect, useRef, useState, useCallback, useMemo } from "react";
 import { useParams, useLocation } from "wouter";
 import { trpc } from "@/lib/trpc";
 import { Button } from "@/components/ui/button";
@@ -25,7 +25,8 @@ import {
   Loader2, ArrowLeft, Globe, RotateCcw, Save, CheckCircle2, MessageSquare,
   Rocket, Share2, Tag, MousePointer2, Copy, Check, PencilRuler, Upload,
   PanelLeftClose, PanelLeftOpen, Mic, MicOff, Paperclip, Camera, X as XIcon, Image as ImageIcon, Trash2,
-  ExternalLink, Download, Plus, GripVertical, Plug, KeyRound, Brain, Database, TrendingUp, Link2
+  ExternalLink, Download, Plus, GripVertical, Plug, KeyRound, Brain, Database, TrendingUp, Link2,
+  HardDrive, Type as TypeIcon
 } from "lucide-react";
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
@@ -72,6 +73,50 @@ const extractJs = (code: string): string => {
   if (m) return m[1].trim();
   const all = Array.from(code.matchAll(/<script(?![^>]*src)[^>]*>([\s\S]*?)<\/script>/gi));
   return all.map(x => x[1]).join("\n").trim();
+};
+
+/* ── Storage helpers : bibliothèque d'images & de contenu ──────────────────── */
+// Extrait toutes les images uniques (balises <img>, <source>, et url(...) dans le CSS / styles inline)
+const extractMediaUrls = (html: string, css: string): string[] => {
+  const seen = new Set<string>();
+  const push = (u: string) => {
+    const v = (u || "").trim();
+    if (!v || v.startsWith("#")) return;
+    seen.add(v);
+  };
+  let m: RegExpExecArray | null;
+  const srcRe = /<(?:img|source)\b[^>]*\bsrc(?:set)?=["']([^"']+)["']/gi;
+  while ((m = srcRe.exec(html))) push(m[1].split(",")[0].trim().split(" ")[0]);
+  const urlRe = /url\(\s*["']?([^"')]+)["']?\s*\)/gi;
+  while ((m = urlRe.exec(html))) push(m[1]);
+  while ((m = urlRe.exec(css))) push(m[1]);
+  return Array.from(seen);
+};
+// Extrait les blocs de texte éditables (titres, paragraphes, boutons, liens, items…)
+type TextItem = { idx: number; tag: string; text: string };
+const TEXT_TAG_RE = /<(h1|h2|h3|h4|h5|h6|p|a|button|span|li|figcaption|label|blockquote)\b[^>]*>([^<>]*?)<\/\1>/gi;
+const extractTexts = (html: string): TextItem[] => {
+  const items: TextItem[] = [];
+  let m: RegExpExecArray | null;
+  let i = 0;
+  const re = new RegExp(TEXT_TAG_RE.source, "gi");
+  while ((m = re.exec(html))) {
+    const text = m[2].trim();
+    if (text && !/^[\s ]*$/.test(text)) items.push({ idx: i, tag: m[1].toLowerCase(), text });
+    i++;
+  }
+  return items;
+};
+// Réinjecte les textes modifiés (par index d'occurrence) dans le HTML
+const applyTextEdits = (html: string, edits: Record<number, string>): string => {
+  let i = -1;
+  const re = new RegExp(TEXT_TAG_RE.source, "gi");
+  return html.replace(re, (full, _tag, inner) => {
+    i++;
+    const edit = edits[i];
+    if (edit === undefined || edit === inner) return full;
+    return full.replace(`>${inner}</`, () => `>${edit}</`);
+  });
 };
 
 // ── CodeMirror setup ──────────────────────────────────────────────────────────
@@ -726,6 +771,12 @@ export default function ProjectEditor() {
   const [showDbPanel, setShowDbPanel] = useState(false);
   const [showDomainPanel, setShowDomainPanel] = useState(false);
   const [showSeoPanel, setShowSeoPanel] = useState(false);
+  const [showStoragePanel, setShowStoragePanel] = useState(false);
+  const [storageTab, setStorageTab] = useState<"images" | "content">("images");
+  const [imgEdits, setImgEdits] = useState<Record<string, string>>({});
+  const [textEdits, setTextEdits] = useState<Record<number, string>>({});
+  const storageImgUploadRef = useRef<HTMLInputElement>(null);
+  const storageUploadTargetRef = useRef<string | null>(null);
   const [seoTitle, setSeoTitle] = useState("");
   const [seoDesc, setSeoDesc] = useState("");
   const [seoOgTitle, setSeoOgTitle] = useState("");
@@ -747,6 +798,10 @@ export default function ProjectEditor() {
   const [htmlCode, setHtmlCode] = useState("");
   const [cssCode, setCssCode] = useState("");
   const [jsCode, setJsCode] = useState("");
+
+  // Storage : listes calculées d'images & de textes éditables
+  const storageImages = useMemo(() => extractMediaUrls(htmlCode, cssCode), [htmlCode, cssCode]);
+  const storageTexts = useMemo(() => extractTexts(htmlCode), [htmlCode]);
 
   const chatEndRef = useRef<HTMLDivElement>(null);
   const cmContainerRef = useRef<HTMLDivElement>(null);
@@ -1919,11 +1974,11 @@ export default function ProjectEditor() {
                       <span className="hidden sm:inline">{copiedTab === codeTab ? "Copié !" : "Copier"}</span>
                     </Button>
                     <Button size="sm" variant="ghost"
-                      className={`h-6 px-2 text-[10px] gap-1 ${inspectMode ? "text-primary bg-primary/10" : "text-[#858585] hover:text-white"}`}
-                      onClick={() => setInspectMode(!inspectMode)}
-                      title="Mode inspection : cliquez un élément dans la preview pour voir son code">
-                      <MousePointer2 className="w-3 h-3" />
-                      <span className="hidden sm:inline">Inspect</span>
+                      className={`h-6 px-2 text-[10px] gap-1 ${showStoragePanel ? "text-primary bg-primary/10" : "text-[#858585] hover:text-white"}`}
+                      onClick={() => { setImgEdits({}); setTextEdits({}); setStorageTab("images"); setShowStoragePanel(true); }}
+                      title="Storage : bibliothèque d'images et de contenu du site">
+                      <HardDrive className="w-3 h-3" />
+                      <span className="hidden sm:inline">Storage</span>
                     </Button>
                     <Button size="sm" variant="ghost" className="h-6 px-2 text-[10px] gap-1 text-[#858585] hover:text-white"
                       onClick={() => {
@@ -2419,7 +2474,7 @@ ${jsCode}`;
                               autoFocus
                             />
                           ) : (
-                            <div className="text-xs text-muted-foreground leading-relaxed whitespace-pre-wrap max-h-28 overflow-y-auto pr-1">{pendingSummary}</div>
+                            <div className="text-xs text-muted-foreground leading-relaxed whitespace-pre-wrap pr-1">{pendingSummary}</div>
                           )}
                         </div>
                       </div>
@@ -3306,6 +3361,143 @@ ${jsCode}`;
               <Save className="w-3.5 h-3.5 mr-1.5" /> Appliquer & Sauvegarder
             </Button>
           </div>
+        </div>
+      )}
+
+      {/* ── Storage panel : bibliothèque d'images & de contenu ───────────────── */}
+      {showStoragePanel && (
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/60 backdrop-blur-sm" onClick={() => setShowStoragePanel(false)}>
+          <div className="bg-[#1a1a2e] border border-border/40 rounded-2xl shadow-2xl w-full max-w-2xl mx-4 flex flex-col max-h-[88vh]" onClick={e => e.stopPropagation()}>
+            {/* Header */}
+            <div className="flex items-center justify-between p-5 border-b border-border/30">
+              <div className="flex items-center gap-2">
+                <div className="w-9 h-9 rounded-xl bg-primary/10 flex items-center justify-center">
+                  <HardDrive className="w-5 h-5 text-primary" />
+                </div>
+                <div>
+                  <h2 className="font-semibold text-foreground text-sm">Storage</h2>
+                  <p className="text-[10px] text-muted-foreground">Bibliothèque d'images & de contenu — modifiez tout facilement</p>
+                </div>
+              </div>
+              <button onClick={() => setShowStoragePanel(false)} className="text-muted-foreground hover:text-foreground transition-colors"><XIcon className="w-4 h-4" /></button>
+            </div>
+            {/* Tabs */}
+            <div className="flex gap-1 px-5 pt-3">
+              <button onClick={() => setStorageTab("images")}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${storageTab === "images" ? "bg-primary/15 text-primary" : "text-muted-foreground hover:text-foreground hover:bg-white/5"}`}>
+                <ImageIcon className="w-3.5 h-3.5" /> Images <span className="opacity-60">({storageImages.length})</span>
+              </button>
+              <button onClick={() => setStorageTab("content")}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${storageTab === "content" ? "bg-primary/15 text-primary" : "text-muted-foreground hover:text-foreground hover:bg-white/5"}`}>
+                <TypeIcon className="w-3.5 h-3.5" /> Contenu <span className="opacity-60">({storageTexts.length})</span>
+              </button>
+            </div>
+            {/* Body */}
+            <div className="flex-1 overflow-y-auto p-5 space-y-3">
+              {storageTab === "images" && (
+                storageImages.length === 0 ? (
+                  <p className="text-xs text-muted-foreground text-center py-8">Aucune image détectée dans ce site.</p>
+                ) : (
+                  storageImages.map((src) => {
+                    const current = imgEdits[src] ?? src;
+                    return (
+                      <div key={src} className="flex items-center gap-3 rounded-xl bg-[#111] border border-border/30 p-2.5">
+                        <div className="w-14 h-14 rounded-lg bg-black/40 border border-border/30 flex items-center justify-center overflow-hidden flex-shrink-0">
+                          <img src={current} alt="" className="max-w-full max-h-full object-contain"
+                            onError={e => { (e.target as HTMLImageElement).style.display = "none"; }} />
+                        </div>
+                        <div className="flex-1 min-w-0 space-y-1.5">
+                          <p className="text-[10px] font-mono text-muted-foreground truncate" title={current}>
+                            {current.startsWith("data:") ? `${current.slice(0, 40)}… (image intégrée)` : current}
+                            {imgEdits[src] && <span className="text-emerald-400 ml-1">• modifiée</span>}
+                          </p>
+                          <Input
+                            placeholder="Coller une nouvelle URL d'image…"
+                            defaultValue={src.startsWith("data:") ? "" : src}
+                            onChange={e => setImgEdits(prev => ({ ...prev, [src]: e.target.value }))}
+                            className="bg-input border-border/60 text-[11px] h-7 font-mono"
+                          />
+                        </div>
+                        <button
+                          onClick={() => { storageUploadTargetRef.current = src; storageImgUploadRef.current?.click(); }}
+                          className="flex-shrink-0 flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-primary/10 hover:bg-primary/20 text-primary text-[11px] font-medium transition-colors"
+                          title="Uploader une image depuis votre ordinateur">
+                          <Upload className="w-3.5 h-3.5" /> Upload
+                        </button>
+                      </div>
+                    );
+                  })
+                )
+              )}
+              {storageTab === "content" && (
+                storageTexts.length === 0 ? (
+                  <p className="text-xs text-muted-foreground text-center py-8">Aucun texte éditable détecté.</p>
+                ) : (
+                  storageTexts.map((t) => (
+                    <div key={t.idx} className="rounded-xl bg-[#111] border border-border/30 p-2.5 space-y-1.5">
+                      <div className="flex items-center gap-1.5">
+                        <span className="px-1.5 py-0.5 rounded bg-primary/10 text-primary text-[9px] font-mono uppercase">{t.tag}</span>
+                        {textEdits[t.idx] !== undefined && textEdits[t.idx] !== t.text && <span className="text-[9px] text-emerald-400">• modifié</span>}
+                      </div>
+                      <Textarea
+                        defaultValue={t.text}
+                        onChange={e => setTextEdits(prev => ({ ...prev, [t.idx]: e.target.value }))}
+                        rows={t.text.length > 80 ? 3 : 1}
+                        className="bg-input border-border/60 text-xs resize-y min-h-0 py-1.5"
+                      />
+                    </div>
+                  ))
+                )
+              )}
+            </div>
+            {/* Footer */}
+            <div className="flex items-center gap-2 p-4 border-t border-border/30">
+              <p className="text-[10px] text-muted-foreground flex-1">
+                Les modifications sont appliquées au code du site et sauvegardées.
+              </p>
+              <Button variant="ghost" className="h-9 text-xs text-muted-foreground" onClick={() => setShowStoragePanel(false)}>Fermer</Button>
+              <Button className="h-9 text-xs bg-primary hover:bg-primary/90 text-primary-foreground"
+                onClick={() => {
+                  let newHtml = htmlCode;
+                  let newCss = cssCode;
+                  // Images : remplacer chaque ancienne URL par la nouvelle (globalement)
+                  for (const [oldSrc, newSrc] of Object.entries(imgEdits)) {
+                    if (!newSrc || newSrc === oldSrc) continue;
+                    newHtml = newHtml.split(oldSrc).join(newSrc);
+                    newCss = newCss.split(oldSrc).join(newSrc);
+                  }
+                  // Contenu texte : réinjecter les textes modifiés
+                  newHtml = applyTextEdits(newHtml, textEdits);
+                  setHtmlCode(newHtml);
+                  setCssCode(newCss);
+                  const vId = selectedVersionId || project?.currentVersionId;
+                  if (vId) {
+                    const combined = `<!-- HTML -->\n${newHtml}\n<!-- CSS -->\n${newCss}\n<!-- JS -->\n${jsCode}`;
+                    updateCode.mutate({ versionId: vId, code: combined });
+                  }
+                  buildPreview(newHtml, newCss, jsCode);
+                  toast.success("Bibliothèque mise à jour et sauvegardée !");
+                  setShowStoragePanel(false);
+                }}>
+                <Save className="w-3.5 h-3.5 mr-1.5" /> Appliquer & Sauvegarder
+              </Button>
+            </div>
+          </div>
+          {/* Hidden file input for image upload */}
+          <input ref={storageImgUploadRef} type="file" accept="image/*" className="hidden"
+            onChange={e => {
+              const file = e.target.files?.[0];
+              const target = storageUploadTargetRef.current;
+              if (!file || !target) return;
+              const reader = new FileReader();
+              reader.onload = ev => {
+                setImgEdits(prev => ({ ...prev, [target]: ev.target?.result as string }));
+                toast.success("Image importée — cliquez sur Appliquer pour sauvegarder");
+              };
+              reader.readAsDataURL(file);
+              e.target.value = "";
+              storageUploadTargetRef.current = null;
+            }} />
         </div>
       )}
 
