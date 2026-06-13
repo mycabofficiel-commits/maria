@@ -1700,8 +1700,13 @@ export default function ProjectEditor() {
   // For Expo projects, the snackUrl may come from the done SSE event or from project.previewUrl
   const activeSnackUrl = expoSnackUrl || (isExpoProject ? (project?.previewUrl || "") : "");
 
-  /* loading */
-  if (authLoading || projectLoading) {
+  /* loading
+     On garde l'écran de chargement tant que le code de la version n'est pas
+     arrivé pour un projet qui possède déjà du code (currentVersionId présent).
+     Sinon le formulaire de création (BUILDER) clignote une fraction de seconde
+     entre l'arrivée du `project` et celle de son code (2 requêtes séparées). */
+  const codeStillLoading = !!project?.currentVersionId && !currentVersionData && !isGenerating && !waitingForAutoGen;
+  if (authLoading || projectLoading || codeStillLoading) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
         <Loader2 className="w-6 h-6 text-primary animate-spin" />
