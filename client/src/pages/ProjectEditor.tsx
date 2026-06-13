@@ -972,7 +972,12 @@ export default function ProjectEditor() {
     }
   }, [currentVersionData?.generatedCode, visualEditMode, isExpoProject]);
 
-  /* ── CodeMirror: create/destroy editor on tab or version change ── */
+  /* ── CodeMirror: create/destroy editor on tab or version change ──
+     `codeLoaded` flips false→true once the version code arrives from the
+     server. Including it in the deps guarantees the editor is (re)created
+     after the content is in state — otherwise it would be built empty during
+     the initial load race and never repopulate until the user switches tabs. */
+  const codeLoaded = !!(htmlCode || cssCode || jsCode);
   useEffect(() => {
     if (!cmContainerRef.current) return;
     cmViewRef.current?.destroy();
@@ -994,7 +999,7 @@ export default function ProjectEditor() {
     cmViewRef.current = new EditorView({ state, parent: cmContainerRef.current });
     return () => { cmViewRef.current?.destroy(); cmViewRef.current = null; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [codeTab, selectedVersionId]);
+  }, [codeTab, selectedVersionId, codeLoaded]);
 
   /* ── CodeMirror: sync external content changes (streaming, VE save) ── */
   useEffect(() => {
