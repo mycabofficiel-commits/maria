@@ -32,7 +32,7 @@ export default function Templates() {
       toast.success("Projet créé à partir du template !");
       setSelected(null);
       utils.projects.list.invalidate();
-      navigate(`/projects/${data.id}`);
+      navigate(`/projects/${data.id}?autoGenerate=true`);
     },
     onError: (err: any) => toast.error(err.message),
   });

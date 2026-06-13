@@ -81,7 +81,7 @@ export default function NewProjectConfig() {
   const createProject = trpc.projects.create.useMutation({
     onSuccess: (data) => {
       toast.success("Projet créé ! Mar-ia génère votre projet…");
-      navigate(`/projects/${data.id}`);
+      navigate(`/projects/${data.id}?autoGenerate=true`);
     },
     onError: (err) => toast.error(err.message),
   });
