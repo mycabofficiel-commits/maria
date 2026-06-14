@@ -135,20 +135,29 @@ function validateGeneratedCode(html: string): string[] {
   const scriptClose = (html.match(/<\/script>/gi) || []).length;
   if (scriptOpen > scriptClose) issues.push(`${scriptOpen - scriptClose} balise(s) <script> non fermée(s)`);
 
-  // 2. Navigation bugs — href="#xxx" instead of showPage()
-  const badLinks = html.match(/href="#[a-zA-Z][^"]{1,40}"/g) || [];
-  const uniqueBad = Array.from(new Set(badLinks));
-  if (uniqueBad.length > 0) {
+  // 2. Broken anchor links — href="#id" pointant vers une section inexistante.
+  //    Une ancre one-page valide (href="#services" + <section id="services">) N'EST PAS un bug.
+  const anchorLinks = Array.from(new Set(
+    (html.match(/href="#([a-zA-Z][^"]{0,40})"/g) || [])
+      .map(m => { const r = m.match(/href="#([^"]+)"/); return r ? r[1] : null; })
+      .filter(Boolean) as string[]
+  ));
+  const brokenAnchors = anchorLinks.filter(id => {
+    if (id === 'top' || id === 'accueil') return false;
+    return !(new RegExp(`id=["']${id.replace(/[^a-zA-Z0-9_-]/g, '')}["']`, 'i')).test(html);
+  });
+  if (brokenAnchors.length > 0) {
     issues.push(
-      `Liens de navigation incorrects (blanchissent la preview) : ${uniqueBad.slice(0, 4).join(' ')}. ` +
-      `Remplacer par onclick="showPage('id'); return false;" href="#"`
+      `Ancres cassées : ${brokenAnchors.slice(0, 4).map(id => `#${id}`).join(' ')} pointent vers une section inexistante. ` +
+      `Crée la <section id="..."> correspondante, ou corrige le lien.`
     );
   }
 
-  // 3. showPage() function missing while site has multiple sections
-  const sectionCount = (html.match(/<section/gi) || []).length;
-  if (sectionCount > 1 && !html.match(/function\s+showPage\s*\(/)) {
-    issues.push('Fonction showPage() absente du <script> alors que le site a ' + sectionCount + ' sections');
+  // 3. showPage() appelée mais non définie (SPA multi-pages sans son routeur).
+  //    Un site one-page (plusieurs sections, sans showPage) est VALIDE → on ne le signale pas.
+  const usesShowPage = /onclick\s*=\s*["'][^"']*showPage\s*\(/i.test(html);
+  if (usesShowPage && !html.match(/function\s+showPage\s*\(/)) {
+    issues.push('La navigation appelle showPage() mais la fonction est absente du <script>');
   }
 
   // 4. Literal \n artifacts from JSON string unescaping
@@ -1293,17 +1302,21 @@ TYPE APP: ${siteType} | STYLE: ${style || "moderne"} | LANGUE: ${language || "fr
 • Google Fonts CDN obligatoire — COMBINE 2 polices : une display (Playfair Display, Raleway, Poppins, Montserrat, DM Serif Display) + une body (Inter, Nunito, DM Sans)
 • Meta tags SEO : title, description, og:title, og:description, viewport
 
-══ SPA MONO-FICHIER — NAVIGATION (ZÉRO LIEN CASSÉ) ══
-• Chaque "page" = <section id="xxx"> — accueil visible par défaut, autres cachés (display:none)
-• Navigation : <a href="#" onclick="showPage('xxx'); return false;">
-• Logo → onclick="showPage('accueil'); return false;" href="#"
-• showPage(id) DANS le <script> : hide all sections, show #id, scrollTo(0,0)
-• ❌ INTERDIT : href="#hero", href="#features", href="/page", href="page.html"
+══ NAVIGATION ONE-PAGE (DÉFAUT POUR UN SITE VITRINE — ZÉRO LIEN CASSÉ) ══
+Un site vitrine est par défaut une SEULE page qui défile (one-page), avec un menu qui scrolle vers les sections.
+• Chaque bloc = <section id="xxx"> — TOUTES visibles, empilées (PAS de display:none, PAS de showPage)
+• Menu = vraies ancres : <a href="#services">Services</a>, <a href="#tarifs">Tarifs</a>…
+• Logo → <a href="#accueil"> (avec <section id="accueil"> ou <header id="accueil"> en haut)
+• CSS obligatoire : html{scroll-behavior:smooth} et scroll-margin-top:80px sur les sections (header fixe)
+• ❌ INTERDIT : liens vers fichiers externes inexistants (href="/page", href="page.html")
 
-⚠️ ANTI-PAGE-FANTÔME (BUG CRITIQUE) :
-Pour CHAQUE lien nav avec showPage('xxx'), créer une <section id="xxx">…</section> avec du VRAI contenu.
-Exemple : nav a 5 liens → 5 sections complètes. Zéro section vide, zéro section manquante.
-Un showPage() sans section = page blanche → INTERDIT.
+⚠️ ANTI-LIEN-CASSÉ (BUG CRITIQUE) :
+Pour CHAQUE lien de menu href="#xxx", il DOIT exister une <section id="xxx">…</section> avec du VRAI contenu.
+Exemple : menu de 5 liens → 5 sections complètes. Zéro section vide, zéro ancre vers une section manquante.
+
+(Option avancée — UNIQUEMENT si l'utilisateur veut de vraies pages distinctes qui se remplacent, type web-app :
+utilise alors onclick="showPage('xxx'); return false;" + une fonction showPage(id) dans le <script>, et chaque
+showPage('id') doit avoir sa <section id="id">. Sinon, reste en one-page.)
 
 ══ DESIGN SYSTEM — VARIABLES CSS OBLIGATOIRES ══
 Déclare TOUJOURS dans :root {} selon la palette demandée :
@@ -1486,13 +1499,13 @@ Retourne UNIQUEMENT le code HTML complet, sans explication, sans markdown, sans 
 Réponds UNIQUEMENT "OK" si tout est correct. Sinon, liste chaque problème en 1 ligne (150 mots max total).
 
 VÉRIFIE :
-— Navigation : href="#quelquechose" sur liens nav/logo/CTA → doit être onclick="showPage('id'); return false;"
-— showPage() présente dans <script> si plusieurs <section>
+— Navigation one-page : chaque lien de menu href="#id" DOIT avoir sa <section id="id"> (sinon ancre cassée). Une ancre vers une section existante est CORRECTE, ce n'est PAS un bug.
+— Si le code utilise onclick="showPage('id')" → la fonction showPage() DOIT exister dans <script> ET chaque id appelé doit avoir sa <section id="id">
+— Ne PAS exiger showPage() sur un site one-page (sections empilées) : c'est volontaire et valide
 — Balises HTML fermées : </style> </script> </body> </html>
 — JS valide : accolades équilibrées, fonctions complètes
-— Code complet : pas tronqué
-— Images : src vide ou relatif → doit être URL Unsplash complète
-— Pages fantômes : chaque showPage('id') doit avoir sa <section id="id"> avec du vrai contenu`,
+— Code complet : pas tronqué (doit finir par </html>)
+— Images : src vide ou relatif → doit être URL Unsplash complète`,
               fullCode.slice(0, 12000), 500
             );
             if (ctrl && ctrl.text.trim() !== "OK") llmIssues = ctrl.text.trim();
@@ -1521,7 +1534,7 @@ ${allIssues.map((issue, i) => `${i + 1}. ${issue}`).join('\n')}
 RÈGLES :
 • Retourne le HTML COMPLET corrigé (pas juste les parties modifiées)
 • Ne supprime AUCUNE section ou fonctionnalité existante
-• Navigation : onclick="showPage('id'); return false;" — jamais href="#quelquechose"
+• Navigation : corrige les ancres cassées en créant la <section id="..."> manquante (ou en corrigeant le lien). Une ancre href="#id" vers une section existante est CORRECTE — ne la transforme PAS en showPage().
 • Code 100% complet : </style> </script> </body> </html> OBLIGATOIRES
 Retourne UNIQUEMENT le code HTML, sans explication, sans markdown, sans backticks.`;
 
@@ -1915,21 +1928,36 @@ PATTERNS CORRECTS à prescrire dans le plan :
 **Contraintes techniques :** [liste les patterns obligatoires détectés — ex: "Carte → WebView+Leaflet", "Auth → Register+Login"]
 
 ⚠️ Si la demande est vague, propose 3 améliorations concrètes et demande laquelle.`
-        : `Tu es Mar-ia, experte en développement web. Analyse attentivement le code et la demande avant de répondre.
+        : `Tu es Mar-ia, développeuse web senior. Avant de répondre, RAISONNE comme un humain expert : qu'est-ce que l'utilisateur veut VRAIMENT obtenir ? Reformule son objectif réel, pas seulement ses mots.
 
-ARCHITECTURE DU SITE (SPA mono-fichier) :
-• Toutes les pages = <section id="page-id"> dans un seul fichier HTML
-• Navigation : onclick="showPage('page-id'); return false;" href="#" — JAMAIS href="#xxx"
-• Logo → onclick="showPage('accueil'); return false;"
-• href="#hero" ou href="#features" = BUG (blanchit la preview)
+══ RAISONNE SUR L'INTENTION (le plus important) ══
+• Lis la demande + l'historique. Déduis le BUT final, pas la formulation littérale.
+• Distingue deux types de tâches :
+  — RETOUCHE ciblée (changer une couleur, un texte, ajouter une section) → garde la structure existante.
+  — REFONTE structurelle (« tout sur une page », « onepage », « rassembler les blocs », « séparer en pages », « restructurer ») → la structure DOIT changer. Ne réponds pas « modification chirurgicale » : le but EST de transformer l'architecture.
+• Si l'intention est claire et à faible risque (ajouter des images sur un site dont le thème est évident, changer un visuel, ajouter une section standard) → NE POSE PAS de question, agis avec des choix par défaut pertinents (ex: images Unsplash thématiques liées au métier du site).
+• Ne pose une question QUE si un choix structurant est réellement ambigu ET bloquant.
+• Si l'utilisateur référence un fichier/zip qu'il a « envoyé avant » et que tu n'y as pas accès dans ce contexte → dis-le clairement et propose une alternative immédiate (images Unsplash thématiques), sans bloquer.
+
+══ DEUX ARCHITECTURES POSSIBLES — CHOISIS SELON L'INTENTION ══
+Les deux fonctionnent dans l'aperçu (les ancres #id déclenchent un scroll fluide, ce N'EST PAS un bug).
+1. SITE ONE-PAGE (défilement) — quand l'utilisateur veut « une seule page », « onepage », un menu qui « ramène vers chaque bloc » :
+   • Toutes les sections visibles, empilées : <section id="services">, <section id="tarifs">, etc. (AUCUN display:none)
+   • Menu = vraies ancres : <a href="#services">Services</a> → scroll vers la section
+   • Ajouter html{scroll-behavior:smooth} et scroll-margin-top sur les sections (header fixe)
+   • PAS de showPage() — on supprime cette logique si elle existe
+2. APP MULTI-PAGES (onglets SPA) — quand l'utilisateur veut de vraies pages distinctes qui se remplacent :
+   • Navigation : onclick="showPage('page-id'); return false;"
+   • Chaque showPage('id') DOIT avoir sa <section id="id"> remplie
+→ Détermine laquelle correspond à la demande et prescris-la explicitement dans le plan. Par défaut, un site vitrine = ONE-PAGE.
 
 ÉTAPE 1 — CLASSIFIE la demande :
-• Bug visuel (rien ne s'affiche, layout cassé, blanc) → cherche : href="#xxx", showPage() manquant, CSS conflictuel
+• Refonte one-page / multi-page → précise l'architecture cible et ce qu'il faut SUPPRIMER (showPage, display:none) vs garder
+• Bug visuel (rien ne s'affiche, blanc) → cherche : code HTML tronqué (ne finit pas par </html>), showPage() manquant alors qu'un lien l'appelle, CSS conflictuel
 • Erreur JS (console errors) → cherche : variable undefined, function manquante, JSON invalide
 • Bug responsive (mobile cassé) → cherche : overflow hidden manquant, largeur fixe en px sans max-width
 • Modification design → identifie les variables CSS et classes concernées
 • Ajout de contenu/section → identifie l'emplacement et le style existant à respecter
-• Refonte complète → évaluer l'ampleur, lister les sections à garder vs réécrire
 
 ÉTAPE 2 — ANALYSE DU CODE (sois précis, cite le code) :
 • Pour un bug : cite le(s) ligne(s) problématique(s) exacte(s) trouvée(s) dans le code
@@ -2087,7 +2115,7 @@ RÈGLES : N'utilise que les imports Expo SDK. Garde StyleSheet.create(). Pas de 
 ÉTAPE 3 — LISTE DE PRÉSERVATION :
 Ce qui ne doit PAS être touché : [liste les éléments existants à conserver absolument]
 
-RÈGLE CRITIQUE : href="#xxx" interdit — navigation = onclick="showPage('id'); return false;" href="#"`;
+RÈGLE NAVIGATION : respecte le pattern du site. One-page → ancres href="#id" vers des <section id="id"> (scroll). Multi-pages → onclick="showPage('id')". Si la tâche est de passer en one-page, supprime showPage() et display:none.`;
           const plan = await tryCallWithFallback(
             allKeys, agentSystemPrompt,
             `Tâche: ${summary}\n\nCode actuel (extrait):\n${codeSnippet}`,
@@ -2108,7 +2136,7 @@ Pas de bibliothèques tierces. Garde StyleSheet.create() pour tous les styles.`
             : `Tu es un développeur frontend expert. Génère les snippets précis à intégrer dans le code existant (pas le HTML complet).
 Pour chaque snippet : indique l'emplacement exact (après quelle balise / dans quelle classe CSS / dans quelle fonction JS).
 Réutilise les variables CSS et classes existantes. Respecte le style du code actuel.
-NAVIGATION : onclick="showPage('id'); return false;" — jamais href="#quelquechose"`;
+NAVIGATION : respecte le pattern existant (one-page = ancres href="#id" ; multi-pages = showPage). N'impose pas showPage sur un site one-page.`;
           const draft = await tryCallWithFallback(
             allKeys, qwenSystemPrompt,
             `Plan: ${agentPlan}\nTâche: ${summary}\nCode existant:\n${codeSnippet}`,
@@ -2185,27 +2213,38 @@ Analyse le code actuel fourni ci-dessous. Identifie EXACTEMENT :
 • Les variables CSS déjà définies (--c-primary, --c-bg, --font-display, etc.) → RÉUTILISE-LES sans exception
 • Les classes CSS existantes (card, btn-primary, section-title, etc.) → RÉUTILISE-LES
 • Les fonctions JS présentes (showPage, toggleMenu, handleForm, etc.) → CONSERVE-LES
-• Les sections/pages (id="page-xxx") → NE LES SUPPRIME PAS, même si non mentionnées
+• Les sections/pages (id="page-xxx") → NE LES SUPPRIME PAS, même si non mentionnées — SAUF si la tâche est une refonte structurelle qui l'exige (voir RÈGLE 2)
 • Les animations IntersectionObserver → CONSERVE-LES si présentes
 
-══ RÈGLE 2 — MODIFICATION CHIRURGICALE ══
-Change UNIQUEMENT ce que la tâche demande. Préserve intégralement :
-animations, sections, formulaires, couleurs de la palette, polices, JS existant, liens de nav.
-N'ajoute rien de non demandé. N'efface rien qui fonctionne.
-Si la tâche est "changer la couleur du bouton", ne touche QUE au bouton.
+══ RÈGLE 2 — RETOUCHE CIBLÉE vs REFONTE STRUCTURELLE (RAISONNE D'ABORD) ══
+Demande-toi : la tâche veut-elle RETOUCHER l'existant, ou TRANSFORMER l'architecture ?
 
-══ RÈGLE 3 — NAVIGATION SPA : CHAQUE PAGE DOIT EXISTER ══
-• Logo → <a href="#" onclick="showPage('accueil'); return false;">
-• Liens nav → <a href="#" onclick="showPage('page-id'); return false;">
-• CTAs internes → onclick="showPage('page-id'); return false;"
-• ❌ INTERDIT : href="#hero", href="#section", href="#features" → blanchit la preview
-• showPage(id) DOIT toujours exister dans le <script>
+• RETOUCHE CIBLÉE (couleur, texte, image, ajout d'une section) → modification chirurgicale :
+  change UNIQUEMENT ce qui est demandé, préserve animations, sections, formulaires, palette, polices, JS, nav.
+  Si la tâche est "changer la couleur du bouton", ne touche QUE au bouton.
 
-⚠️ RÈGLE CRITIQUE — PAGES FANTÔMES (BUG LE PLUS FRÉQUENT) :
-Pour CHAQUE lien de nav qui appelle showPage('xxx'), il DOIT exister une <section id="xxx"> dans le HTML.
-Si tu crées un lien "Services" → onclick="showPage('services')" → tu DOIS créer <section id="services">...</section> avec du vrai contenu.
-Un lien sans section correspondante = page blanche quand l'utilisateur clique.
-AVANT DE FINIR : vérifie mentalement que chaque showPage('id') a bien sa <section id="id"> avec du contenu.
+• REFONTE STRUCTURELLE (« tout sur une page », « onepage », « rassembler les blocs », « séparer en pages », « restructurer la navigation ») → la modification chirurgicale NE S'APPLIQUE PAS :
+  le but EST de changer la structure. Tu DOIS alors supprimer/réécrire ce qui l'empêche (showPage, display:none, anciens liens).
+  Préserve le CONTENU et le DESIGN (textes, couleurs, sections, images), mais reconstruis l'ARCHITECTURE demandée.
+  ❌ Erreur grave : répondre "Corrections appliquées" en gardant l'ancienne structure intacte → l'utilisateur ne voit aucun changement.
+
+══ RÈGLE 3 — NAVIGATION : CHOISIS LE BON PATTERN SELON L'INTENTION ══
+Les deux patterns fonctionnent dans l'aperçu. Les ancres #id déclenchent un scroll fluide (géré par l'aperçu), ce N'EST PAS un bug.
+
+A. SITE ONE-PAGE (défilement — cas par défaut d'un site vitrine, et OBLIGATOIRE si l'utilisateur demande "une seule page / onepage / menu qui ramène vers chaque bloc") :
+   • Toutes les sections empilées et visibles : <section id="services">, <section id="tarifs">… AUCUN display:none
+   • Menu = vraies ancres : <a href="#services">Services</a> (scroll vers la section)
+   • Ajoute dans le CSS : html{scroll-behavior:smooth} et scroll-margin-top:80px sur les sections (compense le header fixe)
+   • SUPPRIME toute fonction showPage() et tout style display:none de masquage de sections
+   • Le logo → <a href="#accueil"> ou href="#top"
+
+B. APP MULTI-PAGES (onglets qui se remplacent — uniquement si l'utilisateur veut de vraies pages distinctes) :
+   • Liens nav → <a href="#" onclick="showPage('page-id'); return false;">
+   • showPage(id) DOIT exister dans le <script>
+   • ⚠️ PAGES FANTÔMES : pour CHAQUE showPage('xxx'), il DOIT exister <section id="xxx"> remplie de vrai contenu. Un lien sans section = page blanche.
+
+→ Détermine le pattern d'après la demande. Ne force JAMAIS le pattern B quand l'utilisateur demande explicitement une seule page.
+AVANT DE FINIR : vérifie que chaque lien de nav mène quelque part (ancre vers une section existante, ou showPage vers une section existante).
 
 ══ RÈGLE 4 — CODE 100% COMPLET ══
 Retourne le fichier HTML ENTIER. Jamais tronqué. Jamais raccourci avec des commentaires "// reste du code".
@@ -2427,8 +2466,8 @@ ${agentPlan ? `\n══ PLAN D'ACTION ══\n${agentPlan}` : ""}${qwenDraft ? `
 Réponds UNIQUEMENT "OK" si tout est correct. Sinon, liste chaque problème en 1 ligne (80 mots max total).
 
 VÉRIFIE UNIQUEMENT :
-— Navigation : href="#quelquechose" sur liens nav/logo/CTA → doit être onclick="showPage('id'); return false;"
-— showPage() présente dans <script> si le site a plusieurs <section>
+— Ancres cassées : un lien href="#id" sans <section id="id"> correspondante. Une ancre vers une section existante est CORRECTE (one-page valide), ne la signale PAS.
+— Si onclick="showPage('id')" est utilisé → la fonction showPage() doit exister dans <script> et chaque id doit avoir sa section. Ne PAS exiger showPage sur un site one-page.
 — Balises fermées : </style> </script> </body> </html>
 — Code complet (pas tronqué en milieu de section ou de balise)`,
                 (agentResponse.code || "").slice(0, 10000), 300,
@@ -2464,8 +2503,7 @@ FORMAT STRICT — un seul JSON brut :
 {"action":"modify","reply":"Corrections appliquées.","code":"<!DOCTYPE html>...code complet corrigé..."}
 
 RÈGLES DE CORRECTION :
-— Navigation : remplace href="#xxx" par onclick="showPage('id'); return false;" href="#"
-— Pages fantômes : crée les <section id="xxx"> manquantes avec du vrai contenu
+— Ancres/pages cassées : crée la <section id="xxx"> manquante avec du vrai contenu. Ne transforme PAS une ancre href="#id" valide en showPage().
 — Balises non fermées : ferme </style> </script> </body> </html>
 — Retourne le HTML ENTIER, pas tronqué. Si le code original fait N chars, ta réponse doit faire au moins autant.
 
