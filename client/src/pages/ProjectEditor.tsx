@@ -1890,11 +1890,8 @@ export default function ProjectEditor() {
             {/* Agent step badge */}
             {agentStep ? (
               <div className="flex flex-col items-center gap-1">
-                <div className="flex items-center gap-2 px-4 py-2 rounded-full bg-primary/10 border border-primary/20 text-sm font-medium text-primary">
-                  <span>{agentStep.icon}</span>
-                  <span className="font-semibold">{agentStep.agent}</span>
-                  <span className="text-muted-foreground">—</span>
-                  <span className="text-muted-foreground">{agentStep.step}</span>
+                <div className="flex items-center gap-2 px-4 py-2 rounded-full bg-primary/10 border border-primary/20 text-sm font-medium text-primary animate-pulse">
+                  <span className="font-semibold">Réflexion…</span>
                 </div>
               </div>
             ) : (
@@ -2433,9 +2430,12 @@ ${jsCode}`;
                       </div>
                       <div className="bg-card border border-primary/20 rounded-xl rounded-tl-sm px-2.5 py-1.5 max-w-[85%]">
                         <div className="flex items-center gap-1.5">
-                          <span className="text-sm">{agentStep.icon}</span>
-                          <span className="text-[10px] font-semibold text-primary">{agentStep.agent}</span>
-                          <span className="text-[10px] text-muted-foreground">— {agentStep.step}</span>
+                          <span className="text-[10px] font-semibold text-primary">Réflexion</span>
+                          <span className="flex gap-0.5">
+                            <span className="w-1 h-1 rounded-full bg-primary/60 animate-bounce" style={{ animationDelay: "0ms" }} />
+                            <span className="w-1 h-1 rounded-full bg-primary/60 animate-bounce" style={{ animationDelay: "150ms" }} />
+                            <span className="w-1 h-1 rounded-full bg-primary/60 animate-bounce" style={{ animationDelay: "300ms" }} />
+                          </span>
                         </div>
                       </div>
                     </div>
