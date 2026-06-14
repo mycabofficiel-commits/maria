@@ -947,6 +947,40 @@ export default function ProjectEditor() {
     setPreviewSrc(full);
   }, []);
 
+  /* Actualiser : force le rechargement du contenu de l'iframe d'aperçu */
+  const refreshPreview = useCallback(() => {
+    const f = previewRef.current;
+    if (!f) return;
+    const current = f.getAttribute("srcdoc") || "";
+    f.removeAttribute("srcdoc");
+    // force un reflow puis restaure le srcdoc pour relancer l'iframe
+    void f.offsetHeight;
+    f.setAttribute("srcdoc", current);
+  }, []);
+
+  /* Ouvre le site courant dans un nouvel onglet (HTML autonome, sans les scripts d'aperçu) */
+  const openPreviewInNewTab = useCallback(() => {
+    const h = htmlCode, c = cssCode, j = jsCode;
+    if (!h && !c && !j) return;
+    const isFullDoc = /<!doctype|<html[\s>]/i.test(h);
+    let full: string;
+    if (isFullDoc) {
+      full = h;
+      if (c && !/<style/i.test(h)) full = full.replace(/<\/head>/i, `<style>${c}</style></head>`);
+      if (j && !/<script/i.test(h)) full = full.replace(/<\/body>/i, `<script>${j}<\/script></body>`);
+    } else if (h) {
+      full = h
+        .replace(/<\/head>/i, `<style>${c}</style></head>`)
+        .replace(/<\/body>/i, `<script>${j}<\/script></body>`);
+    } else {
+      full = `<!DOCTYPE html><html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1"><style>${c}</style></head><body><script>${j}<\/script></body></html>`;
+    }
+    const blob = new Blob([full], { type: "text/html" });
+    const url = URL.createObjectURL(blob);
+    window.open(url, "_blank", "noopener");
+    setTimeout(() => URL.revokeObjectURL(url), 60000);
+  }, [htmlCode, cssCode, jsCode]);
+
   useEffect(() => {
     if (!htmlCode && !cssCode && !jsCode) return;
     if (visualEditMode) return;
@@ -2669,6 +2703,25 @@ ${jsCode}`;
                   )}
                 </div>
                 <div className="flex items-center gap-1">
+                  {/* Actualiser l'aperçu */}
+                  <Button
+                    variant="ghost" size="icon"
+                    className="w-7 h-7 text-muted-foreground hover:text-foreground"
+                    onClick={refreshPreview}
+                    title="Actualiser l'aperçu"
+                  >
+                    <RotateCcw className="w-3.5 h-3.5" />
+                  </Button>
+                  {/* Ouvrir la page dans un nouvel onglet */}
+                  <Button
+                    variant="ghost" size="icon"
+                    className="w-7 h-7 text-muted-foreground hover:text-foreground"
+                    onClick={openPreviewInNewTab}
+                    title="Ouvrir la page dans un nouvel onglet"
+                  >
+                    <ExternalLink className="w-3.5 h-3.5" />
+                  </Button>
+                  <div className="w-px h-4 bg-border/50 mx-0.5" />
                   {isExpoProject ? null : (
                     (["desktop", "tablet", "mobile"] as ViewMode[]).map((mode) => {
                       const icons = { desktop: Monitor, tablet: Tablet, mobile: Smartphone };
