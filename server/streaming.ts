@@ -217,6 +217,70 @@ function validateGeneratedCode(html: string): string[] {
   return issues;
 }
 
+/** True if the HTML document looks cut off (no closing </html>). */
+function isHtmlTruncated(code: string): boolean {
+  return !!code && code.length > 200 && !/<\/html>/i.test(code);
+}
+
+/**
+ * Concatenates a continuation onto a base, removing any overlap where the model
+ * repeated the end of the base at the start of the continuation.
+ */
+function stitchHtml(base: string, cont: string): string {
+  const max = Math.min(base.length, cont.length, 600);
+  for (let k = max; k > 12; k--) {
+    if (base.endsWith(cont.slice(0, k))) return base + cont.slice(k);
+  }
+  return base + cont;
+}
+
+/** Last-resort: append any missing closing tags so the document at least parses. */
+function ensureHtmlClosed(code: string): string {
+  let c = code;
+  const open  = (re: RegExp) => (c.match(re) || []).length;
+  if (open(/<style[^>]*>/gi) > open(/<\/style>/gi))            c += "\n</style>";
+  if (open(/<script(?![^>]*\ssrc)[^>]*>/gi) > open(/<\/script>/gi)) c += "\n</script>";
+  if (!/<\/body>/i.test(c)) c += "\n</body>";
+  if (!/<\/html>/i.test(c)) c += "\n</html>";
+  return c;
+}
+
+/**
+ * Repairs TRUNCATED HTML by asking the LLM to CONTINUE from where it stopped.
+ * Regenerating the whole file re-hits the same max_tokens ceiling and truncates
+ * again; continuation only produces the missing tail, so it actually finishes.
+ * Falls back to appending closing tags if continuation makes no progress.
+ */
+async function completeTruncatedHtml(
+  code: string,
+  allKeys: Partial<Record<Provider, string | null>>,
+  startFrom: Provider,
+  res: Response,
+  maxAttempts = 3,
+): Promise<string> {
+  let full = code;
+  for (let i = 0; i < maxAttempts && isHtmlTruncated(full); i++) {
+    const tail = full.slice(-1800);
+    const sys = `Tu COMPLÈTES un fichier HTML coupé en pleine génération (limite de tokens atteinte).
+RÈGLES STRICTES :
+• Reprends EXACTEMENT après le dernier caractère fourni — ne répète RIEN de ce qui précède.
+• Ne réécris pas le début, n'ajoute aucune explication, aucun markdown, aucun backtick.
+• Produis uniquement la SUITE du code jusqu'à fermer proprement : termine la déclaration CSS/JS en cours, puis </style> (si ouvert), le HTML manquant, </script>, </body>, </html>.
+• Garde le même style, les mêmes variables CSS et classes que l'extrait.`;
+    const userMsg = `FIN DU CODE DÉJÀ GÉNÉRÉ (continue juste après, sans la répéter) :\n\n${tail}`;
+    const cont = await tryCallWithFallback(
+      allKeys, sys, userMsg, 16000, res, "Complétion du code tronqué…", "🧩", startFrom,
+    );
+    let piece = (cont?.text || "").trim();
+    if (!piece) break;
+    piece = piece.replace(/^```[a-z]*\n?/i, "").replace(/```\s*$/i, "").trim();
+    const before = full.length;
+    full = stitchHtml(full, piece);
+    if (full.length - before < 15) break; // no real progress → stop
+  }
+  return isHtmlTruncated(full) ? ensureHtmlClosed(full) : full;
+}
+
 /**
  * Extracts the first well-balanced JSON object from a string.
  * Handles cases where the LLM wraps the JSON in markdown or adds trailing text.
@@ -1481,6 +1545,17 @@ Retourne UNIQUEMENT le code HTML complet, sans explication, sans markdown, sans 
       let tokensUsed = inputTokens + outputTokens;
       const durationMs = Date.now() - startTime;
 
+      // ── COMPLÉTION D'UN CODE TRONQUÉ (continuation, pas regénération) ──────
+      // Si la génération initiale a été coupée (max_tokens), on continue le code
+      // au lieu de le regénérer (qui re-tronque) → évite la page blanche au 1er rendu.
+      const genKeys: Partial<Record<Provider, string | null>> = { deepseek: deepseekKey, anthropic: claudeKey };
+      if (isHtmlTruncated(fullCode)) {
+        const b = fullCode.length;
+        pipelineLog('generate:truncated:detected', { len: b });
+        fullCode = await completeTruncatedHtml(fullCode, genKeys, "deepseek", res);
+        pipelineLog('generate:truncated:completed', { before: b, after: fullCode.length, closed: /<\/html>/i.test(fullCode) });
+      }
+
       // ── POST-GENERATION AUDIT + AUTO-CORRECTION ────────────────────────────
       // Same validation loop as in the chat pipeline — ensures the initial site
       // is correct before being saved. Without this, DeepSeek can deliver broken
@@ -2445,6 +2520,16 @@ ${agentPlan ? `\n══ PLAN D'ACTION ══\n${agentPlan}` : ""}${qwenDraft ? `
           agentResponse.code = patched;
           agentResponse.action = "modify";
           pipelineLog('execute:style-patch', { cssLen: agentExt.css.length });
+        }
+
+        // ── D0 : Complétion d'un code TRONQUÉ (avant toute validation) ────
+        // Si la génération a été coupée (max_tokens), on CONTINUE le code au lieu
+        // de le regénérer (qui re-tronque) — sinon l'utilisateur voit une page blanche.
+        if (!isExpo && agentResponse.action === "modify" && isHtmlTruncated(agentResponse.code || "")) {
+          const beforeLen = agentResponse.code!.length;
+          pipelineLog('execute:truncated:detected', { len: beforeLen });
+          agentResponse.code = await completeTruncatedHtml(agentResponse.code!, allKeys, execLlm!.provider, res);
+          pipelineLog('execute:truncated:completed', { before: beforeLen, after: agentResponse.code.length, closed: /<\/html>/i.test(agentResponse.code) });
         }
 
         // ── D : Validation + boucle auto-correction (max 2 passes) ────
