@@ -26,7 +26,7 @@ import {
   Rocket, Share2, Tag, MousePointer2, Copy, Check, PencilRuler, Upload,
   PanelLeftClose, PanelLeftOpen, Mic, MicOff, Paperclip, Camera, X as XIcon, Image as ImageIcon, Trash2,
   ExternalLink, Download, Plus, GripVertical, Plug, KeyRound, Brain, Database, TrendingUp, Link2,
-  HardDrive, Type as TypeIcon
+  HardDrive, Type as TypeIcon, ThumbsUp, ThumbsDown
 } from "lucide-react";
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
@@ -579,6 +579,11 @@ export default function ProjectEditor() {
   const [chatMessage, setChatMessage] = useState("");
   const [viewMode, setViewMode] = useState<ViewMode>("desktop");
 
+  /* ── Feedback 👍/👎 sur les réponses de l'IA ── */
+  const [localFeedback, setLocalFeedback] = useState<Record<number, "up" | "down">>({});
+  const [askModifyFor, setAskModifyFor] = useState<number | null>(null);
+  const chatTextareaRef = useRef<HTMLTextAreaElement>(null);
+
   /* ── Dictation ── */
   const [isRecording, setIsRecording] = useState(false);
   const recognitionRef = useRef<any>(null);
@@ -810,6 +815,24 @@ export default function ProjectEditor() {
 
   /* queries */
   const utils = trpc.useUtils();
+  const setMessageFeedback = trpc.projects.setMessageFeedback.useMutation();
+
+  // 👍 / 👎 sur une réponse de l'IA. 👍 = on garde le cap. 👎 = on propose de corriger.
+  const rateMessage = (msgId: number, value: "up" | "down") => {
+    const current = localFeedback[msgId];
+    const next = current === value ? null : value; // re-clic = annule
+    setLocalFeedback(prev => {
+      const c = { ...prev };
+      if (next) c[msgId] = next; else delete c[msgId];
+      return c;
+    });
+    setMessageFeedback.mutate({ messageId: msgId, feedback: next });
+    if (next === "down") {
+      setAskModifyFor(msgId);
+    } else if (askModifyFor === msgId) {
+      setAskModifyFor(null);
+    }
+  };
   const { data: project, isLoading: projectLoading, refetch: refetchProject } = trpc.projects.get.useQuery({ id: projectId }, { enabled: !!projectId });
   const { data: versions } = trpc.projects.getVersions.useQuery({ projectId }, { enabled: !!projectId });
   const { data: chatMessages } = trpc.projects.getChatMessages.useQuery({ projectId }, { enabled: !!projectId });
@@ -2332,6 +2355,51 @@ ${jsCode}`;
                                 <Tag className="w-2 h-2" /> v{linkedVersion.versionNumber} — voir
                               </button>
                             )}
+                            {/* ── Notation 👍/👎 (réponses de l'IA uniquement) ── */}
+                            {msg.role === "assistant" && (() => {
+                              const fb = localFeedback[msg.id] ?? msg.feedback;
+                              return (
+                                <div className="flex items-center gap-1 mt-0.5 px-1">
+                                  <button
+                                    onClick={() => rateMessage(msg.id, "up")}
+                                    title="Bonne réponse"
+                                    className={`p-1 rounded-md transition-colors ${fb === "up" ? "text-emerald-500 bg-emerald-500/10" : "text-muted-foreground/50 hover:text-emerald-500 hover:bg-emerald-500/10"}`}>
+                                    <ThumbsUp className="w-3 h-3" />
+                                  </button>
+                                  <button
+                                    onClick={() => rateMessage(msg.id, "down")}
+                                    title="À améliorer"
+                                    className={`p-1 rounded-md transition-colors ${fb === "down" ? "text-red-500 bg-red-500/10" : "text-muted-foreground/50 hover:text-red-500 hover:bg-red-500/10"}`}>
+                                    <ThumbsDown className="w-3 h-3" />
+                                  </button>
+                                </div>
+                              );
+                            })()}
+                            {/* ── 👎 → proposer une correction ── */}
+                            {askModifyFor === msg.id && (
+                              <div className="mt-1 rounded-lg border border-red-500/30 bg-red-500/5 px-2.5 py-2 max-w-[95%]">
+                                <p className="text-[11px] text-foreground mb-1.5">Souhaitez-vous que je modifie ?</p>
+                                <div className="flex gap-1.5">
+                                  <button
+                                    onClick={() => {
+                                      setChatMessage("La réponse précédente ne me convient pas. Voici ce qu'il faut corriger : ");
+                                      setAskModifyFor(null);
+                                      setTimeout(() => {
+                                        const el = chatTextareaRef.current;
+                                        if (el) { el.focus(); el.setSelectionRange(el.value.length, el.value.length); }
+                                      }, 50);
+                                    }}
+                                    className="px-2 py-1 rounded-md text-[11px] font-medium bg-primary text-primary-foreground hover:bg-primary/90">
+                                    Oui, corriger
+                                  </button>
+                                  <button
+                                    onClick={() => setAskModifyFor(null)}
+                                    className="px-2 py-1 rounded-md text-[11px] text-muted-foreground hover:text-foreground border border-border/60">
+                                    Non, c'est bon
+                                  </button>
+                                </div>
+                              </div>
+                            )}
                           </div>
                         </div>
                       );
@@ -2624,6 +2692,7 @@ ${jsCode}`;
                     </button>
                     {/* Textarea input */}
                     <textarea
+                      ref={chatTextareaRef}
                       rows={2}
                       placeholder={isRecording ? "🎤 Dictée en cours…" : discussionMode ? "Réfléchissons ensemble au projet…" : "Parlez à Mar-ia…"}
                       value={chatMessage}

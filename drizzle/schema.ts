@@ -132,6 +132,9 @@ export const chatMessages = pgTable("chat_messages", {
   content: text("content").notNull(),
   versionId: integer("versionId"),
   tokensUsed: integer("tokensUsed").default(0),
+  // Retour utilisateur sur une réponse de l'IA : "up" (👍) | "down" (👎) | null.
+  feedback: varchar("feedback", { length: 8 }),
+  feedbackReason: text("feedbackReason"),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
 });
 

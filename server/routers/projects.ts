@@ -558,6 +558,26 @@ RÈGLES CODE (à respecter pour chaque modification):
       return { success: true };
     }),
 
+  // 👍 / 👎 sur une réponse de l'IA. feedback=null pour retirer le vote (toggle).
+  setMessageFeedback: protectedProcedure
+    .input(z.object({
+      messageId: z.number(),
+      feedback: z.enum(["up", "down"]).nullable(),
+      reason: z.string().max(500).optional(),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      const db = await getDb();
+      if (!db) throw new Error("DB unavailable");
+      const row = await db.select({ projectId: chatMessages.projectId })
+        .from(chatMessages).where(eq(chatMessages.id, input.messageId)).limit(1);
+      if (!row[0]) throw new Error("Message introuvable");
+      await assertOwnedProject(db, row[0].projectId, ctx.user.id); // anti-IDOR
+      await db.update(chatMessages)
+        .set({ feedback: input.feedback, feedbackReason: input.feedback ? (input.reason ?? null) : null })
+        .where(eq(chatMessages.id, input.messageId));
+      return { success: true };
+    }),
+
   // Update code manually
   updateCode: protectedProcedure
     .input(z.object({ versionId: z.number(), code: z.string() }))

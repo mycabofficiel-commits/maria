@@ -82,6 +82,14 @@ async function ensureSchema() {
       ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "monthlyTokensLimit" integer
     `);
 
+    // Feedback utilisateur (👍/👎) sur les messages du chat
+    await db.execute(sql`
+      ALTER TABLE "chat_messages" ADD COLUMN IF NOT EXISTS "feedback" varchar(8)
+    `);
+    await db.execute(sql`
+      ALTER TABLE "chat_messages" ADD COLUMN IF NOT EXISTS "feedbackReason" text
+    `);
+
     // Valeur "expo" dans l'enum framework (PostgreSQL 12+ supporte ADD VALUE IF NOT EXISTS)
     await db.execute(sql`
       DO $$ BEGIN
