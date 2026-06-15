@@ -1,8 +1,8 @@
 import { COOKIE_NAME, ONE_YEAR_MS } from "@shared/const";
 import type { Express, Request, Response } from "express";
-import { eq } from "drizzle-orm";
+import { and, eq, lt, sql } from "drizzle-orm";
 import { getDb } from "../db";
-import { users } from "../../drizzle/schema";
+import { users, otpCodes } from "../../drizzle/schema";
 import { sdk } from "./sdk";
 import { getSessionCookieOptions } from "./cookies";
 import { ENV } from "./env";
@@ -36,46 +36,63 @@ function validatePassword(password: string): string | null {
   return null;
 }
 
-/* ── Reset password store (in-memory, TTL 15 min) ────────────────────────── */
+/* ── OTP / reset codes — persistés en DB (survivent aux redéploiements & multi-instance) ── */
 
-interface PendingReset {
-  code: string;
-  expiresAt: number;
-  attempts: number;
-}
-const resetStore = new Map<string, PendingReset>();
+const OTP_TTL_MS = 15 * 60 * 1000;
+const OTP_MAX_ATTEMPTS = 5;
 
-setInterval(() => {
-  const now = Date.now();
-  resetStore.forEach((val, key) => { if (val.expiresAt < now) resetStore.delete(key); });
-}, 5 * 60 * 1000);
-
-/* ── OTP store (in-memory, TTL 15 min) ───────────────────────────────────── */
-
-interface PendingRegistration {
-  code: string;
-  expiresAt: number;
+interface RegistrationPayload {
   name: string;
   email: string;
   passwordHash: string;
   role: string;
   plan: string;
   generationsLimit: number;
-  attempts: number;
 }
 
-const otpStore = new Map<string, PendingRegistration>();
-
-// Cleanup expired entries every 5 min
-setInterval(() => {
-  const now = Date.now();
-  otpStore.forEach((val, key) => {
-    if (val.expiresAt < now) otpStore.delete(key);
-  });
-}, 5 * 60 * 1000);
+type Db = NonNullable<Awaited<ReturnType<typeof getDb>>>;
 
 function generateOtp(): string {
   return Math.floor(100000 + Math.random() * 900000).toString();
+}
+
+/** Enregistre (ou remplace) un code pour un openId + purpose donné. */
+async function saveOtpCode(
+  db: Db, openId: string, purpose: "register" | "reset",
+  code: string, payload: RegistrationPayload | null,
+): Promise<void> {
+  // Une seule demande active par (openId, purpose) : on purge l'ancienne.
+  await db.delete(otpCodes).where(and(eq(otpCodes.openId, openId), eq(otpCodes.purpose, purpose)));
+  await db.insert(otpCodes).values({
+    openId, purpose, code,
+    payload: payload ?? null,
+    attempts: 0,
+    expiresAt: new Date(Date.now() + OTP_TTL_MS),
+  });
+  // Nettoyage opportuniste des codes expirés (évite un cron dédié).
+  await db.delete(otpCodes).where(lt(otpCodes.expiresAt, new Date())).catch(() => {});
+}
+
+/** Récupère le code actif pour (openId, purpose), ou null si absent/expiré. */
+async function getOtpCode(db: Db, openId: string, purpose: "register" | "reset") {
+  const rows = await db.select().from(otpCodes)
+    .where(and(eq(otpCodes.openId, openId), eq(otpCodes.purpose, purpose)))
+    .limit(1);
+  const row = rows[0];
+  if (!row) return null;
+  if (row.expiresAt.getTime() < Date.now()) {
+    await db.delete(otpCodes).where(eq(otpCodes.id, row.id)).catch(() => {});
+    return null;
+  }
+  return row;
+}
+
+async function incrementOtpAttempts(db: Db, id: number): Promise<void> {
+  await db.update(otpCodes).set({ attempts: sql`${otpCodes.attempts} + 1` }).where(eq(otpCodes.id, id));
+}
+
+async function deleteOtpCode(db: Db, id: number): Promise<void> {
+  await db.delete(otpCodes).where(eq(otpCodes.id, id)).catch(() => {});
 }
 
 /* ── Email sender ─────────────────────────────────────────────────────────── */
@@ -210,16 +227,13 @@ export function registerAuthRoutes(app: Express) {
     const isOwner = ENV.ownerOpenId && openId === ENV.ownerOpenId;
     const code = generateOtp();
 
-    otpStore.set(openId, {
-      code,
-      expiresAt: Date.now() + 15 * 60 * 1000,
+    await saveOtpCode(db, openId, "register", code, {
       name: name || email.split("@")[0],
       email: email.toLowerCase().trim(),
       passwordHash,
       role: isOwner ? "ultra" : "user",
       plan: isOwner ? "agency" : "free",
       generationsLimit: isOwner ? 999999 : 3,
-      attempts: 0,
     });
 
     try {
@@ -243,35 +257,31 @@ export function registerAuthRoutes(app: Express) {
     }
 
     const openId = `local:${email.toLowerCase().trim()}`;
-    const pending = otpStore.get(openId);
 
-    if (!pending) {
+    const db = await getDb();
+    if (!db) { res.status(500).json({ error: "DB unavailable" }); return; }
+
+    const pending = await getOtpCode(db, openId, "register");
+    if (!pending || !pending.payload) {
       res.status(400).json({ error: "Aucune demande d'inscription trouvée. Recommencez." });
       return;
     }
-    if (Date.now() > pending.expiresAt) {
-      otpStore.delete(openId);
-      res.status(400).json({ error: "Code expiré. Recommencez l'inscription." });
-      return;
-    }
 
-    pending.attempts++;
-    if (pending.attempts > 5) {
-      otpStore.delete(openId);
+    if (pending.attempts + 1 > OTP_MAX_ATTEMPTS) {
+      await deleteOtpCode(db, pending.id);
       res.status(429).json({ error: "Trop de tentatives. Recommencez l'inscription." });
       return;
     }
 
     if (pending.code !== code.trim()) {
-      res.status(400).json({ error: `Code incorrect. ${5 - pending.attempts} essai(s) restant(s).` });
+      await incrementOtpAttempts(db, pending.id);
+      res.status(400).json({ error: `Code incorrect. ${OTP_MAX_ATTEMPTS - (pending.attempts + 1)} essai(s) restant(s).` });
       return;
     }
 
     // Code correct → create account
-    otpStore.delete(openId);
-
-    const db = await getDb();
-    if (!db) { res.status(500).json({ error: "DB unavailable" }); return; }
+    await deleteOtpCode(db, pending.id);
+    const reg = pending.payload as unknown as RegistrationPayload;
 
     // Double-check no account was created in the meantime
     const existing = await db.select().from(users).where(eq(users.openId, openId)).limit(1);
@@ -282,18 +292,18 @@ export function registerAuthRoutes(app: Express) {
 
     await db.insert(users).values({
       openId,
-      email: pending.email,
-      name: pending.name,
+      email: reg.email,
+      name: reg.name,
       loginMethod: "email",
-      passwordHash: pending.passwordHash,
-      role: pending.role as "user" | "ultra",
-      plan: pending.plan as "free" | "creator" | "pro" | "agency",
-      generationsLimit: pending.generationsLimit,
+      passwordHash: reg.passwordHash,
+      role: reg.role as "user" | "ultra",
+      plan: reg.plan as "free" | "creator" | "pro" | "agency",
+      generationsLimit: reg.generationsLimit,
       lastSignedIn: new Date(),
     });
 
     const sessionToken = await sdk.createSessionToken(openId, {
-      name: pending.name,
+      name: reg.name,
       expiresInMs: ONE_YEAR_MS,
     });
 
@@ -363,7 +373,7 @@ export function registerAuthRoutes(app: Express) {
 
     // Only store & send if account exists (but always return success to avoid email enumeration)
     if (userRow[0]) {
-      resetStore.set(openId, { code, expiresAt: Date.now() + 15 * 60 * 1000, attempts: 0 });
+      await saveOtpCode(db, openId, "reset", code, null);
       try {
         await sendResetEmail(email.toLowerCase().trim(), code, userRow[0].name || email.split("@")[0]);
       } catch (err) {
@@ -387,35 +397,30 @@ export function registerAuthRoutes(app: Express) {
     if (pwError) { res.status(400).json({ error: pwError }); return; }
 
     const openId = `local:${email.toLowerCase().trim()}`;
-    const pending = resetStore.get(openId);
 
+    const db = await getDb();
+    if (!db) { res.status(500).json({ error: "DB unavailable" }); return; }
+
+    const pending = await getOtpCode(db, openId, "reset");
     if (!pending) {
       res.status(400).json({ error: "Aucune demande de réinitialisation trouvée. Recommencez." });
       return;
     }
-    if (Date.now() > pending.expiresAt) {
-      resetStore.delete(openId);
-      res.status(400).json({ error: "Code expiré. Recommencez la procédure." });
-      return;
-    }
 
-    pending.attempts++;
-    if (pending.attempts > 5) {
-      resetStore.delete(openId);
+    if (pending.attempts + 1 > OTP_MAX_ATTEMPTS) {
+      await deleteOtpCode(db, pending.id);
       res.status(429).json({ error: "Trop de tentatives. Recommencez la procédure." });
       return;
     }
 
     if (pending.code !== code.trim()) {
-      res.status(400).json({ error: `Code incorrect. ${5 - pending.attempts} essai(s) restant(s).` });
+      await incrementOtpAttempts(db, pending.id);
+      res.status(400).json({ error: `Code incorrect. ${OTP_MAX_ATTEMPTS - (pending.attempts + 1)} essai(s) restant(s).` });
       return;
     }
 
     // Code correct → update password
-    resetStore.delete(openId);
-
-    const db = await getDb();
-    if (!db) { res.status(500).json({ error: "DB unavailable" }); return; }
+    await deleteOtpCode(db, pending.id);
 
     const passwordHash = storePassword(newPassword);
     await db.update(users).set({ passwordHash }).where(eq(users.openId, openId));

@@ -1,6 +1,7 @@
 import {
   bigint,
   boolean,
+  index,
   integer,
   jsonb,
   pgEnum,
@@ -220,6 +221,23 @@ export const userIntegrations = pgTable("user_integrations", {
 
 export type UserIntegration = typeof userIntegrations.$inferSelect;
 export type InsertUserIntegration = typeof userIntegrations.$inferInsert;
+
+// ─── OTP / Reset Codes (verification codes, persisted to survive redeploy & multi-instance) ──
+export const otpCodes = pgTable("otp_codes", {
+  id: serial("id").primaryKey(),
+  openId: varchar("openId", { length: 320 }).notNull(),    // "local:email"
+  purpose: varchar("purpose", { length: 16 }).notNull(),   // "register" | "reset"
+  code: varchar("code", { length: 6 }).notNull(),
+  payload: jsonb("payload"),                                // pending registration data (register only)
+  attempts: integer("attempts").default(0).notNull(),
+  expiresAt: timestamp("expiresAt").notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+}, (t) => ({
+  openIdPurposeIdx: index("otp_codes_openid_purpose_idx").on(t.openId, t.purpose),
+}));
+
+export type OtpCode = typeof otpCodes.$inferSelect;
+export type InsertOtpCode = typeof otpCodes.$inferInsert;
 
 // ─── Plans ────────────────────────────────────────────────────────────────────
 export const plans = pgTable("plans", {
