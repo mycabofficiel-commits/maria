@@ -141,6 +141,20 @@ export const chatMessages = pgTable("chat_messages", {
 export type ChatMessage = typeof chatMessages.$inferSelect;
 export type InsertChatMessage = typeof chatMessages.$inferInsert;
 
+// ─── Images générées par IA (servies via /img/:id) ─────────────────────────────
+export const generatedImages = pgTable("generated_images", {
+  id: serial("id").primaryKey(),
+  projectId: integer("projectId"),
+  userId: integer("userId"),
+  mimeType: varchar("mimeType", { length: 32 }).default("image/png").notNull(),
+  data: text("data").notNull(), // base64 (sans préfixe data:)
+  prompt: text("prompt"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+});
+
+export type GeneratedImage = typeof generatedImages.$inferSelect;
+export type InsertGeneratedImage = typeof generatedImages.$inferInsert;
+
 // ─── Project Files ────────────────────────────────────────────────────────────
 export const projectFiles = pgTable("project_files", {
   id: serial("id").primaryKey(),

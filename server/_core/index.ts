@@ -90,6 +90,19 @@ async function ensureSchema() {
       ALTER TABLE "chat_messages" ADD COLUMN IF NOT EXISTS "feedbackReason" text
     `);
 
+    // Images générées par IA (servies via /img/:id)
+    await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS "generated_images" (
+        "id"        serial PRIMARY KEY NOT NULL,
+        "projectId" integer,
+        "userId"    integer,
+        "mimeType"  varchar(32) NOT NULL DEFAULT 'image/png',
+        "data"      text NOT NULL,
+        "prompt"    text,
+        "createdAt" timestamp NOT NULL DEFAULT now()
+      )
+    `);
+
     // Valeur "expo" dans l'enum framework (PostgreSQL 12+ supporte ADD VALUE IF NOT EXISTS)
     await db.execute(sql`
       DO $$ BEGIN
@@ -181,6 +194,26 @@ async function startServer() {
     app.use("/api/billing/webhook", express.raw({ type: "application/json" }));
     registerBillingRoutes(app);
   }
+
+  // ── Images générées par IA : /img/:id ───────────────────────────────────────
+  app.get("/img/:id", async (req, res) => {
+    try {
+      const id = parseInt(req.params.id, 10);
+      if (!id || Number.isNaN(id)) return res.status(404).send("Image introuvable");
+      const db = await getDb();
+      if (!db) return res.status(503).send("Service indisponible");
+      const { generatedImages } = await import("../../drizzle/schema");
+      const { eq } = await import("drizzle-orm");
+      const row = await db.select().from(generatedImages).where(eq(generatedImages.id, id)).limit(1);
+      if (!row[0]?.data) return res.status(404).send("Image introuvable");
+      const buf = Buffer.from(row[0].data, "base64");
+      res.setHeader("Content-Type", row[0].mimeType || "image/png");
+      res.setHeader("Cache-Control", "public, max-age=31536000, immutable");
+      return res.send(buf);
+    } catch {
+      return res.status(500).send("Erreur serveur");
+    }
+  });
 
   // ── Public site hosting: /p/:slug ──────────────────────────────────────────
   app.get("/p/:slug", async (req, res) => {

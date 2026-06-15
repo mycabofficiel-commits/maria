@@ -5,7 +5,7 @@
 import type { Express, Request, Response } from "express";
 import { sdk } from "./_core/sdk";
 import { getDb } from "./db";
-import { projects, versions, chatMessages, apiKeys, users, usageLogs, platformApiKeys, userIntegrations } from "../drizzle/schema";
+import { projects, versions, chatMessages, apiKeys, users, usageLogs, platformApiKeys, userIntegrations, generatedImages } from "../drizzle/schema";
 import { getIntegrationKey } from "./routers/integrations";
 import { eq, and, desc, count, sum, gte } from "drizzle-orm";
 import crypto from "crypto";
@@ -164,8 +164,8 @@ function validateGeneratedCode(html: string): string[] {
   const literalN = (html.match(/\\n/g) || []).length;
   if (literalN > 8) issues.push(`${literalN} séquences \\n littérales dans le HTML (artéfacts JSON non désérialisés)`);
 
-  // 5. Broken image src
-  const brokenSrc = (html.match(/src=["'](?:#|"|''|\.\/img|\/img|image\.png|photo\.jpg|placeholder)/gi) || []).length;
+  // 5. Broken image src — mais PAS nos images générées hébergées /img/<id>
+  const brokenSrc = (html.match(/src=["'](?:#|"|''|\.\/img|\/img(?!\/\d)|image\.png|photo\.jpg|placeholder)/gi) || []).length;
   if (brokenSrc > 0) issues.push(`${brokenSrc} image(s) avec src cassé (utiliser https://images.unsplash.com/...)`);
 
   // 6. Empty onclick or javascript:void
@@ -524,6 +524,50 @@ async function callSyncVisionOpenAI(
     inputTokens: d.usage?.prompt_tokens || 0,
     outputTokens: d.usage?.completion_tokens || 0,
   };
+}
+
+// Détecte une demande de GÉNÉRATION d'image IA (verbe de création + nom d'image).
+// « génère une image », « crée une photo », « dessine un logo »… → vraie génération.
+// « remplace cette photo »/« change l'image » SANS verbe de création → rotation Unsplash (géré côté prompt).
+function wantsImageGeneration(msg: string): boolean {
+  if (!msg) return false;
+  const hasCreateVerb = /\b(g[ée]n[èe]r\w*|cr[ée]{1,2}\w*|dessin\w*|fabriqu\w*|generate|create|illustr\w*)\b/i.test(msg);
+  const hasImageNoun = /\b(image|images|photo|photos|illustration|visuel|logo|banni[èe]re|fond d'écran|wallpaper)\b/i.test(msg);
+  return hasCreateVerb && hasImageNoun;
+}
+
+/**
+ * Génère une image via l'API OpenAI (DALL·E 3) et renvoie le base64.
+ * Renvoie null si pas de clé / échec (le pipeline retombe alors sur Unsplash).
+ */
+async function generateImageOpenAI(
+  apiKey: string,
+  prompt: string,
+): Promise<{ b64: string; mime: string } | null> {
+  try {
+    const r = await fetch("https://api.openai.com/v1/images/generations", {
+      method: "POST",
+      headers: { "Authorization": `Bearer ${apiKey}`, "content-type": "application/json" },
+      body: JSON.stringify({
+        model: "dall-e-3",
+        prompt: `Image réaliste, haute qualité, sans texte ni filigrane. ${prompt}`.slice(0, 950),
+        n: 1,
+        size: "1792x1024",
+        quality: "standard",
+        response_format: "b64_json",
+      }),
+    });
+    if (!r.ok) {
+      pipelineLog("image:gen:error", { status: r.status, body: (await r.text()).slice(0, 200) });
+      return null;
+    }
+    const d = await r.json() as any;
+    const b64 = d.data?.[0]?.b64_json;
+    return b64 ? { b64, mime: "image/png" } : null;
+  } catch (e) {
+    pipelineLog("image:gen:exception", { error: String(e).slice(0, 150) });
+    return null;
+  }
 }
 
 /** callSync with fault tolerance — returns null on error instead of throwing */
@@ -2301,6 +2345,36 @@ SI UNE IMAGE EST JOINTE (priorité absolue) :
         ? `\n\n══ INTÉGRATIONS API DISPONIBLES ══\nL'utilisateur a configuré les clés API suivantes. Pour les appeler, utilise TOUJOURS le proxy /api/proxy/call (JAMAIS directement l'API) afin de ne pas exposer la clé dans le code source.\n\nFormat d'appel proxy :\nfetch('/api/proxy/call', {\n  method: 'POST',\n  headers: {'Content-Type':'application/json'},\n  credentials: 'include',\n  body: JSON.stringify({ projectId: ${projectId}, apiName: 'NOM_API', endpoint: '/endpoint', method: 'POST', body: {...} })\n})\n\nIntégrations disponibles :\n${storedIntegrations.map(i => `• ${i.apiLabel} (apiName: "${i.apiName}")${i.baseUrl ? ` — base URL: ${i.baseUrl}` : ''}${i.docSummary ? `\n  Doc: ${i.docSummary}` : ''}`).join('\n')}\n⚠️ Ne jamais écrire de clé API en dur dans le code — toujours passer par /api/proxy/call.`
         : "";
 
+      // ── Génération d'image IA (OpenAI) si l'utilisateur le demande ──────────
+      // « génère/crée une image … » → vraie image générée, hébergée par Mar-ia
+      // (/img/:id), URL courte injectée dans le HTML (le LLM peut la préserver).
+      let generatedImageDirective = "";
+      if (!isExpo && wantsImageGeneration(message)) {
+        if (openaiKey) {
+          sseWrite(res, "progress", { agent: "DALL·E 3", step: "Génération de l'image…", icon: "🎨" });
+          const imgPrompt = (validatedSummary && validatedSummary.length > 10 ? validatedSummary : message).slice(0, 900);
+          const gen = await generateImageOpenAI(openaiKey, imgPrompt);
+          if (gen) {
+            try {
+              const [imgRow] = await db.insert(generatedImages).values({
+                projectId, userId: user.id, mimeType: gen.mime, data: gen.b64, prompt: imgPrompt,
+              }).returning({ id: generatedImages.id });
+              // URL absolue : fonctionne dans l'aperçu (iframe srcdoc), en /p/:slug et à l'export.
+              const host = req.get("host");
+              const imgUrl = host ? `https://${host}/img/${imgRow.id}` : `/img/${imgRow.id}`;
+              pipelineLog('image:gen:ok', { id: imgRow.id, bytes: gen.b64.length });
+              generatedImageDirective = `\n\n══ IMAGE GÉNÉRÉE PAR IA (À UTILISER OBLIGATOIREMENT) ══\nUne image vient d'être générée selon la demande de l'utilisateur. Son URL est : ${imgUrl}\n• Insère-la avec <img src="${imgUrl}" alt="..." ...> à l'emplacement demandé (hero/page d'accueil par défaut, ou l'endroit précisé).\n• Si l'utilisateur voulait REMPLACER une image existante, remplace l'ancien src par ${imgUrl}.\n• NE remplace JAMAIS ${imgUrl} par une URL Unsplash. Conserve cette URL telle quelle.`;
+            } catch (e) {
+              pipelineLog('image:gen:save-error', { error: String(e).slice(0, 120) });
+            }
+          } else {
+            sseWrite(res, "progress", { agent: "Mar-ia", step: "⚠️ Génération d'image échouée — image de stock utilisée", icon: "⚠️" });
+          }
+        } else {
+          sseWrite(res, "progress", { agent: "Mar-ia", step: "⚠️ Génération d'image indisponible (aucune clé OpenAI) — image de stock utilisée", icon: "⚠️" });
+        }
+      }
+
       // No history for execute phase — system prompt already contains task + current code + plan.
       // History only causes confusion (old sessions, wrong tasks).
       const history: typeof chatMessages.$inferSelect[] = [];
@@ -2502,6 +2576,12 @@ Si une image est jointe ET que le plan d'action liste des éléments numérotés
 • Chaque section doit avoir du VRAI contenu (titre, texte, éléments HTML) — pas de placeholder
 • Après avoir créé toutes les sections, vérifie que chaque showPage('id') a bien sa section correspondante
 • Si tu manques de place (token limit) : réduis le CSS et le contenu des sections existantes pour faire tenir toutes les nouvelles
+
+══ RÈGLE 7 — REMPLACER UNE PHOTO (rotation Unsplash) ══
+Si l'utilisateur demande de REMPLACER/CHANGER une image par une "autre", "plus claire", "ensoleillée", "différente"… :
+• Choisis un ID Unsplash DIFFÉRENT de celui actuellement utilisé (ne JAMAIS remettre la même URL).
+• Respecte les critères demandés (ex: lumineux/ensoleillé → photo claire, ciel bleu) ET le sujet (ex: tour Eiffel → un photo-ID de tour Eiffel/Paris).
+• Format : https://images.unsplash.com/photo-{ID}?w=1600&h=900&fit=crop&q=80 — jamais de placeholder ni de src cassé.${generatedImageDirective}
 
 ══ CODE ACTUEL (v${currentVersion[0].versionNumber}) — LIS ATTENTIVEMENT AVANT D'ÉCRIRE ══
 ${currentVersion[0].generatedCode || ""}
