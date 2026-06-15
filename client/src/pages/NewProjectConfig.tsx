@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
-import { Sparkles, ArrowLeft, Loader2, Lock, Globe, Palette, Shield, Languages, Layers, Info } from "lucide-react";
+import { Sparkles, ArrowLeft, Loader2, Lock, Globe, Palette, Shield, Languages, Layers, Info, ListChecks, Check } from "lucide-react";
 import { TEMPLATES } from "@/data/templates";
 import { TemplatePreviewThumb } from "@/components/TemplatePreviewThumb";
 
@@ -33,6 +33,40 @@ const LANG_OPTIONS = [
 ];
 
 const STYLE_OPTIONS = ["Moderne","Minimaliste","Luxe","Corporate","Startup","Premium"];
+
+// Options « auxquelles l'utilisateur ne pense pas forcément ».
+// Cochées → leur `directive` est injectée dans le prompt de génération.
+// `def: true` = pré-cochée par défaut (besoins quasi universels).
+const EXTRA_OPTIONS: { id: string; icon: string; label: string; desc: string; def: boolean; directive: string }[] = [
+  { id:"footer",       icon:"📄", label:"Footer complet",        desc:"Liens, coordonnées, copyright", def:true,
+    directive:"Ajoute un footer complet et soigné : navigation, coordonnées, copyright avec le nom exact du site, et liens vers les pages légales." },
+  { id:"animations",   icon:"✨", label:"Animations",            desc:"Apparitions au scroll, transitions", def:true,
+    directive:"Ajoute des animations modernes et fluides : apparition des sections au scroll (fade/slide), transitions au survol, micro-interactions sur les boutons. Subtiles et professionnelles, jamais clinquantes." },
+  { id:"seo",          icon:"🔍", label:"SEO optimisé",          desc:"Meta tags, Open Graph", def:true,
+    directive:"Optimise le SEO : balises meta (title, description), Open Graph + Twitter Card, structure sémantique (un seul h1, hiérarchie h2/h3), attributs alt sur toutes les images." },
+  { id:"scrolltop",    icon:"⬆️", label:"Retour en haut",        desc:"Bouton scroll-to-top", def:true,
+    directive:"Ajoute un bouton « retour en haut » discret qui apparaît après avoir scrollé." },
+  { id:"social",       icon:"📱", label:"Réseaux sociaux",       desc:"Instagram, Facebook, X, LinkedIn…", def:false,
+    directive:"Ajoute des icônes de réseaux sociaux (Instagram, Facebook, X/Twitter, LinkedIn, TikTok) cliquables dans le header et/ou le footer (liens placeholder #)." },
+  { id:"cookies",      icon:"🍪", label:"Bandeau cookies",       desc:"Consentement RGPD", def:false,
+    directive:"Ajoute un bandeau de consentement cookies (RGPD) avec boutons Accepter/Refuser, choix mémorisé en localStorage et masqué aux visites suivantes." },
+  { id:"contact",      icon:"✉️", label:"Formulaire de contact", desc:"Nom, email, message", def:false,
+    directive:"Ajoute une section formulaire de contact (nom, email, message) avec validation côté client et message de confirmation à l'envoi." },
+  { id:"whatsapp",     icon:"💬", label:"Bouton WhatsApp",       desc:"Contact rapide flottant", def:false,
+    directive:"Ajoute un bouton WhatsApp flottant en bas à droite, ouvrant une conversation (lien wa.me placeholder)." },
+  { id:"faq",          icon:"❓", label:"FAQ",                   desc:"Questions fréquentes (accordéon)", def:false,
+    directive:"Ajoute une section FAQ avec questions/réponses en accordéon dépliable." },
+  { id:"testimonials", icon:"⭐", label:"Témoignages",           desc:"Avis clients", def:false,
+    directive:"Ajoute une section témoignages/avis clients : photos placeholder, noms, et notes en étoiles." },
+  { id:"newsletter",   icon:"📧", label:"Newsletter",            desc:"Inscription email", def:false,
+    directive:"Ajoute un bloc d'inscription à la newsletter (champ email + bouton) dans le footer ou une section dédiée." },
+  { id:"maps",         icon:"📍", label:"Google Maps",           desc:"Carte de localisation", def:false,
+    directive:"Ajoute une carte de localisation (iframe Google Maps placeholder) dans la section contact." },
+  { id:"legal",        icon:"⚖️", label:"Pages légales",         desc:"Mentions, CGV, confidentialité", def:false,
+    directive:"Ajoute des pages/sections légales (mentions légales, politique de confidentialité, CGV) accessibles depuis le footer." },
+  { id:"loader",       icon:"⏳", label:"Écran de chargement",   desc:"Preloader animé", def:false,
+    directive:"Ajoute un écran de chargement animé (preloader) au démarrage de la page, qui disparaît une fois le contenu prêt." },
+];
 
 const COLOR_PRESETS = [
   { label:"Violet/Indigo", p:"#7c3aed", s:"#4f46e5", a:"#a78bfa" },
@@ -64,6 +98,7 @@ export default function NewProjectConfig() {
   const [customColors, setCustomColors] = useState({ p:"#6366f1", s:"#8b5cf6", a:"#a78bfa" });
   const [darkMode, setDarkMode] = useState(template?.colorPalette === "violet" || template?.colorPalette === "indigo" || template?.colorPalette === "monochrome" || template?.colorPalette === "orange");
   const [framework, setFramework] = useState(template?.framework ?? "html");
+  const [extras, setExtras] = useState<string[]>(EXTRA_OPTIONS.filter(o => o.def).map(o => o.id));
 
   // Lock framework if template is expo
   const frameworkLocked = template?.framework === "expo";
@@ -112,6 +147,12 @@ export default function NewProjectConfig() {
       final += `\n\nThème : Design sombre (dark mode), fond presque noir.`;
     }
 
+    // Options supplémentaires cochées
+    const chosen = EXTRA_OPTIONS.filter(o => extras.includes(o.id));
+    if (chosen.length > 0) {
+      final += `\n\nOptions à intégrer impérativement :\n` + chosen.map(o => `- ${o.directive}`).join("\n");
+    }
+
     return final;
   }
 
@@ -143,6 +184,10 @@ export default function NewProjectConfig() {
       ? (prev.length > 1 ? prev.filter(c => c !== code) : prev)
       : [...prev, code]
     );
+  }
+
+  function toggleExtra(id: string) {
+    setExtras(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
   }
 
   // ── Render ──────────────────────────────────────────────────────────────
@@ -325,6 +370,33 @@ export default function NewProjectConfig() {
                   L'IA ajoutera un sélecteur de langue et traduira le contenu en {langs.length} langues.
                 </p>
               )}
+            </Section>
+
+            {/* Options supplémentaires */}
+            <Section icon={<ListChecks className="w-4 h-4" />} title="Options supplémentaires" subtitle="Des éléments souvent oubliés — coche ceux que Mar-ia doit intégrer">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                {EXTRA_OPTIONS.map(opt => {
+                  const active = extras.includes(opt.id);
+                  return (
+                    <button
+                      key={opt.id}
+                      onClick={() => toggleExtra(opt.id)}
+                      className={`flex items-start gap-3 p-3 rounded-xl border text-left transition-all ${active?"border-primary bg-primary/8":"border-border/60 hover:border-border"}`}
+                    >
+                      <span className={`mt-0.5 w-5 h-5 rounded-md flex-shrink-0 flex items-center justify-center border transition-colors ${active?"bg-primary border-primary":"border-border/70"}`}>
+                        {active && <Check className="w-3.5 h-3.5 text-primary-foreground" strokeWidth={3} />}
+                      </span>
+                      <div className="min-w-0">
+                        <p className={`text-sm font-medium flex items-center gap-1.5 ${active?"text-primary":"text-foreground"}`}>
+                          <span>{opt.icon}</span>{opt.label}
+                        </p>
+                        <p className="text-xs text-muted-foreground">{opt.desc}</p>
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+              <p className="text-xs text-muted-foreground mt-2">{extras.length} option(s) sélectionnée(s) — tu pourras toujours ajouter ou retirer ensuite via le chat.</p>
             </Section>
 
             {/* Framework (only if not locked) */}
