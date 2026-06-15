@@ -43,6 +43,8 @@ export const users = pgTable("users", {
   generationsLimit: integer("generationsLimit").default(3).notNull(),
   monthlyTokensLimit: integer("monthlyTokensLimit"),
   passwordHash: text("passwordHash"),
+  // Incrémenté pour révoquer toutes les sessions existantes (reset mot de passe, déconnexion globale).
+  sessionVersion: integer("sessionVersion").default(0).notNull(),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().notNull(),
   lastSignedIn: timestamp("lastSignedIn").defaultNow().notNull(),

@@ -41,6 +41,49 @@ function validatePassword(password: string): string | null {
 const OTP_TTL_MS = 15 * 60 * 1000;
 const OTP_MAX_ATTEMPTS = 5;
 
+/* ── Rate-limit anti-brute-force ──────────────────────────────────────────────
+ * Limiteur en mémoire par clé (IP+email). Suffisant en mono-instance (cas Render
+ * actuel) ; en multi-instance chaque instance applique sa propre limite, ce qui
+ * reste une protection efficace contre le bourrinage. */
+const LOGIN_WINDOW_MS = 15 * 60 * 1000;
+const LOGIN_MAX_FAILS = 8; // échecs tolérés par fenêtre avant blocage
+const loginAttempts = new Map<string, { count: number; resetAt: number }>();
+
+function rateKey(req: Request, email: string): string {
+  const ip = (req.headers["x-forwarded-for"] as string)?.split(",")[0].trim()
+    || req.socket.remoteAddress || "unknown";
+  return `${ip}:${email.toLowerCase().trim()}`;
+}
+
+/** Retourne le nb de secondes à attendre si bloqué, sinon 0. */
+function loginRetryAfter(key: string): number {
+  const rec = loginAttempts.get(key);
+  if (!rec) return 0;
+  if (Date.now() > rec.resetAt) { loginAttempts.delete(key); return 0; }
+  if (rec.count >= LOGIN_MAX_FAILS) return Math.ceil((rec.resetAt - Date.now()) / 1000);
+  return 0;
+}
+
+function recordLoginFail(key: string): void {
+  const now = Date.now();
+  const rec = loginAttempts.get(key);
+  if (!rec || now > rec.resetAt) {
+    loginAttempts.set(key, { count: 1, resetAt: now + LOGIN_WINDOW_MS });
+  } else {
+    rec.count += 1;
+  }
+}
+
+function clearLoginFails(key: string): void {
+  loginAttempts.delete(key);
+}
+
+// Purge périodique des entrées expirées (évite une fuite mémoire lente).
+setInterval(() => {
+  const now = Date.now();
+  loginAttempts.forEach((v, k) => { if (now > v.resetAt) loginAttempts.delete(k); });
+}, 30 * 60 * 1000).unref?.();
+
 interface RegistrationPayload {
   name: string;
   email: string;
@@ -422,8 +465,14 @@ export function registerAuthRoutes(app: Express) {
     // Code correct → update password
     await deleteOtpCode(db, pending.id);
 
+    // Nouveau mot de passe + révocation de TOUTES les sessions existantes
+    // (incrémente sessionVersion → les anciens JWT deviennent invalides).
     const passwordHash = storePassword(newPassword);
-    await db.update(users).set({ passwordHash }).where(eq(users.openId, openId));
+    await db.update(users)
+      .set({ passwordHash, sessionVersion: sql`${users.sessionVersion} + 1` })
+      .where(eq(users.openId, openId));
+    // L'utilisateur ayant rate-limit éventuel repart à zéro après reset réussi.
+    clearLoginFails(rateKey(req, email));
 
     res.json({ success: true });
   });
@@ -437,6 +486,14 @@ export function registerAuthRoutes(app: Express) {
       return;
     }
 
+    const key = rateKey(req, email);
+    const retryAfter = loginRetryAfter(key);
+    if (retryAfter > 0) {
+      res.setHeader("Retry-After", String(retryAfter));
+      res.status(429).json({ error: `Trop de tentatives. Réessayez dans ${Math.ceil(retryAfter / 60)} minute(s).` });
+      return;
+    }
+
     const db = await getDb();
     if (!db) { res.status(500).json({ error: "DB unavailable" }); return; }
 
@@ -445,20 +502,24 @@ export function registerAuthRoutes(app: Express) {
     const user = userRow[0];
 
     if (!user || !user.passwordHash) {
+      recordLoginFail(key);
       res.status(401).json({ error: "Email ou mot de passe incorrect." });
       return;
     }
 
     if (!verifyPassword(password, user.passwordHash)) {
+      recordLoginFail(key);
       res.status(401).json({ error: "Email ou mot de passe incorrect." });
       return;
     }
 
+    clearLoginFails(key);
     await db.update(users).set({ lastSignedIn: new Date() }).where(eq(users.openId, openId));
 
     const sessionToken = await sdk.createSessionToken(openId, {
       name: user.name || email.split("@")[0],
       expiresInMs: ONE_YEAR_MS,
+      sessionVersion: user.sessionVersion ?? 0,
     });
 
     const cookieOptions = getSessionCookieOptions(req);
