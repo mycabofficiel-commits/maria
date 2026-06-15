@@ -1297,6 +1297,8 @@ Si l'app a des onglets (TabBar, BottomTabNavigator, ou navigation bas) :
 
     // ── Final execution: DeepSeek streams the HTML ─────────────────────────
     const isMobileApp = siteType === "Application mobile";
+    // Le nom du projet EST le nom de la marque/du site — jamais inventé.
+    const brandSlug = projectName.toLowerCase().normalize("NFD").replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "") || "marque";
     sseWrite(res, "progress", { agent: "DeepSeek", step: isMobileApp ? "Génération du prototype mobile…" : "Génération du code HTML…", icon: "💻" });
 
     const systemPrompt = isMobileApp
@@ -1459,6 +1461,9 @@ TYPE: ${siteType || "landing page"} | STYLE: ${style || "moderne"} | LANGUE: ${l
     const userMessage = isMobileApp
       ? `Crée un prototype d'application mobile COMPLET et RÉALISTE dans un cadre téléphone pour : ${finalPrompt}
 
+⚠️ NOM DE L'APPLICATION : « ${projectName} »
+C'est le nom EXACT et IMPOSÉ de l'app. Utilise-le partout : <title>, logo/titre dans le header de l'app, écran d'accueil, splash, footer. N'INVENTE JAMAIS un autre nom d'app ou de marque. Si la description suggère un autre nom, celui du projet « ${projectName} » prime toujours.
+
 STRUCTURE OBLIGATOIRE :
 1. <head> : charset, viewport, title, Google Fonts (Inter)
 2. Body fond sombre (#0f0f0f), centré verticalement et horizontalement
@@ -1484,6 +1489,9 @@ QUALITÉ MOBILE :
 
 Retourne UNIQUEMENT le code HTML complet, sans explication, sans markdown, sans backticks.`
       : `Crée un site web COMPLET et PREMIUM pour : ${finalPrompt}
+
+⚠️ NOM DU SITE / DE LA MARQUE : « ${projectName} »
+C'est le nom EXACT et IMPOSÉ. Utilise-le partout : <title>, balise du logo dans le header, footer, copyright, email de contact (contact@${brandSlug}.fr). N'INVENTE JAMAIS un autre nom de marque, d'entreprise ou de site. Si la description suggère un autre nom, celui du projet « ${projectName} » prime toujours.
 
 STRUCTURE MINIMALE OBLIGATOIRE :
 1. <head> complet : charset, viewport, title SEO, description, OG tags, Google Fonts
