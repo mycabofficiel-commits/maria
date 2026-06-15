@@ -537,6 +537,24 @@ function wantsImageGeneration(msg: string): boolean {
 }
 
 /**
+ * Demande de TRAVAIL SUR LE CONTENU d'une image/logo (générer, créer, modifier,
+ * retoucher, remplacer le visuel). Mar-ia NE FAIT PAS ça → on répond poliment et
+ * on redirige vers l'import / l'éditeur visuel. On NE bloque PAS les opérations de
+ * pure mise en page (agrandir, déplacer, centrer…) que l'IA sait gérer en CSS.
+ */
+function wantsImageContentWork(msg: string): boolean {
+  if (!msg) return false;
+  const noun = /\b(image|images|photo|photos|logo|logos|illustration|illustrations|visuel|visuels|ic[ôo]ne|ic[ôo]nes|banni[èe]re|favicon|picture|dessin)\b/i.test(msg);
+  if (!noun) return false;
+  const contentVerb = /\b(g[ée]n[èe]r\w*|cr[ée]{1,2}\w*|dessin\w*|fabriqu\w*|con[çc]\w*|produi\w*|modifi\w*|retouch\w*|chang\w*|remplac\w*|[ée]dit\w*|am[ée]lior\w*|transform\w*|generate|create|design|draw|edit|modify|replace|change)\b/i.test(msg);
+  if (!contentVerb) return false;
+  // Opérations de mise en page pures → l'IA sait faire, on NE bloque pas.
+  const layoutOnly = /\b(agrandi\w*|r[ée]dui\w*|redimensionn\w*|d[ée]plac\w*|centre\w*|align\w*|position\w*|taille|largeur|hauteur|bordure|arrondi|ombre|marge|espac\w*|recadr\w*)\b/i.test(msg);
+  if (layoutOnly) return false;
+  return true;
+}
+
+/**
  * Transforme la demande de l'utilisateur en un prompt VISUEL propre pour DALL·E.
  * Indispensable : sinon on envoyait le plan structuré du raisonneur ("Demande:…
  * Actions prévues:…") à DALL·E → image totalement hors-sujet. Fallback = message nettoyé.
@@ -2139,6 +2157,19 @@ INTERDICTIONS ABSOLUES :
     // ── PHASE 1: RAISONNEMENT ──────────────────────────────────────────────
     if (phase === "reason") {
       pipelineLog('reason:start', { project: project[0].name, plan: userPlan, consoleErrors: consoleErrors?.length || 0, isExpo });
+
+      // ── Mar-ia ne génère/crée/modifie PAS d'images ni de logos ─────────────
+      // Si l'utilisateur le demande (sans joindre d'image), on refuse poliment et
+      // on le redirige vers l'import / l'éditeur visuel. Aucune fausse génération.
+      if (wantsImageContentWork(message) && (!images || images.length === 0)) {
+        const declineText = `🖼️ Je ne **génère pas**, ne **crée pas** et ne **modifie pas** d'images ou de logos — je m'occupe du code et de la mise en page du site.\n\nPour ajouter ou changer un visuel, tu as deux options :\n\n1. **Éditeur visuel** : clique sur l'icône ✏️ (éditeur visuel) en haut de l'aperçu, puis clique sur l'image à remplacer → colle l'URL de ta nouvelle image.\n2. **Importer ton image** : héberge ton image (ou utilise son URL) et donne-moi le lien — je l'intègre au bon endroit dans le code.\n\nUne fois l'image en place, je peux tout faire côté **mise en page** : la redimensionner, la centrer, ajouter un cadre, une ombre, un arrondi, la rendre responsive, etc. 👍`;
+        pipelineLog('reason:image-decline', { msg: message.slice(0, 80) });
+        await db.insert(chatMessages).values({ projectId, userId: user.id, role: "user", content: message });
+        await db.insert(chatMessages).values({ projectId, userId: user.id, role: "assistant", content: declineText });
+        sseWrite(res, "declined", { declined: true, reply: declineText });
+        res.end(); return;
+      }
+
       const reasonerSystemPrompt = isExpo
         ? `Tu es Mar-ia, experte en React Native / Expo. Analyse le code App.js et la demande.
 
@@ -2374,43 +2405,10 @@ SI UNE IMAGE EST JOINTE (priorité absolue) :
         ? `\n\n══ INTÉGRATIONS API DISPONIBLES ══\nL'utilisateur a configuré les clés API suivantes. Pour les appeler, utilise TOUJOURS le proxy /api/proxy/call (JAMAIS directement l'API) afin de ne pas exposer la clé dans le code source.\n\nFormat d'appel proxy :\nfetch('/api/proxy/call', {\n  method: 'POST',\n  headers: {'Content-Type':'application/json'},\n  credentials: 'include',\n  body: JSON.stringify({ projectId: ${projectId}, apiName: 'NOM_API', endpoint: '/endpoint', method: 'POST', body: {...} })\n})\n\nIntégrations disponibles :\n${storedIntegrations.map(i => `• ${i.apiLabel} (apiName: "${i.apiName}")${i.baseUrl ? ` — base URL: ${i.baseUrl}` : ''}${i.docSummary ? `\n  Doc: ${i.docSummary}` : ''}`).join('\n')}\n⚠️ Ne jamais écrire de clé API en dur dans le code — toujours passer par /api/proxy/call.`
         : "";
 
-      // ── Génération d'image IA (OpenAI) si l'utilisateur le demande ──────────
-      // « génère/crée une image … » → vraie image générée, hébergée par Mar-ia
-      // (/img/:id), URL courte injectée dans le HTML (le LLM peut la préserver).
-      let generatedImageDirective = "";
-      if (!isExpo && wantsImageGeneration(message)) {
-        if (openaiKey) {
-          sseWrite(res, "progress", { agent: "DALL·E 3", step: "Préparation du visuel…", icon: "🎨" });
-          // On fabrique un prompt VISUEL propre à partir de la demande (PAS le plan
-          // structuré, qui donnait des images hors-sujet). DeepSeek = workhorse dispo.
-          const imgPrompt = (await craftImagePrompt(
-            message,
-            { projectName: project[0].name, siteType: project[0].siteType },
-            deepseekKey, "deepseek", "deepseek-chat",
-          )).slice(0, 900);
-          pipelineLog('image:prompt', { prompt: imgPrompt.slice(0, 160) });
-          sseWrite(res, "progress", { agent: "DALL·E 3", step: "Génération de l'image…", icon: "🎨" });
-          const gen = await generateImageOpenAI(openaiKey, imgPrompt);
-          if (gen) {
-            try {
-              const [imgRow] = await db.insert(generatedImages).values({
-                projectId, userId: user.id, mimeType: gen.mime, data: gen.b64, prompt: imgPrompt,
-              }).returning({ id: generatedImages.id });
-              // URL absolue : fonctionne dans l'aperçu (iframe srcdoc), en /p/:slug et à l'export.
-              const host = req.get("host");
-              const imgUrl = host ? `https://${host}/img/${imgRow.id}` : `/img/${imgRow.id}`;
-              pipelineLog('image:gen:ok', { id: imgRow.id, bytes: gen.b64.length });
-              generatedImageDirective = `\n\n══ IMAGE GÉNÉRÉE PAR IA (À UTILISER OBLIGATOIREMENT) ══\nUne image vient d'être générée selon la demande de l'utilisateur. Son URL est : ${imgUrl}\n• Insère-la avec <img src="${imgUrl}" alt="..." ...> à l'emplacement demandé (hero/page d'accueil par défaut, ou l'endroit précisé).\n• Si l'utilisateur voulait REMPLACER une image existante, remplace l'ancien src par ${imgUrl}.\n• NE remplace JAMAIS ${imgUrl} par une URL Unsplash. Conserve cette URL telle quelle.`;
-            } catch (e) {
-              pipelineLog('image:gen:save-error', { error: String(e).slice(0, 120) });
-            }
-          } else {
-            sseWrite(res, "progress", { agent: "Mar-ia", step: "⚠️ Génération d'image échouée — image de stock utilisée", icon: "⚠️" });
-          }
-        } else {
-          sseWrite(res, "progress", { agent: "Mar-ia", step: "⚠️ Génération d'image indisponible (aucune clé OpenAI) — image de stock utilisée", icon: "⚠️" });
-        }
-      }
+      // Mar-ia ne génère PAS d'images (décision produit). Les demandes de
+      // génération/création/modification d'image sont interceptées en amont
+      // (phase reason → message de refus + redirection import / éditeur visuel).
+      const generatedImageDirective = "";
 
       // No history for execute phase — system prompt already contains task + current code + plan.
       // History only causes confusion (old sessions, wrong tasks).

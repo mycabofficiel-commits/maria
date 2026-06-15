@@ -2,6 +2,7 @@
 
 | Date (UTC) | Version | Commit (avant) | Message |
 |---|---|---|---|
+| 2026-06-15 22:23 | v1.2.11 | 8b36cf6 | chat: refuse poliment de generer/creer/modifier images et logos (plus de fausse generation/image grise) et redirige vers import / editeur visuel ; autorise toujours la mise en page (redimensionner, centrer, ombre...) |
 | 2026-06-15 21:49 | v1.2.10 | 8098ac3 | fix génération image: le prompt DALL-E était le plan structuré du raisonneur (images hors-sujet) -> on fabrique maintenant un vrai prompt visuel a partir de la demande utilisateur (craftImagePrompt via DeepSeek), fallback nettoye |
 | 2026-06-15 21:19 | v1.2.9 | c3393c1 | feat: vraie generation d'image IA (OpenAI DALL-E 3) sur 'genere/cree une image', hebergee par Mar-ia via /img/:id ; rotation Unsplash amelioree sur 'remplace cette photo' ; fix validateur src (preserve /img/:id) |
 | 2026-06-15 15:43 | v1.2.8 | 9c107f6 | feat: notation 👍/👎 sous chaque reponse de l'IA dans le chat - 👎 propose de corriger, feedback stocke en DB (colonnes feedback/feedbackReason via ensureSchema) |

@@ -1261,6 +1261,12 @@ export default function ProjectEditor() {
               // Scroll to bottom so validation card is visible
               setTimeout(scrollToBottom, 150);
             }
+            // Refus image (Mar-ia ne génère/modifie pas d'images) → message direct, pas de validation
+            if (evt.declined) {
+              utils.projects.getChatMessages.invalidate({ projectId });
+              setChatPhase("idle");
+              setTimeout(scrollToBottom, 150);
+            }
             if (evt.message && !evt.apiName) toast.error(evt.message);
           } catch { /* skip */ }
         }
