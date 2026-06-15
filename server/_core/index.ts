@@ -115,8 +115,6 @@ async function ensureSchema() {
 }
 
 async function startServer() {
-  await runMigrations();
-  await ensureSchema();
   const app = express();
   const server = createServer(app);
   // Configure body parser with larger size limit for file uploads
@@ -217,14 +215,24 @@ async function startServer() {
   }
 
   const preferredPort = parseInt(process.env.PORT || "3000");
-  const port = await findAvailablePort(preferredPort);
+  // En production (Render) on DOIT écouter exactement sur le PORT fourni et sur
+  // l'hôte 0.0.0.0, sinon le scan de port de Render échoue ("no open ports
+  // detected"). En dev on garde l'auto-incrément pour éviter les conflits locaux.
+  const isProd = process.env.NODE_ENV === "production";
+  const port = isProd ? preferredPort : await findAvailablePort(preferredPort);
 
-  if (port !== preferredPort) {
+  if (!isProd && port !== preferredPort) {
     console.log(`Port ${preferredPort} is busy, using port ${port} instead`);
   }
 
-  server.listen(port, () => {
-    console.log(`Server running on http://localhost:${port}/`);
+  // On ouvre le port IMMÉDIATEMENT pour que Render détecte le service comme
+  // vivant, PUIS on applique les migrations DB (qui ne doivent jamais bloquer
+  // l'ouverture du port — sinon une DB lente fait échouer le déploiement).
+  server.listen(port, "0.0.0.0", async () => {
+    console.log(`Server running on port ${port} (host 0.0.0.0)`);
+    await runMigrations();
+    await ensureSchema();
+    console.log("[DB] Initialisation terminée");
   });
 }
 

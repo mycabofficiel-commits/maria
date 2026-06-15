@@ -2,6 +2,7 @@
 
 | Date (UTC) | Version | Commit (avant) | Message |
 |---|---|---|---|
+| 2026-06-15 11:52 | v1.2.1 | 55e146d | fix: ouvre le port Render immediatement (0.0.0.0 + PORT exact) et migrations DB apres le listen pour ne plus echouer le scan de port |
 | 2026-06-15 10:34 | v1.2.0 | 16a96d7 | Options de création (réseaux sociaux, SEO, FAQ, maps, vidéo…) portées dans le vrai modal Projects + version affichée sous le profil et dans le footer |
 | 2026-06-15 10:07 | v1.1.2 | b6b2262 | Sous-menus supplementaires : Newsletter (service emailing Mailchimp/Brevo/ConvertKit/MailerLite), Temoignages (nombre d'avis), FAQ (questions personnalisees) |
 | 2026-06-15 10:02 | v1.1.1 | b1003f1 | Sous-menus de configuration des options : reseaux sociaux (choix + liens), Google Maps (adresse), SEO (mots-cles/hashtags), nouvelle option Video YouTube (liens), WhatsApp (numero), contact (email de reception) |
