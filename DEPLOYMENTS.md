@@ -2,6 +2,7 @@
 
 | Date (UTC) | Version | Commit (avant) | Message |
 |---|---|---|---|
+| 2026-06-15 14:54 | v1.2.6 | f7d2bfa | fix vision: chat ET debug utilisent les cles personnelles (BYOK) Anthropic/OpenAI/Qwen en fallback, pas seulement DeepSeek - les images sont enfin lues si une cle perso Claude/OpenAI existe |
 | 2026-06-15 14:38 | v1.2.5 | 7b69efe | chat: phase raison inclut l'historique de conversation (fin de la perte de contexte) ; lecture d'image avec fallback OpenAI GPT-4o si pas de cle Claude + message clair si aucune cle vision |
 | 2026-06-15 12:45 | v1.2.4 | 4feb848 | sites generes: annee courante auto + credit Mar-ia.net obligatoire (retirable via chat pour comptes payants) ; prompt renforce langues fonctionnelles + logos reseaux sociaux en SVG inline |
 | 2026-06-15 12:12 | v1.2.3 | 5b55c08 | UI: footer annee dynamique + suppression mention Anthropic ; modal nouveau projet : sous-menus options replies par defaut (SEO ne masque plus les autres) |

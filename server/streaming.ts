@@ -1812,7 +1812,7 @@ Retourne UNIQUEMENT le code HTML, sans explication, sans markdown, sans backtick
     if (!currentVersion[0]) { res.status(400).json({ error: "Aucune version générée" }); return; }
 
     // Fetch user plan + all platform keys concurrently
-    const [userRow, openaiKey, claudeKey, qwenKey, deepseekKeyPlatform] = await Promise.all([
+    const [userRow, openaiKeyPlatform, claudeKeyPlatform, qwenKeyPlatform, deepseekKeyPlatform] = await Promise.all([
       db.select().from(users).where(eq(users.id, user.id)).limit(1),
       getPlatformKey("openai"),
       getPlatformKey("anthropic"),
@@ -1824,14 +1824,26 @@ Retourne UNIQUEMENT le code HTML, sans explication, sans markdown, sans backtick
     const config = PLAN_CONFIGS[userPlan] || PLAN_CONFIGS.free;
     const chatPlanMaxTokens = (PLAN_LIMITS[userPlan as PlanName] || PLAN_LIMITS.free).maxTokensPerGen;
 
-    // Fallback: if no platform deepseek key, try user's stored key
-    let deepseekKey = deepseekKeyPlatform;
-    if (!deepseekKey) {
-      const keyRow = await db.select().from(apiKeys).where(eq(apiKeys.userId, user.id)).limit(1);
-      if (keyRow[0]) {
-        try { deepseekKey = decrypt(keyRow[0].encryptedKey); } catch { /* ignore */ }
+    // Clés personnelles de l'utilisateur (BYOK), indexées par provider, en
+    // fallback quand aucune clé plateforme n'est configurée. AVANT : seul
+    // DeepSeek avait ce fallback → Anthropic/OpenAI (vision !) restaient nulles
+    // même si l'utilisateur avait saisi ses clés en perso → images illisibles.
+    const personalKeys: Record<string, string> = {};
+    try {
+      const rows = await db.select({ provider: apiKeys.provider, encryptedKey: apiKeys.encryptedKey })
+        .from(apiKeys).where(eq(apiKeys.userId, user.id));
+      for (const r of rows) {
+        if (r.provider && !personalKeys[r.provider]) {
+          try { personalKeys[r.provider] = decrypt(r.encryptedKey); } catch { /* ignore */ }
+        }
       }
-    }
+    } catch { /* table indispo — ignore */ }
+
+    const claudeKey = claudeKeyPlatform || personalKeys["anthropic"] || null;
+    const openaiKey = openaiKeyPlatform || personalKeys["openai"] || null;
+    const qwenKey   = qwenKeyPlatform   || personalKeys["qwen"]   || null;
+    const deepseekKey = deepseekKeyPlatform || personalKeys["deepseek"] || null;
+
     if (!deepseekKey) { res.status(400).json({ error: "Aucune clé API configurée" }); return; }
 
     const allKeys: Partial<Record<Provider, string | null>> = {
@@ -3012,12 +3024,26 @@ Règles :
     if (!currentVersion[0]?.generatedCode) { res.status(400).json({ error: "Aucune version à débugger" }); return; }
 
     // Keys: prefer Claude for vision (it handles images), fall back to OpenAI, then Deepseek for text-only
-    const [claudeKey, openaiKey, deepseekKey, debugUserRow] = await Promise.all([
+    const [claudeKeyP, openaiKeyP, deepseekKeyP, debugUserRow] = await Promise.all([
       getPlatformKey("anthropic"),
       getPlatformKey("openai"),
       getPlatformKey("deepseek"),
       db.select({ plan: users.plan }).from(users).where(eq(users.id, user.id)).limit(1),
     ]);
+    // Fallback vers les clés personnelles (BYOK) de l'utilisateur, par provider.
+    const debugPersonal: Record<string, string> = {};
+    try {
+      const rows = await db.select({ provider: apiKeys.provider, encryptedKey: apiKeys.encryptedKey })
+        .from(apiKeys).where(eq(apiKeys.userId, user.id));
+      for (const r of rows) {
+        if (r.provider && !debugPersonal[r.provider]) {
+          try { debugPersonal[r.provider] = decrypt(r.encryptedKey); } catch { /* ignore */ }
+        }
+      }
+    } catch { /* ignore */ }
+    const claudeKey = claudeKeyP || debugPersonal["anthropic"] || null;
+    const openaiKey = openaiKeyP || debugPersonal["openai"] || null;
+    const deepseekKey = deepseekKeyP || debugPersonal["deepseek"] || null;
     const debugPlanMaxTokens = (PLAN_LIMITS[(debugUserRow[0]?.plan || "free") as PlanName] || PLAN_LIMITS.free).maxTokensPerGen;
 
     const versionCount = await db.select({ count: count() }).from(versions).where(eq(versions.projectId, projectId));
