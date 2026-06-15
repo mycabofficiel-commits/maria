@@ -111,3 +111,13 @@ temp/
 
 # Manus version file (auto-generated, not part of source)
 client/public/__manus__/version.json
+
+# Claude Code local settings/session
+.claude/
+
+# Artefacts d'expérimentation / captures (ne pas committer au déploiement)
+anim-*.jpg
+*-preview.html
+neural-*.jpg
+homepage-pipeline.jpg
+client/public/Capture*
