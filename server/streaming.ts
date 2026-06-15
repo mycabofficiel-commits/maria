@@ -491,6 +491,41 @@ async function callSyncVision(
   };
 }
 
+/**
+ * Vision-capable sync call via OpenAI GPT-4o (fallback quand aucune clé Anthropic
+ * n'est configurée). Permet de lire les images même sans Claude.
+ */
+async function callSyncVisionOpenAI(
+  apiKey: string,
+  systemPrompt: string,
+  userMessage: string,
+  images: Array<{ base64: string; mimeType: string }>,
+  maxTokens = 1000
+): Promise<LlmResult> {
+  const imageBlocks = images.map(img => ({
+    type: "image_url" as const,
+    image_url: { url: `data:${img.mimeType};base64,${img.base64}`, detail: "high" as const },
+  }));
+  const userContent = [...imageBlocks, { type: "text" as const, text: userMessage }];
+  const r = await fetch("https://api.openai.com/v1/chat/completions", {
+    method: "POST",
+    headers: { "Authorization": `Bearer ${apiKey}`, "content-type": "application/json" },
+    body: JSON.stringify({
+      model: "gpt-4o-mini",
+      max_tokens: maxTokens,
+      temperature: 0.2,
+      messages: [{ role: "system", content: systemPrompt }, { role: "user", content: userContent }],
+    }),
+  });
+  if (!r.ok) throw new Error(`openai vision error: ${await r.text()}`);
+  const d = await r.json() as any;
+  return {
+    text: d.choices?.[0]?.message?.content || "",
+    inputTokens: d.usage?.prompt_tokens || 0,
+    outputTokens: d.usage?.completion_tokens || 0,
+  };
+}
+
 /** callSync with fault tolerance — returns null on error instead of throwing */
 async function tryCallSync(
   provider: "anthropic" | "openai" | "deepseek" | "qwen",
@@ -2111,9 +2146,31 @@ Les deux fonctionnent dans l'aperçu (les ancres #id déclenchent un scroll flui
         ? `\n\n⚠️ ERREURS JS DÉTECTÉES DANS LE NAVIGATEUR (console de la preview) :\n${consoleErrors.slice(0, 8).map((e, i) => `${i + 1}. ${e}`).join('\n')}\nSi ces erreurs sont liées à la demande, inclus-les dans ton diagnostic et dans les actions prévues.`
         : '';
       const codeForReason = isExpo ? fullCode.slice(0, 12000) : fullCode.slice(0, 8000);
+
+      // ── Historique de conversation (CONTEXTE) ──────────────────────────────
+      // Sans ça, le raisonneur oublie tout ce qui a été dit aux tours précédents
+      // (ex: une image décrite, une consigne donnée plus tôt). On injecte les
+      // derniers échanges pour conserver le fil.
+      let historyCtx = "";
+      try {
+        const recent = await db
+          .select({ role: chatMessages.role, content: chatMessages.content })
+          .from(chatMessages)
+          .where(eq(chatMessages.projectId, projectId))
+          .orderBy(desc(chatMessages.createdAt))
+          .limit(8);
+        recent.reverse();
+        if (recent.length > 0) {
+          const lines = recent
+            .map(m => `${m.role === "user" ? "Utilisateur" : "Mar-ia"}: ${(m.content || "").slice(0, 400)}`)
+            .join("\n");
+          historyCtx = `\n\nHISTORIQUE DE LA CONVERSATION (contexte — ne le perds jamais de vue) :\n${lines}`;
+        }
+      } catch { /* historique non bloquant */ }
+
       const reasonerUserMsg = isExpo
-        ? `Demande utilisateur: "${message}"\n\nApp.js actuel (${project[0].name}):\n${codeForReason}${consoleCtxReason}`
-        : `Demande utilisateur: "${message}"\n\nCode actuel du site (${project[0].name}):\n${codeForReason}${consoleCtxReason}`;
+        ? `Demande utilisateur: "${message}"${historyCtx}\n\nApp.js actuel (${project[0].name}):\n${codeForReason}${consoleCtxReason}`
+        : `Demande utilisateur: "${message}"${historyCtx}\n\nCode actuel du site (${project[0].name}):\n${codeForReason}${consoleCtxReason}`;
 
       // Try reasoner with automatic fallback if quota exceeded or error
       let reasoning: LlmResult | null = null;
@@ -2127,9 +2184,7 @@ Les deux fonctionnent dans l'aperçu (les ancres #id déclenchent un scroll flui
       // Claude is the only provider that reliably supports images in the reasoner.
       // When images are present, the reasoner MUST enumerate every visible element
       // so the executor gets a precise checklist (not a vague "create pages").
-      if (images && images.length > 0 && claudeKey) {
-        pipelineLog('reason:vision', { images: images.length });
-        sseWrite(res, "progress", { agent: "Claude", step: "Analyse de l'image…", icon: "👁️" });
+      if (images && images.length > 0) {
         const visionSystemPrompt = reasonerSystemPrompt + `
 
 SI UNE IMAGE EST JOINTE (priorité absolue) :
@@ -2141,11 +2196,32 @@ SI UNE IMAGE EST JOINTE (priorité absolue) :
    • 2. Créer <section id="faq"> avec page FAQ complète
    • [une ligne par page, sans exception]
 ⚠️ L'exécuteur créera EXACTEMENT ce que tu listes ici. N'oublie aucun élément visible.`;
-        try {
-          reasoning = await callSyncVision(claudeKey, "claude-haiku-4-5", visionSystemPrompt, reasonerUserMsg, images, 1000);
-          if (reasoning?.text) usedReasoner = { provider: "anthropic", model: "claude-haiku-4-5", key: claudeKey };
-        } catch (e) {
-          pipelineLog('reason:vision:error', { error: String(e).slice(0, 100) });
+        if (claudeKey) {
+          pipelineLog('reason:vision', { images: images.length, provider: 'anthropic' });
+          sseWrite(res, "progress", { agent: "Claude", step: "Analyse de l'image…", icon: "👁️" });
+          try {
+            reasoning = await callSyncVision(claudeKey, "claude-haiku-4-5", visionSystemPrompt, reasonerUserMsg, images, 1000);
+            if (reasoning?.text) usedReasoner = { provider: "anthropic", model: "claude-haiku-4-5", key: claudeKey };
+          } catch (e) {
+            pipelineLog('reason:vision:error', { provider: 'anthropic', error: String(e).slice(0, 100) });
+          }
+        }
+        // Fallback OpenAI GPT-4o vision si pas de clé Claude (ou si Claude a échoué)
+        if (!reasoning?.text && openaiKey) {
+          pipelineLog('reason:vision', { images: images.length, provider: 'openai' });
+          sseWrite(res, "progress", { agent: "GPT-4o", step: "Analyse de l'image…", icon: "👁️" });
+          try {
+            reasoning = await callSyncVisionOpenAI(openaiKey, visionSystemPrompt, reasonerUserMsg, images, 1000);
+            if (reasoning?.text) usedReasoner = { provider: "openai", model: "gpt-4o-mini", key: openaiKey };
+          } catch (e) {
+            pipelineLog('reason:vision:error', { provider: 'openai', error: String(e).slice(0, 100) });
+          }
+        }
+        // Aucune clé vision dispo (ni Claude ni OpenAI) → on prévient l'utilisateur
+        // au lieu d'ignorer l'image en silence.
+        if (!reasoning?.text && !claudeKey && !openaiKey) {
+          pipelineLog('reason:vision:no-key', { images: images.length });
+          sseWrite(res, "progress", { agent: "Mar-ia", step: "⚠️ Lecture d'image indisponible (aucune clé Claude/OpenAI configurée)", icon: "⚠️" });
         }
       }
 
