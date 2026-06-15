@@ -4,13 +4,22 @@ import path from "node:path";
 import { readFileSync } from "node:fs";
 import { defineConfig } from "vite";
 
-const pkg = JSON.parse(
-  readFileSync(path.resolve(import.meta.dirname, "package.json"), "utf8"),
-);
+// La version est lue depuis package.json AU BUILD (vite). Ce fichier est aussi
+// bundlé dans le serveur via server/_core/vite.ts ; au runtime serveur le chemin
+// dist/package.json n'existe pas → on protège la lecture pour ne pas crasher le
+// démarrage (la valeur n'y est de toute façon pas utilisée).
+let appVersion = "dev";
+try {
+  appVersion = JSON.parse(
+    readFileSync(path.resolve(import.meta.dirname, "package.json"), "utf8"),
+  ).version;
+} catch {
+  // ignore — fallback "dev" (cas runtime serveur)
+}
 
 export default defineConfig({
   define: {
-    __APP_VERSION__: JSON.stringify(pkg.version),
+    __APP_VERSION__: JSON.stringify(appVersion),
   },
   plugins: [react(), tailwindcss()],
   resolve: {
