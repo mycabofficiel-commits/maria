@@ -22,6 +22,25 @@ function slugify(name: string): string {
   return name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") + "-" + Math.random().toString(36).slice(2, 7);
 }
 
+type Db = NonNullable<Awaited<ReturnType<typeof getDb>>>;
+
+/** Vérifie que le projet appartient à l'utilisateur. Lève sinon (anti-IDOR). */
+async function assertOwnedProject(db: Db, projectId: number, userId: number): Promise<void> {
+  const rows = await db.select({ id: projects.id }).from(projects)
+    .where(and(eq(projects.id, projectId), eq(projects.userId, userId)))
+    .limit(1);
+  if (!rows[0]) throw new Error("Projet introuvable");
+}
+
+/** Vérifie que la version appartient (via son projet) à l'utilisateur. Lève sinon (anti-IDOR). */
+async function assertOwnedVersion(db: Db, versionId: number, userId: number): Promise<void> {
+  const rows = await db.select({ id: versions.id }).from(versions)
+    .innerJoin(projects, eq(versions.projectId, projects.id))
+    .where(and(eq(versions.id, versionId), eq(projects.userId, userId)))
+    .limit(1);
+  if (!rows[0]) throw new Error("Version introuvable");
+}
+
 
 export const projectsRouter = router({
   // List projects
@@ -126,6 +145,9 @@ export const projectsRouter = router({
     .mutation(async ({ ctx, input }) => {
       const db = await getDb();
       if (!db) throw new Error("DB unavailable");
+
+      // Anti-IDOR : le projet doit appartenir à l'utilisateur
+      await assertOwnedProject(db, input.projectId, ctx.user.id);
 
       // Check generations limit
       const userRow = await db.select().from(users).where(eq(users.id, ctx.user.id)).limit(1);
@@ -477,6 +499,7 @@ RÈGLES CODE (à respecter pour chaque modification):
     .query(async ({ ctx, input }) => {
       const db = await getDb();
       if (!db) return [];
+      await assertOwnedProject(db, input.projectId, ctx.user.id); // anti-IDOR
       return db.select().from(versions)
         .where(eq(versions.projectId, input.projectId))
         .orderBy(desc(versions.createdAt));
@@ -488,6 +511,7 @@ RÈGLES CODE (à respecter pour chaque modification):
     .query(async ({ ctx, input }) => {
       const db = await getDb();
       if (!db) throw new Error("DB unavailable");
+      await assertOwnedVersion(db, input.versionId, ctx.user.id); // anti-IDOR
       const result = await db.select().from(versions).where(eq(versions.id, input.versionId)).limit(1);
       return result[0] || null;
     }),
@@ -498,6 +522,12 @@ RÈGLES CODE (à respecter pour chaque modification):
     .mutation(async ({ ctx, input }) => {
       const db = await getDb();
       if (!db) throw new Error("DB unavailable");
+      // Anti-IDOR : projet possédé ET version appartenant bien à ce projet
+      await assertOwnedProject(db, input.projectId, ctx.user.id);
+      const v = await db.select({ id: versions.id }).from(versions)
+        .where(and(eq(versions.id, input.versionId), eq(versions.projectId, input.projectId)))
+        .limit(1);
+      if (!v[0]) throw new Error("Version introuvable");
       await db.update(projects)
         .set({ currentVersionId: input.versionId })
         .where(and(eq(projects.id, input.projectId), eq(projects.userId, ctx.user.id)));
@@ -510,6 +540,7 @@ RÈGLES CODE (à respecter pour chaque modification):
     .query(async ({ ctx, input }) => {
       const db = await getDb();
       if (!db) return [];
+      await assertOwnedProject(db, input.projectId, ctx.user.id); // anti-IDOR
       return db.select().from(chatMessages)
         .where(eq(chatMessages.projectId, input.projectId))
         .orderBy(chatMessages.createdAt, chatMessages.id);
@@ -533,6 +564,7 @@ RÈGLES CODE (à respecter pour chaque modification):
     .mutation(async ({ ctx, input }) => {
       const db = await getDb();
       if (!db) throw new Error("DB unavailable");
+      await assertOwnedVersion(db, input.versionId, ctx.user.id); // anti-IDOR
       await db.update(versions).set({ generatedCode: input.code }).where(eq(versions.id, input.versionId));
       return { success: true };
     }),
