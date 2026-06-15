@@ -47,8 +47,7 @@ export default function PublicFooter() {
         </div>
 
         <div className="border-t border-border/50 pt-6 flex flex-col sm:flex-row items-center justify-between gap-4">
-          <p className="text-xs text-muted-foreground">© 2025 Mar-ia. {t("footer_rights")} <span className="opacity-60">· v{APP_VERSION}</span></p>
-          <p className="text-xs text-muted-foreground">{t("footer_powered")}</p>
+          <p className="text-xs text-muted-foreground">© {new Date().getFullYear()} Mar-ia. {t("footer_rights")} <span className="opacity-60">· v{APP_VERSION}</span></p>
         </div>
       </div>
     </footer>

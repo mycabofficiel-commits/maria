@@ -191,6 +191,8 @@ export default function Projects() {
 
   // ── Options supplémentaires (cochables + sous-menus) ──
   const [extras, setExtras] = useState<string[]>(EXTRA_OPTIONS.filter(o => o.def).map(o => o.id));
+  // Sous-menus dépliés (indépendant du coché — tout replié par défaut pour ne pas masquer les autres options).
+  const [expanded, setExpanded] = useState<string[]>([]);
   const [socialNets, setSocialNets] = useState<string[]>([]);
   const [socialUrls, setSocialUrls] = useState<Record<string, string>>({});
   const [mapsAddress, setMapsAddress] = useState("");
@@ -224,6 +226,7 @@ export default function Projects() {
     setActiveCategory("Tous");
     setForm({ name: "", description: "", siteType: "Landing page", style: "Moderne", languages: ["fr"], colorPalette: "Bleu/Violet", customColors: ["#6366f1", "#8b5cf6", "#a78bfa"], useCustomColors: false, inspirationUrls: [""], framework: "html" });
     setExtras(EXTRA_OPTIONS.filter(o => o.def).map(o => o.id));
+    setExpanded([]);
     setSocialNets([]); setSocialUrls({}); setMapsAddress(""); setSeoKeywords("");
     setVideoLinks([""]); setWhatsappPhone(""); setContactEmail("");
     setNewsletterProvider("simple"); setTestimonialsCount(3); setFaqItems([""]);
@@ -232,6 +235,14 @@ export default function Projects() {
   // ── Helpers options supplémentaires ──
   function toggleExtra(id: string) {
     setExtras(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
+  }
+  // Ouvre/ferme le sous-menu. À l'ouverture, coche l'option (configurer = vouloir l'option).
+  function toggleExpanded(id: string) {
+    setExpanded(prev => {
+      const opening = !prev.includes(id);
+      if (opening) setExtras(e => e.includes(id) ? e : [...e, id]);
+      return opening ? [...prev, id] : prev.filter(x => x !== id);
+    });
   }
   function toggleSocialNet(id: string) {
     setSocialNets(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
@@ -858,27 +869,37 @@ export default function Projects() {
                       {EXTRA_OPTIONS.map(opt => {
                         const active = extras.includes(opt.id);
                         const hasSub = !!opt.sub;
+                        const isOpen = expanded.includes(opt.id);
                         return (
                           <div key={opt.id} className={`rounded-xl border transition-all ${active ? "border-primary/70 bg-primary/5" : "border-border/60"}`}>
-                            <button
-                              type="button"
-                              onClick={() => toggleExtra(opt.id)}
-                              className="w-full flex items-start gap-3 p-2.5 text-left"
-                            >
-                              <span className={`mt-0.5 w-5 h-5 rounded-md flex-shrink-0 flex items-center justify-center border transition-colors ${active ? "bg-primary border-primary" : "border-border/70"}`}>
-                                {active && <Check className="w-3.5 h-3.5 text-primary-foreground" strokeWidth={3} />}
-                              </span>
-                              <div className="min-w-0 flex-1">
-                                <p className={`text-sm font-medium flex items-center gap-1.5 ${active ? "text-primary" : "text-foreground"}`}>
-                                  <span>{opt.icon}</span>{opt.label}
-                                </p>
-                                <p className="text-xs text-muted-foreground">{opt.desc}</p>
-                              </div>
+                            <div className="w-full flex items-start gap-3 p-2.5">
+                              <button
+                                type="button"
+                                onClick={() => toggleExtra(opt.id)}
+                                className="flex items-start gap-3 flex-1 min-w-0 text-left"
+                              >
+                                <span className={`mt-0.5 w-5 h-5 rounded-md flex-shrink-0 flex items-center justify-center border transition-colors ${active ? "bg-primary border-primary" : "border-border/70"}`}>
+                                  {active && <Check className="w-3.5 h-3.5 text-primary-foreground" strokeWidth={3} />}
+                                </span>
+                                <div className="min-w-0 flex-1">
+                                  <p className={`text-sm font-medium flex items-center gap-1.5 ${active ? "text-primary" : "text-foreground"}`}>
+                                    <span>{opt.icon}</span>{opt.label}
+                                  </p>
+                                  <p className="text-xs text-muted-foreground">{opt.desc}</p>
+                                </div>
+                              </button>
                               {hasSub && (
-                                <ChevronDown className={`w-4 h-4 flex-shrink-0 mt-1 text-muted-foreground transition-transform ${active ? "rotate-180" : ""}`} />
+                                <button
+                                  type="button"
+                                  onClick={() => toggleExpanded(opt.id)}
+                                  title={isOpen ? "Replier la configuration" : "Configurer"}
+                                  className="flex-shrink-0 mt-0.5 p-1 rounded-md text-muted-foreground hover:text-foreground hover:bg-muted/40 transition-colors"
+                                >
+                                  <ChevronDown className={`w-4 h-4 transition-transform ${isOpen ? "rotate-180" : ""}`} />
+                                </button>
                               )}
-                            </button>
-                            {active && hasSub && (
+                            </div>
+                            {hasSub && isOpen && (
                               <div className="px-3 pb-3 pt-1 border-t border-border/40">
                                 {renderSubMenu(opt.id)}
                               </div>
