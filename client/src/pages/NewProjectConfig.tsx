@@ -46,6 +46,15 @@ const SOCIAL_NETWORKS = [
   { id:"snapchat",  label:"Snapchat",    icon:"👻" },
 ];
 
+// Services d'emailing proposés dans le sous-menu de l'option "newsletter".
+const NEWSLETTER_PROVIDERS = [
+  { id:"simple",     label:"Simple (sans service)" },
+  { id:"mailchimp",  label:"Mailchimp" },
+  { id:"brevo",      label:"Brevo (ex-Sendinblue)" },
+  { id:"convertkit", label:"ConvertKit" },
+  { id:"mailerlite", label:"MailerLite" },
+];
+
 // Options « auxquelles l'utilisateur ne pense pas forcément ».
 // Cochées → leur `directive` (enrichie par le sous-menu) est injectée dans le prompt.
 // `def: true` = pré-cochée par défaut · `sub: true` = a un sous-menu de configuration.
@@ -68,11 +77,11 @@ const EXTRA_OPTIONS: { id: string; icon: string; label: string; desc: string; de
     directive:"Ajoute une section formulaire de contact (nom, email, message) avec validation côté client et message de confirmation à l'envoi." },
   { id:"whatsapp",     icon:"💬", label:"Bouton WhatsApp",       desc:"Contact rapide flottant", def:false, sub:true,
     directive:"Ajoute un bouton WhatsApp flottant en bas à droite, ouvrant une conversation (lien wa.me)." },
-  { id:"faq",          icon:"❓", label:"FAQ",                   desc:"Questions fréquentes (accordéon)", def:false,
+  { id:"faq",          icon:"❓", label:"FAQ",                   desc:"Tes questions fréquentes (accordéon)", def:false, sub:true,
     directive:"Ajoute une section FAQ avec questions/réponses en accordéon dépliable." },
-  { id:"testimonials", icon:"⭐", label:"Témoignages",           desc:"Avis clients", def:false,
+  { id:"testimonials", icon:"⭐", label:"Témoignages",           desc:"Nombre d'avis clients", def:false, sub:true,
     directive:"Ajoute une section témoignages/avis clients : photos placeholder, noms, et notes en étoiles." },
-  { id:"newsletter",   icon:"📧", label:"Newsletter",            desc:"Inscription email", def:false,
+  { id:"newsletter",   icon:"📧", label:"Newsletter",            desc:"Inscription email + service", def:false, sub:true,
     directive:"Ajoute un bloc d'inscription à la newsletter (champ email + bouton) dans le footer ou une section dédiée." },
   { id:"maps",         icon:"📍", label:"Google Maps",           desc:"Carte + adresse", def:false, sub:true,
     directive:"Ajoute une carte de localisation (iframe Google Maps) dans la section contact." },
@@ -121,6 +130,9 @@ export default function NewProjectConfig() {
   const [videoLinks, setVideoLinks] = useState<string[]>([""]);
   const [whatsappPhone, setWhatsappPhone] = useState("");
   const [contactEmail, setContactEmail] = useState("");
+  const [newsletterProvider, setNewsletterProvider] = useState("simple");
+  const [testimonialsCount, setTestimonialsCount] = useState(3);
+  const [faqItems, setFaqItems] = useState<string[]>([""]);
 
   // Lock framework if template is expo
   const frameworkLocked = template?.framework === "expo";
@@ -181,6 +193,19 @@ export default function NewProjectConfig() {
       case "contact": {
         const em = contactEmail.trim();
         return opt.directive + (em ? ` Les messages doivent être adressés à l'email ${em}.` : "");
+      }
+      case "newsletter": {
+        if (newsletterProvider === "simple") return opt.directive;
+        const label = NEWSLETTER_PROVIDERS.find(p => p.id === newsletterProvider)?.label ?? newsletterProvider;
+        return `Ajoute un bloc d'inscription à la newsletter (champ email + bouton) conçu pour se connecter au service ${label} (structure de formulaire prête à brancher sur ${label}).`;
+      }
+      case "testimonials":
+        return `Ajoute une section témoignages/avis clients comportant ${testimonialsCount} avis (photos placeholder, noms, et notes en étoiles).`;
+      case "faq": {
+        const qs = faqItems.map(q => q.trim()).filter(Boolean);
+        return qs.length
+          ? `Ajoute une section FAQ (accordéon dépliable) répondant précisément à ces questions : ${qs.map(q => `« ${q} »`).join(", ")}.`
+          : opt.directive;
       }
       default:
         return opt.directive;
@@ -265,6 +290,13 @@ export default function NewProjectConfig() {
   function addVideoLink() { setVideoLinks(prev => [...prev, ""]); }
   function removeVideoLink(i: number) {
     setVideoLinks(prev => prev.length > 1 ? prev.filter((_, idx) => idx !== i) : prev);
+  }
+  function setFaqItem(i: number, val: string) {
+    setFaqItems(prev => prev.map((q, idx) => idx === i ? val : q));
+  }
+  function addFaqItem() { setFaqItems(prev => [...prev, ""]); }
+  function removeFaqItem(i: number) {
+    setFaqItems(prev => prev.length > 1 ? prev.filter((_, idx) => idx !== i) : prev);
   }
 
   // Sous-menu de configuration affiché quand une option `sub` est cochée.
@@ -352,6 +384,60 @@ export default function NewProjectConfig() {
             <Label className="text-xs text-muted-foreground mb-1 block">Email de réception des messages (optionnel)</Label>
             <Input value={contactEmail} onChange={e => setContactEmail(e.target.value)}
               placeholder="Ex : contact@monsite.fr" className={inputCls} />
+          </div>
+        );
+      case "newsletter":
+        return (
+          <div>
+            <Label className="text-xs text-muted-foreground mb-1.5 block">Service d'emailing à connecter</Label>
+            <div className="flex flex-wrap gap-2">
+              {NEWSLETTER_PROVIDERS.map(p => {
+                const on = newsletterProvider === p.id;
+                return (
+                  <button key={p.id} onClick={() => setNewsletterProvider(p.id)}
+                    className={`px-2.5 py-1.5 rounded-full border text-xs transition-all ${on?"border-primary bg-primary/10 text-primary font-medium":"border-border/60 text-muted-foreground hover:border-border"}`}>
+                    {p.label}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        );
+      case "testimonials":
+        return (
+          <div>
+            <Label className="text-xs text-muted-foreground mb-1.5 block">Nombre d'avis à afficher</Label>
+            <div className="flex flex-wrap gap-2">
+              {[2, 3, 4, 6, 8].map(n => {
+                const on = testimonialsCount === n;
+                return (
+                  <button key={n} onClick={() => setTestimonialsCount(n)}
+                    className={`w-9 h-9 rounded-lg border text-sm transition-all ${on?"border-primary bg-primary/10 text-primary font-semibold":"border-border/60 text-muted-foreground hover:border-border"}`}>
+                    {n}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        );
+      case "faq":
+        return (
+          <div className="space-y-2">
+            <Label className="text-xs text-muted-foreground block">Tes questions (laisse vide pour que Mar-ia les invente)</Label>
+            {faqItems.map((q, i) => (
+              <div key={i} className="flex items-center gap-2">
+                <Input value={q} onChange={e => setFaqItem(i, e.target.value)}
+                  placeholder={`Question ${i + 1} — ex : Quels sont vos délais ?`} className={inputCls} />
+                {faqItems.length > 1 && (
+                  <button onClick={() => removeFaqItem(i)} className="p-1.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted/40 flex-shrink-0" title="Retirer">
+                    <X className="w-4 h-4" />
+                  </button>
+                )}
+              </div>
+            ))}
+            <button onClick={addFaqItem} className="flex items-center gap-1 text-xs text-primary hover:underline">
+              <Plus className="w-3.5 h-3.5" /> Ajouter une question
+            </button>
           </div>
         );
       default:
