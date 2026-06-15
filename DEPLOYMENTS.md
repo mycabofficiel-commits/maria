@@ -2,6 +2,7 @@
 
 | Date (UTC) | Version | Commit (avant) | Message |
 |---|---|---|---|
+| 2026-06-15 12:45 | v1.2.4 | 4feb848 | sites generes: annee courante auto + credit Mar-ia.net obligatoire (retirable via chat pour comptes payants) ; prompt renforce langues fonctionnelles + logos reseaux sociaux en SVG inline |
 | 2026-06-15 12:12 | v1.2.3 | 5b55c08 | UI: footer annee dynamique + suppression mention Anthropic ; modal nouveau projet : sous-menus options replies par defaut (SEO ne masque plus les autres) |
 | 2026-06-15 11:58 | v1.2.2 | f8cc93c | fix: lecture de package.json dans vite.config protegee par try/catch (ne crashe plus le serveur bundle au demarrage Render) |
 | 2026-06-15 11:52 | v1.2.1 | 55e146d | fix: ouvre le port Render immediatement (0.0.0.0 + PORT exact) et migrations DB apres le listen pour ne plus echouer le scan de port |

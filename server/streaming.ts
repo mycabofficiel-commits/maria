@@ -245,6 +245,46 @@ function ensureHtmlClosed(code: string): string {
   return c;
 }
 
+// ── Post-traitement des sites générés (s'applique à TOUS les projets) ─────────
+
+/**
+ * Force l'année EN COURS dans les copyrights ("© 2025" → "© <année>").
+ * Les LLM ont une date d'entraînement figée et écrivent souvent une vieille année.
+ */
+function applyCurrentYear(html: string): string {
+  if (!html) return html;
+  const year = String(new Date().getFullYear());
+  return html.replace(/(©|&copy;|Copyright\s*©?)\s*(\d{4})/gi, (_m, sym) => `${sym} ${year}`);
+}
+
+// Détecte le crédit déjà présent : soit notre classe marqueur, soit la phrase
+// « Créé avec … Mar-ia.net » même avec une balise <a> entre les deux.
+const MARIA_CREDIT_RE = /maria-credit|cr[ée]{1,2}\s+avec[\s\S]{0,60}mar-?ia\.net/i;
+
+/**
+ * Garantit le crédit « Créé avec Mar-ia.net » dans le footer du site.
+ * - `canOmit=false` (génération, comptes gratuits) → réinjecté s'il manque.
+ * - `canOmit=true`  (comptes payants en édition chat) → laissé tel quel,
+ *   ils peuvent donc le retirer via le chat.
+ */
+function enforceMariaCredit(html: string, canOmit: boolean): string {
+  if (!html || html.length < 50) return html;
+  if (MARIA_CREDIT_RE.test(html)) return html; // déjà présent
+  if (canOmit) return html;                     // payant : libre de l'enlever
+  const badge = `<div class="maria-credit" style="text-align:center;padding:12px;font-size:12px;line-height:1.4;opacity:.7">Créé avec <a href="https://mar-ia.net" target="_blank" rel="noopener" style="color:inherit;font-weight:600;text-decoration:none">Mar-ia.net</a></div>`;
+  if (/<\/footer>/i.test(html)) return html.replace(/<\/footer>/i, `${badge}</footer>`);
+  if (/<\/body>/i.test(html))   return html.replace(/<\/body>/i, `${badge}</body>`);
+  return html; // pas un document HTML (ex: Expo/React Native) → on n'ajoute rien
+}
+
+/**
+ * Post-traitement complet d'un site HTML avant sauvegarde.
+ * `canOmitCredit` = compte payant en édition (peut retirer le crédit).
+ */
+function postProcessSite(html: string, canOmitCredit: boolean): string {
+  return enforceMariaCredit(applyCurrentYear(html), canOmitCredit);
+}
+
 /**
  * Repairs TRUNCATED HTML by asking the LLM to CONTINUE from where it stopped.
  * Regenerating the whole file re-hits the same max_tokens ceiling and truncates
@@ -1500,7 +1540,7 @@ STRUCTURE MINIMALE OBLIGATOIRE :
 4. Section hero : titre H1 impactant + sous-titre + 2 boutons CTA + visuel (image ou gradient)
 5. 3 à 5 sections de contenu (adapte au type de site : services, avantages, process, galerie, tarifs, équipe, témoignages…)
 6. Section contact : formulaire avec validation JS
-7. Footer : logo, liens, copyright, icônes réseaux sociaux SVG
+7. Footer : logo, liens, copyright « © ${new Date().getFullYear()} ${projectName}. Tous droits réservés. », icônes réseaux sociaux (SVG inline) + crédit « Créé avec Mar-ia.net »
 
 QUALITÉ ATTENDUE :
 • Applique le design system (variables CSS) de façon cohérente partout
@@ -1509,6 +1549,12 @@ QUALITÉ ATTENDUE :
 • Mobile-first avec les 3 breakpoints
 • Contenu réaliste, spécifique au sujet (PAS de texte générique "lorem ipsum")
 • Sections avec assez de contenu pour ressembler à un vrai site (4-6 items par grille)
+
+══ RÈGLES IMPÉRATIVES — FOOTER, LANGUES, RÉSEAUX SOCIAUX ══
+• COPYRIGHT : utilise TOUJOURS l'année en cours = ${new Date().getFullYear()}. JAMAIS une année passée.
+• CRÉDIT OBLIGATOIRE : ajoute TOUJOURS tout en bas du footer le crédit « Créé avec <a href="https://mar-ia.net" target="_blank" rel="noopener">Mar-ia.net</a> ». Ne l'omets sous aucun prétexte.
+• RÉSEAUX SOCIAUX : chaque icône = un <svg viewBox="0 0 24 24"> INLINE avec le vrai <path> de la marque (Instagram, Facebook, X, LinkedIn, TikTok, YouTube…), 20-24px, fill="currentColor". INTERDIT : <i class="fa-…"> (pas de CDN chargé), emojis en guise de logo, ou <img src> externe susceptible de renvoyer 404. Les logos DOIVENT s'afficher sans dépendance externe.
+• LANGUES : LANGUE demandée = « ${language || "fr"} ». Si PLUSIEURS langues sont listées, ajoute un sélecteur de langue RÉELLEMENT FONCTIONNEL dans le header (boutons FR/EN/ES…) qui bascule TOUT le texte du site via JS — méthode : attributs data-i18n + objet JS de traductions, OU blocs .lang-xx affichés/masqués. Traduis l'intégralité du contenu (pas seulement le menu), langue par défaut = la première listée.
 
 Retourne UNIQUEMENT le code HTML complet, sans explication, sans markdown, sans backticks.`;
 
@@ -1645,6 +1691,9 @@ Retourne UNIQUEMENT le code HTML, sans explication, sans markdown, sans backtick
           }
         }
       }
+
+      // Post-traitement : année courante + crédit Mar-ia obligatoire (génération = toujours présent).
+      fullCode = postProcessSite(fullCode, false);
 
       // Save version
       const [versionResult] = await db.insert(versions).values({
@@ -2735,6 +2784,11 @@ RAPPEL ICÔNES : uniquement des emojis`;
 
         if (agentResponse.action === "modify" && agentResponse.code) {
           const nextVersionNumber = totalVersions + 1;
+          // Sites web (pas Expo) : année courante + crédit Mar-ia. Les comptes
+          // payants peuvent retirer le crédit via le chat ; les gratuits non.
+          if (!isExpo) {
+            agentResponse.code = postProcessSite(agentResponse.code, userPlan !== "free");
+          }
           const [versionResult] = await db.insert(versions).values({
             projectId, userId: user.id,
             versionNumber: nextVersionNumber,
@@ -3119,6 +3173,9 @@ Retourne UNIQUEMENT ce JSON brut (pas de markdown, pas de \`\`\`):
       ].join("\n\n");
 
       pipelineLog('debug:done', { tokensUsed: totalTokens, durationMs, hasVisual: !!visualFindings, residualIssues: remainingIssues.length });
+
+      // Année courante + crédit Mar-ia (payant peut le retirer via chat).
+      fixedCode = postProcessSite(fixedCode, (debugUserRow[0]?.plan || "free") !== "free");
 
       // Save new version
       const [versionResult] = await db.insert(versions).values({
