@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
-import { Sparkles, ArrowLeft, Loader2, Lock, Globe, Palette, Shield, Languages, Layers, Info, ListChecks, Check } from "lucide-react";
+import { Sparkles, ArrowLeft, Loader2, Lock, Globe, Palette, Shield, Languages, Layers, Info, ListChecks, Check, ChevronDown, Plus, X } from "lucide-react";
 import { TEMPLATES } from "@/data/templates";
 import { TemplatePreviewThumb } from "@/components/TemplatePreviewThumb";
 
@@ -34,34 +34,48 @@ const LANG_OPTIONS = [
 
 const STYLE_OPTIONS = ["Moderne","Minimaliste","Luxe","Corporate","Startup","Premium"];
 
+// Réseaux sociaux proposés dans le sous-menu de l'option "social".
+const SOCIAL_NETWORKS = [
+  { id:"instagram", label:"Instagram",   icon:"📸" },
+  { id:"facebook",  label:"Facebook",    icon:"📘" },
+  { id:"x",         label:"X (Twitter)", icon:"✖️" },
+  { id:"linkedin",  label:"LinkedIn",    icon:"💼" },
+  { id:"tiktok",    label:"TikTok",      icon:"🎵" },
+  { id:"youtube",   label:"YouTube",     icon:"▶️" },
+  { id:"pinterest", label:"Pinterest",   icon:"📌" },
+  { id:"snapchat",  label:"Snapchat",    icon:"👻" },
+];
+
 // Options « auxquelles l'utilisateur ne pense pas forcément ».
-// Cochées → leur `directive` est injectée dans le prompt de génération.
-// `def: true` = pré-cochée par défaut (besoins quasi universels).
-const EXTRA_OPTIONS: { id: string; icon: string; label: string; desc: string; def: boolean; directive: string }[] = [
+// Cochées → leur `directive` (enrichie par le sous-menu) est injectée dans le prompt.
+// `def: true` = pré-cochée par défaut · `sub: true` = a un sous-menu de configuration.
+const EXTRA_OPTIONS: { id: string; icon: string; label: string; desc: string; def: boolean; sub?: boolean; directive: string }[] = [
   { id:"footer",       icon:"📄", label:"Footer complet",        desc:"Liens, coordonnées, copyright", def:true,
     directive:"Ajoute un footer complet et soigné : navigation, coordonnées, copyright avec le nom exact du site, et liens vers les pages légales." },
   { id:"animations",   icon:"✨", label:"Animations",            desc:"Apparitions au scroll, transitions", def:true,
     directive:"Ajoute des animations modernes et fluides : apparition des sections au scroll (fade/slide), transitions au survol, micro-interactions sur les boutons. Subtiles et professionnelles, jamais clinquantes." },
-  { id:"seo",          icon:"🔍", label:"SEO optimisé",          desc:"Meta tags, Open Graph", def:true,
+  { id:"seo",          icon:"🔍", label:"SEO optimisé",          desc:"Meta tags, Open Graph, mots-clés", def:true, sub:true,
     directive:"Optimise le SEO : balises meta (title, description), Open Graph + Twitter Card, structure sémantique (un seul h1, hiérarchie h2/h3), attributs alt sur toutes les images." },
+  { id:"video",        icon:"▶️", label:"Vidéo YouTube",         desc:"Intègre une ou plusieurs vidéos", def:false, sub:true,
+    directive:"Intègre une section vidéo avec un lecteur YouTube responsive." },
   { id:"scrolltop",    icon:"⬆️", label:"Retour en haut",        desc:"Bouton scroll-to-top", def:true,
     directive:"Ajoute un bouton « retour en haut » discret qui apparaît après avoir scrollé." },
-  { id:"social",       icon:"📱", label:"Réseaux sociaux",       desc:"Instagram, Facebook, X, LinkedIn…", def:false,
-    directive:"Ajoute des icônes de réseaux sociaux (Instagram, Facebook, X/Twitter, LinkedIn, TikTok) cliquables dans le header et/ou le footer (liens placeholder #)." },
+  { id:"social",       icon:"📱", label:"Réseaux sociaux",       desc:"Choisis les réseaux + leurs liens", def:false, sub:true,
+    directive:"Ajoute des icônes de réseaux sociaux cliquables dans le header et/ou le footer." },
   { id:"cookies",      icon:"🍪", label:"Bandeau cookies",       desc:"Consentement RGPD", def:false,
     directive:"Ajoute un bandeau de consentement cookies (RGPD) avec boutons Accepter/Refuser, choix mémorisé en localStorage et masqué aux visites suivantes." },
-  { id:"contact",      icon:"✉️", label:"Formulaire de contact", desc:"Nom, email, message", def:false,
+  { id:"contact",      icon:"✉️", label:"Formulaire de contact", desc:"Nom, email, message", def:false, sub:true,
     directive:"Ajoute une section formulaire de contact (nom, email, message) avec validation côté client et message de confirmation à l'envoi." },
-  { id:"whatsapp",     icon:"💬", label:"Bouton WhatsApp",       desc:"Contact rapide flottant", def:false,
-    directive:"Ajoute un bouton WhatsApp flottant en bas à droite, ouvrant une conversation (lien wa.me placeholder)." },
+  { id:"whatsapp",     icon:"💬", label:"Bouton WhatsApp",       desc:"Contact rapide flottant", def:false, sub:true,
+    directive:"Ajoute un bouton WhatsApp flottant en bas à droite, ouvrant une conversation (lien wa.me)." },
   { id:"faq",          icon:"❓", label:"FAQ",                   desc:"Questions fréquentes (accordéon)", def:false,
     directive:"Ajoute une section FAQ avec questions/réponses en accordéon dépliable." },
   { id:"testimonials", icon:"⭐", label:"Témoignages",           desc:"Avis clients", def:false,
     directive:"Ajoute une section témoignages/avis clients : photos placeholder, noms, et notes en étoiles." },
   { id:"newsletter",   icon:"📧", label:"Newsletter",            desc:"Inscription email", def:false,
     directive:"Ajoute un bloc d'inscription à la newsletter (champ email + bouton) dans le footer ou une section dédiée." },
-  { id:"maps",         icon:"📍", label:"Google Maps",           desc:"Carte de localisation", def:false,
-    directive:"Ajoute une carte de localisation (iframe Google Maps placeholder) dans la section contact." },
+  { id:"maps",         icon:"📍", label:"Google Maps",           desc:"Carte + adresse", def:false, sub:true,
+    directive:"Ajoute une carte de localisation (iframe Google Maps) dans la section contact." },
   { id:"legal",        icon:"⚖️", label:"Pages légales",         desc:"Mentions, CGV, confidentialité", def:false,
     directive:"Ajoute des pages/sections légales (mentions légales, politique de confidentialité, CGV) accessibles depuis le footer." },
   { id:"loader",       icon:"⏳", label:"Écran de chargement",   desc:"Preloader animé", def:false,
@@ -99,6 +113,14 @@ export default function NewProjectConfig() {
   const [darkMode, setDarkMode] = useState(template?.colorPalette === "violet" || template?.colorPalette === "indigo" || template?.colorPalette === "monochrome" || template?.colorPalette === "orange");
   const [framework, setFramework] = useState(template?.framework ?? "html");
   const [extras, setExtras] = useState<string[]>(EXTRA_OPTIONS.filter(o => o.def).map(o => o.id));
+  // Configuration des sous-menus.
+  const [socialNets, setSocialNets] = useState<string[]>([]);
+  const [socialUrls, setSocialUrls] = useState<Record<string, string>>({});
+  const [mapsAddress, setMapsAddress] = useState("");
+  const [seoKeywords, setSeoKeywords] = useState("");
+  const [videoLinks, setVideoLinks] = useState<string[]>([""]);
+  const [whatsappPhone, setWhatsappPhone] = useState("");
+  const [contactEmail, setContactEmail] = useState("");
 
   // Lock framework if template is expo
   const frameworkLocked = template?.framework === "expo";
@@ -120,6 +142,50 @@ export default function NewProjectConfig() {
     },
     onError: (err) => toast.error(err.message),
   });
+
+  // Directive d'une option, enrichie par son sous-menu de configuration.
+  function directiveFor(opt: typeof EXTRA_OPTIONS[number]): string {
+    switch (opt.id) {
+      case "social": {
+        const nets = socialNets.length
+          ? socialNets.map(id => {
+              const n = SOCIAL_NETWORKS.find(x => x.id === id);
+              const url = socialUrls[id]?.trim();
+              return url ? `${n?.label} (${url})` : (n?.label ?? id);
+            }).join(", ")
+          : "Instagram, Facebook";
+        return `Ajoute des icônes de réseaux sociaux cliquables (header et/ou footer) pour : ${nets}.`;
+      }
+      case "maps": {
+        const addr = mapsAddress.trim();
+        return addr
+          ? `Ajoute une carte Google Maps (iframe) centrée sur l'adresse « ${addr} » dans la section contact, avec l'adresse affichée en texte juste à côté.`
+          : opt.directive;
+      }
+      case "seo": {
+        const kw = seoKeywords.trim();
+        return opt.directive + (kw ? ` Mots-clés / hashtags à cibler dans les balises et le contenu : ${kw}.` : "");
+      }
+      case "video": {
+        const links = videoLinks.map(l => l.trim()).filter(Boolean);
+        return links.length
+          ? `Intègre ${links.length > 1 ? "les vidéos YouTube suivantes" : "la vidéo YouTube suivante"} dans une section dédiée, avec un lecteur responsive (embed) : ${links.join(", ")}.`
+          : opt.directive;
+      }
+      case "whatsapp": {
+        const ph = whatsappPhone.trim();
+        return ph
+          ? `Ajoute un bouton WhatsApp flottant en bas à droite ouvrant une conversation avec le numéro ${ph} (lien wa.me).`
+          : opt.directive;
+      }
+      case "contact": {
+        const em = contactEmail.trim();
+        return opt.directive + (em ? ` Les messages doivent être adressés à l'email ${em}.` : "");
+      }
+      default:
+        return opt.directive;
+    }
+  }
 
   // Build final prompt enriched with user choices
   function buildFinalPrompt() {
@@ -150,7 +216,7 @@ export default function NewProjectConfig() {
     // Options supplémentaires cochées
     const chosen = EXTRA_OPTIONS.filter(o => extras.includes(o.id));
     if (chosen.length > 0) {
-      final += `\n\nOptions à intégrer impérativement :\n` + chosen.map(o => `- ${o.directive}`).join("\n");
+      final += `\n\nOptions à intégrer impérativement :\n` + chosen.map(o => `- ${directiveFor(o)}`).join("\n");
     }
 
     return final;
@@ -188,6 +254,109 @@ export default function NewProjectConfig() {
 
   function toggleExtra(id: string) {
     setExtras(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
+  }
+
+  function toggleSocialNet(id: string) {
+    setSocialNets(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
+  }
+  function setVideoLink(i: number, val: string) {
+    setVideoLinks(prev => prev.map((l, idx) => idx === i ? val : l));
+  }
+  function addVideoLink() { setVideoLinks(prev => [...prev, ""]); }
+  function removeVideoLink(i: number) {
+    setVideoLinks(prev => prev.length > 1 ? prev.filter((_, idx) => idx !== i) : prev);
+  }
+
+  // Sous-menu de configuration affiché quand une option `sub` est cochée.
+  function renderSubMenu(id: string) {
+    const inputCls = "bg-input border-border/60 text-foreground text-sm h-9";
+    switch (id) {
+      case "social":
+        return (
+          <div className="space-y-3">
+            <p className="text-xs text-muted-foreground">Choisis les réseaux à afficher (et leur lien, optionnel) :</p>
+            <div className="flex flex-wrap gap-2">
+              {SOCIAL_NETWORKS.map(n => {
+                const on = socialNets.includes(n.id);
+                return (
+                  <button key={n.id} onClick={() => toggleSocialNet(n.id)}
+                    className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-full border text-xs transition-all ${on?"border-primary bg-primary/10 text-primary font-medium":"border-border/60 text-muted-foreground hover:border-border"}`}>
+                    <span>{n.icon}</span><span>{n.label}</span>
+                  </button>
+                );
+              })}
+            </div>
+            {socialNets.length > 0 && (
+              <div className="space-y-2">
+                {socialNets.map(nid => {
+                  const n = SOCIAL_NETWORKS.find(x => x.id === nid);
+                  return (
+                    <div key={nid} className="flex items-center gap-2">
+                      <span className="text-xs w-24 flex-shrink-0 text-muted-foreground flex items-center gap-1">{n?.icon} {n?.label}</span>
+                      <Input value={socialUrls[nid] ?? ""} onChange={e => setSocialUrls(prev => ({ ...prev, [nid]: e.target.value }))}
+                        placeholder="Lien (optionnel)" className={inputCls} />
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        );
+      case "maps":
+        return (
+          <div>
+            <Label className="text-xs text-muted-foreground mb-1 block">Adresse à afficher sur la carte</Label>
+            <Input value={mapsAddress} onChange={e => setMapsAddress(e.target.value)}
+              placeholder="Ex : 12 rue de la Paix, 75002 Paris" className={inputCls} />
+          </div>
+        );
+      case "seo":
+        return (
+          <div>
+            <Label className="text-xs text-muted-foreground mb-1 block">Mots-clés / hashtags à cibler (séparés par des virgules)</Label>
+            <Input value={seoKeywords} onChange={e => setSeoKeywords(e.target.value)}
+              placeholder="Ex : VTC Paris, chauffeur privé, réservation en ligne" className={inputCls} />
+          </div>
+        );
+      case "video":
+        return (
+          <div className="space-y-2">
+            <Label className="text-xs text-muted-foreground block">Lien(s) de vidéo YouTube</Label>
+            {videoLinks.map((l, i) => (
+              <div key={i} className="flex items-center gap-2">
+                <Input value={l} onChange={e => setVideoLink(i, e.target.value)}
+                  placeholder="https://www.youtube.com/watch?v=…" className={inputCls} />
+                {videoLinks.length > 1 && (
+                  <button onClick={() => removeVideoLink(i)} className="p-1.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted/40 flex-shrink-0" title="Retirer">
+                    <X className="w-4 h-4" />
+                  </button>
+                )}
+              </div>
+            ))}
+            <button onClick={addVideoLink} className="flex items-center gap-1 text-xs text-primary hover:underline">
+              <Plus className="w-3.5 h-3.5" /> Ajouter une vidéo
+            </button>
+          </div>
+        );
+      case "whatsapp":
+        return (
+          <div>
+            <Label className="text-xs text-muted-foreground mb-1 block">Numéro WhatsApp (format international)</Label>
+            <Input value={whatsappPhone} onChange={e => setWhatsappPhone(e.target.value)}
+              placeholder="Ex : +33 6 12 34 56 78" className={inputCls} />
+          </div>
+        );
+      case "contact":
+        return (
+          <div>
+            <Label className="text-xs text-muted-foreground mb-1 block">Email de réception des messages (optionnel)</Label>
+            <Input value={contactEmail} onChange={e => setContactEmail(e.target.value)}
+              placeholder="Ex : contact@monsite.fr" className={inputCls} />
+          </div>
+        );
+      default:
+        return null;
+    }
   }
 
   // ── Render ──────────────────────────────────────────────────────────────
@@ -373,26 +542,36 @@ export default function NewProjectConfig() {
             </Section>
 
             {/* Options supplémentaires */}
-            <Section icon={<ListChecks className="w-4 h-4" />} title="Options supplémentaires" subtitle="Des éléments souvent oubliés — coche ceux que Mar-ia doit intégrer">
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+            <Section icon={<ListChecks className="w-4 h-4" />} title="Options supplémentaires" subtitle="Des éléments souvent oubliés — coche ceux que Mar-ia doit intégrer. Certains se configurent en détail.">
+              <div className="space-y-2">
                 {EXTRA_OPTIONS.map(opt => {
                   const active = extras.includes(opt.id);
+                  const hasSub = !!opt.sub;
                   return (
-                    <button
-                      key={opt.id}
-                      onClick={() => toggleExtra(opt.id)}
-                      className={`flex items-start gap-3 p-3 rounded-xl border text-left transition-all ${active?"border-primary bg-primary/8":"border-border/60 hover:border-border"}`}
-                    >
-                      <span className={`mt-0.5 w-5 h-5 rounded-md flex-shrink-0 flex items-center justify-center border transition-colors ${active?"bg-primary border-primary":"border-border/70"}`}>
-                        {active && <Check className="w-3.5 h-3.5 text-primary-foreground" strokeWidth={3} />}
-                      </span>
-                      <div className="min-w-0">
-                        <p className={`text-sm font-medium flex items-center gap-1.5 ${active?"text-primary":"text-foreground"}`}>
-                          <span>{opt.icon}</span>{opt.label}
-                        </p>
-                        <p className="text-xs text-muted-foreground">{opt.desc}</p>
-                      </div>
-                    </button>
+                    <div key={opt.id} className={`rounded-xl border transition-all ${active?"border-primary/70 bg-primary/5":"border-border/60"}`}>
+                      <button
+                        onClick={() => toggleExtra(opt.id)}
+                        className="w-full flex items-start gap-3 p-3 text-left"
+                      >
+                        <span className={`mt-0.5 w-5 h-5 rounded-md flex-shrink-0 flex items-center justify-center border transition-colors ${active?"bg-primary border-primary":"border-border/70"}`}>
+                          {active && <Check className="w-3.5 h-3.5 text-primary-foreground" strokeWidth={3} />}
+                        </span>
+                        <div className="min-w-0 flex-1">
+                          <p className={`text-sm font-medium flex items-center gap-1.5 ${active?"text-primary":"text-foreground"}`}>
+                            <span>{opt.icon}</span>{opt.label}
+                          </p>
+                          <p className="text-xs text-muted-foreground">{opt.desc}</p>
+                        </div>
+                        {hasSub && (
+                          <ChevronDown className={`w-4 h-4 flex-shrink-0 mt-1 text-muted-foreground transition-transform ${active?"rotate-180":""}`} />
+                        )}
+                      </button>
+                      {active && hasSub && (
+                        <div className="px-3 pb-3 pt-1 border-t border-border/40">
+                          {renderSubMenu(opt.id)}
+                        </div>
+                      )}
+                    </div>
                   );
                 })}
               </div>
