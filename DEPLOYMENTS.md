@@ -2,6 +2,7 @@
 
 | Date (UTC) | Version | Commit (avant) | Message |
 |---|---|---|---|
+| 2026-06-15 21:49 | v1.2.10 | 8098ac3 | fix génération image: le prompt DALL-E était le plan structuré du raisonneur (images hors-sujet) -> on fabrique maintenant un vrai prompt visuel a partir de la demande utilisateur (craftImagePrompt via DeepSeek), fallback nettoye |
 | 2026-06-15 21:19 | v1.2.9 | c3393c1 | feat: vraie generation d'image IA (OpenAI DALL-E 3) sur 'genere/cree une image', hebergee par Mar-ia via /img/:id ; rotation Unsplash amelioree sur 'remplace cette photo' ; fix validateur src (preserve /img/:id) |
 | 2026-06-15 15:43 | v1.2.8 | 9c107f6 | feat: notation 👍/👎 sous chaque reponse de l'IA dans le chat - 👎 propose de corriger, feedback stocke en DB (colonnes feedback/feedbackReason via ensureSchema) |
 | 2026-06-15 15:07 | v1.2.7 | cf10689 | fix chat: le raisonneur recevait un extrait de code coupe a 8000 chars (sans </html>) et croyait le site tronque - on passe maintenant jusqu'a 45000 chars et tout extrait est marque comme extrait, plus de faux 'code tronque, pas de suite' |

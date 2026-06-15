@@ -537,6 +537,35 @@ function wantsImageGeneration(msg: string): boolean {
 }
 
 /**
+ * Transforme la demande de l'utilisateur en un prompt VISUEL propre pour DALL·E.
+ * Indispensable : sinon on envoyait le plan structuré du raisonneur ("Demande:…
+ * Actions prévues:…") à DALL·E → image totalement hors-sujet. Fallback = message nettoyé.
+ */
+async function craftImagePrompt(
+  message: string,
+  ctx: { projectName?: string | null; siteType?: string | null },
+  key: string,
+  provider: Provider,
+  model: string,
+): Promise<string> {
+  const fallback = message
+    .replace(/\b(g[ée]n[èe]r\w*|cr[ée]{1,2}\w*|dessin\w*|fabriqu\w*|remplac\w*|chang\w*|mets?|ajoute|generate|create)\b/gi, "")
+    .replace(/\b(une?|des|la|le|les|cette|mon|ma|nouvelle?|autre|image|photo|illustration|visuel|pour|dans|sur|le hero|la page d'accueil)\b/gi, " ")
+    .replace(/\s+/g, " ").trim();
+  try {
+    const sys = `Tu convertis la demande d'un utilisateur en UN prompt pour un générateur d'images (DALL·E 3).
+Réponds UNIQUEMENT par la description visuelle de l'image à produire, en une phrase riche : sujet précis, cadrage, style photographique, lumière, ambiance, couleurs.
+INTERDIT : les mots "génère/crée/image/photo", les guillemets, tout texte à afficher dans l'image. Si un lieu/sujet est nommé (ex: Tour Eiffel), il est PRIORITAIRE.`;
+    const usr = `Contexte du site : "${ctx.projectName || ""}" (${ctx.siteType || "site web"}).\nDemande de l'utilisateur : "${message}".\nDécris l'image à générer.`;
+    const r = await tryCallSync(provider, model, key, sys, usr, 220);
+    const t = (r?.text || "").trim().replace(/^["'«»\s]+|["'«»\s]+$/g, "");
+    return t.length > 8 ? t : (fallback.length > 4 ? fallback : message);
+  } catch {
+    return fallback.length > 4 ? fallback : message;
+  }
+}
+
+/**
  * Génère une image via l'API OpenAI (DALL·E 3) et renvoie le base64.
  * Renvoie null si pas de clé / échec (le pipeline retombe alors sur Unsplash).
  */
@@ -2351,8 +2380,16 @@ SI UNE IMAGE EST JOINTE (priorité absolue) :
       let generatedImageDirective = "";
       if (!isExpo && wantsImageGeneration(message)) {
         if (openaiKey) {
+          sseWrite(res, "progress", { agent: "DALL·E 3", step: "Préparation du visuel…", icon: "🎨" });
+          // On fabrique un prompt VISUEL propre à partir de la demande (PAS le plan
+          // structuré, qui donnait des images hors-sujet). DeepSeek = workhorse dispo.
+          const imgPrompt = (await craftImagePrompt(
+            message,
+            { projectName: project[0].name, siteType: project[0].siteType },
+            deepseekKey, "deepseek", "deepseek-chat",
+          )).slice(0, 900);
+          pipelineLog('image:prompt', { prompt: imgPrompt.slice(0, 160) });
           sseWrite(res, "progress", { agent: "DALL·E 3", step: "Génération de l'image…", icon: "🎨" });
-          const imgPrompt = (validatedSummary && validatedSummary.length > 10 ? validatedSummary : message).slice(0, 900);
           const gen = await generateImageOpenAI(openaiKey, imgPrompt);
           if (gen) {
             try {
