@@ -1,5 +1,10 @@
 export const APP_NAME = "Mar-ia";
 
+// Version de l'app, injectée au build depuis package.json via vite.config.ts (define __APP_VERSION__).
+declare const __APP_VERSION__: string;
+export const APP_VERSION: string =
+  typeof __APP_VERSION__ !== "undefined" ? __APP_VERSION__ : "dev";
+
 export function getLoginUrl(): string {
   const oauthUrl = import.meta.env.VITE_OAUTH_PORTAL_URL;
   const appId = import.meta.env.VITE_APP_ID;

@@ -1,6 +1,6 @@
 import { Link, useLocation } from "wouter";
 import { useAuth } from "@/_core/hooks/useAuth";
-import { getLoginUrl } from "@/const";
+import { getLoginUrl, APP_VERSION } from "@/const";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import {
@@ -145,6 +145,7 @@ export default function AppLayout({ children, title }: AppLayoutProps) {
                   <div className={`text-xs ${isUltra ? "text-amber-400 font-semibold" : `capitalize ${planColors[(user as any)?.plan || "free"]}`}`}>
                     {isUltra ? "⚡ Ultra" : `Plan ${(user as any)?.plan || "free"}`}
                   </div>
+                  <div className="text-[10px] text-muted-foreground/70 mt-0.5">v{APP_VERSION}</div>
                 </div>
               </button>
             </DropdownMenuTrigger>
