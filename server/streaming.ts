@@ -1857,8 +1857,11 @@ Retourne UNIQUEMENT le code HTML, sans explication, sans markdown, sans backtick
     res.flushHeaders();
 
     const fullCode = currentVersion[0].generatedCode || "";
-    // 6000 chars gives the agent enough context to identify existing classes/functions/variables
-    const codeSnippet = fullCode.slice(0, 6000);
+    // Extrait pour la discussion. Marqué explicitement comme extrait si coupé,
+    // pour que l'IA ne croie pas que le site est tronqué.
+    const codeSnippet = fullCode.length > 14000
+      ? fullCode.slice(0, 14000) + "\n\n[⚠️ EXTRAIT — le site complet est plus long et bien fermé par </html>. Ce n'est pas un code tronqué.]"
+      : fullCode;
 
     // ── PHASE DISCUSS : Réflexion projet — aucune modification de code ────
     if (phase === "discuss") {
@@ -2157,7 +2160,14 @@ Les deux fonctionnent dans l'aperçu (les ancres #id déclenchent un scroll flui
       const consoleCtxReason = consoleErrors && consoleErrors.length > 0
         ? `\n\n⚠️ ERREURS JS DÉTECTÉES DANS LE NAVIGATEUR (console de la preview) :\n${consoleErrors.slice(0, 8).map((e, i) => `${i + 1}. ${e}`).join('\n')}\nSi ces erreurs sont liées à la demande, inclus-les dans ton diagnostic et dans les actions prévues.`
         : '';
-      const codeForReason = isExpo ? fullCode.slice(0, 12000) : fullCode.slice(0, 8000);
+      // On passe BEAUCOUP plus de code au raisonneur (un extrait de 8000 ne finit
+      // jamais par </html> → l'IA croyait à tort que le site était tronqué et
+      // disait « je n'ai pas la suite »). Si on doit couper, on le marque comme
+      // un EXTRAIT explicite pour ne pas confondre avec un vrai code tronqué.
+      const reasonCodeCap = isExpo ? 24000 : 45000;
+      const codeForReason = fullCode.length > reasonCodeCap
+        ? fullCode.slice(0, reasonCodeCap) + "\n\n[⚠️ EXTRAIT pour analyse uniquement — le code réel du site est plus long et se termine correctement par </html>. Ce n'est PAS un code tronqué : ne dis jamais qu'il manque la suite. Pour toute modification, l'exécuteur disposera du code COMPLET.]"
+        : fullCode;
 
       // ── Historique de conversation (CONTEXTE) ──────────────────────────────
       // Sans ça, le raisonneur oublie tout ce qui a été dit aux tours précédents
