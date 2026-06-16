@@ -352,7 +352,8 @@ export function registerAuthRoutes(app: Express) {
 
     const cookieOptions = getSessionCookieOptions(req);
     res.cookie(COOKIE_NAME, sessionToken, { ...cookieOptions, maxAge: ONE_YEAR_MS });
-    res.json({ success: true });
+    // `token` renvoyé pour les clients mobiles (à stocker + envoyer en Authorization: Bearer).
+    res.json({ success: true, token: sessionToken });
   });
 
   // ── POST /api/auth/register (kept for compatibility) ──────────────────────
@@ -399,7 +400,8 @@ export function registerAuthRoutes(app: Express) {
 
     const cookieOptions = getSessionCookieOptions(req);
     res.cookie(COOKIE_NAME, sessionToken, { ...cookieOptions, maxAge: ONE_YEAR_MS });
-    res.json({ success: true });
+    // `token` renvoyé pour les clients mobiles (à stocker + envoyer en Authorization: Bearer).
+    res.json({ success: true, token: sessionToken });
   });
 
   // ── POST /api/auth/forgot-password ───────────────────────────────────────
@@ -524,6 +526,7 @@ export function registerAuthRoutes(app: Express) {
 
     const cookieOptions = getSessionCookieOptions(req);
     res.cookie(COOKIE_NAME, sessionToken, { ...cookieOptions, maxAge: ONE_YEAR_MS });
-    res.json({ success: true });
+    // `token` renvoyé pour les clients mobiles (à stocker + envoyer en Authorization: Bearer).
+    res.json({ success: true, token: sessionToken });
   });
 }

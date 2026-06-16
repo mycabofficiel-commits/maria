@@ -260,10 +260,17 @@ class SDKServer {
     // Regular authentication flow
     const cookies = this.parseCookies(req.headers.cookie);
     const sessionCookie = cookies.get(COOKIE_NAME);
-    const session = await this.verifySession(sessionCookie);
+    // Auth mobile : on accepte aussi le JWT via l'en-tête `Authorization: Bearer <token>`
+    // (en plus du cookie, qui reste prioritaire pour le web). Même vérification.
+    const authHeader = req.headers["authorization"] || (req.headers as any)["Authorization"];
+    const bearerToken = typeof authHeader === "string" && /^Bearer\s+/i.test(authHeader)
+      ? authHeader.replace(/^Bearer\s+/i, "").trim()
+      : undefined;
+    const token = sessionCookie || bearerToken;
+    const session = await this.verifySession(token);
 
     if (!session) {
-      throw ForbiddenError("Invalid session cookie");
+      throw ForbiddenError("Invalid session");
     }
 
     const sessionUserId = session.openId;
@@ -273,7 +280,7 @@ class SDKServer {
     // If user not in DB, sync from OAuth server automatically
     if (!user) {
       try {
-        const userInfo = await this.getUserInfoWithJwt(sessionCookie ?? "");
+        const userInfo = await this.getUserInfoWithJwt(token ?? "");
         await db.upsertUser({
           openId: userInfo.openId,
           name: userInfo.name || null,
