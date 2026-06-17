@@ -2,6 +2,7 @@
 
 | Date (UTC) | Version | Commit (avant) | Message |
 |---|---|---|---|
+| 2026-06-17 22:46 | v1.2.14 | a38162b | UI editeur: suppression du bouton 'Code' redondant en haut a droite (la reduction du code reste possible via le bouton dans l'en-tete du panneau code) |
 | 2026-06-17 21:59 | v1.2.13 | a616754 | fix bouton WhatsApp: regle stricte lien wa.me (numero international chiffres uniquement, sans +/espaces, target _blank) dans generation ET edition chat - corrige les boutons WhatsApp casses sur tous les futurs projets |
 | 2026-06-16 08:42 | v1.2.12 | fc8403f | backend mobile-ready: auth acceptee via Authorization: Bearer (en plus du cookie) + login renvoie le token JWT dans la reponse JSON - prerequis pour l'app mobile Expo |
 | 2026-06-15 22:23 | v1.2.11 | 8b36cf6 | chat: refuse poliment de generer/creer/modifier images et logos (plus de fausse generation/image grise) et redirige vers import / editeur visuel ; autorise toujours la mise en page (redimensionner, centrer, ombre...) |
