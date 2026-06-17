@@ -1681,6 +1681,7 @@ QUALITÉ ATTENDUE :
 • CRÉDIT OBLIGATOIRE : ajoute TOUJOURS tout en bas du footer le crédit « Créé avec <a href="https://mar-ia.net" target="_blank" rel="noopener">Mar-ia.net</a> ». Ne l'omets sous aucun prétexte.
 • RÉSEAUX SOCIAUX : chaque icône = un <svg viewBox="0 0 24 24"> INLINE avec le vrai <path> de la marque (Instagram, Facebook, X, LinkedIn, TikTok, YouTube…), 20-24px, fill="currentColor". INTERDIT : <i class="fa-…"> (pas de CDN chargé), emojis en guise de logo, ou <img src> externe susceptible de renvoyer 404. Les logos DOIVENT s'afficher sans dépendance externe.
 • LANGUES : LANGUE demandée = « ${language || "fr"} ». Si PLUSIEURS langues sont listées, ajoute un sélecteur de langue RÉELLEMENT FONCTIONNEL dans le header (boutons FR/EN/ES…) qui bascule TOUT le texte du site via JS — méthode : attributs data-i18n + objet JS de traductions, OU blocs .lang-xx affichés/masqués. Traduis l'intégralité du contenu (pas seulement le menu), langue par défaut = la première listée.
+• BOUTON WHATSAPP (s'il y en a un) : le lien DOIT être <a href="https://wa.me/NUMERO" target="_blank" rel="noopener"> où NUMERO = numéro au format international avec UNIQUEMENT des chiffres — SANS "+", SANS espaces, SANS points, SANS parenthèses, SANS tirets (ex : +33 6 12 34 56 78 → "33612345678"). JAMAIS href="#", JAMAIS tel:, JAMAIS de numéro fictif type 00 00 00 00. Message pré-rempli possible : https://wa.me/NUMERO?text=Bonjour... (texte URL-encodé). Si aucun numéro réel n'est fourni, NE mets PAS de faux numéro : laisse un commentaire <!-- WHATSAPP_NUMERO_A_RENSEIGNER --> et garde le bouton prêt.
 
 Retourne UNIQUEMENT le code HTML complet, sans explication, sans markdown, sans backticks.`;
 
@@ -2616,7 +2617,15 @@ Si une image est jointe ET que le plan d'action liste des éléments numérotés
 Si l'utilisateur demande de REMPLACER/CHANGER une image par une "autre", "plus claire", "ensoleillée", "différente"… :
 • Choisis un ID Unsplash DIFFÉRENT de celui actuellement utilisé (ne JAMAIS remettre la même URL).
 • Respecte les critères demandés (ex: lumineux/ensoleillé → photo claire, ciel bleu) ET le sujet (ex: tour Eiffel → un photo-ID de tour Eiffel/Paris).
-• Format : https://images.unsplash.com/photo-{ID}?w=1600&h=900&fit=crop&q=80 — jamais de placeholder ni de src cassé.${generatedImageDirective}
+• Format : https://images.unsplash.com/photo-{ID}?w=1600&h=900&fit=crop&q=80 — jamais de placeholder ni de src cassé.
+
+══ RÈGLE 8 — BOUTON / LIEN WHATSAPP ══
+Quand l'utilisateur veut un bouton WhatsApp ou le relier à un contact :
+• Le lien DOIT être <a href="https://wa.me/NUMERO" target="_blank" rel="noopener"> où NUMERO = format international, UNIQUEMENT des chiffres — AUCUN "+", espace, point, tiret ou parenthèse (ex : "+33 6 12 34 56 78" → "33612345678").
+• INTERDIT : href="#", onclick vide, tel:, ou un numéro inventé (00 00 00 00).
+• Récupère le numéro réel dans la demande de l'utilisateur ou dans le code/section contact existant. Message pré-rempli possible : https://wa.me/NUMERO?text=Bonjour%20... (URL-encodé).
+• Si AUCUN numéro réel n'est disponible, ne casse pas le bouton : garde <a href="https://wa.me/NUMERO"> avec un commentaire <!-- remplacer NUMERO --> et signale-le dans ta réponse pour que l'utilisateur fournisse son numéro.
+• Vérifie qu'un bouton WhatsApp EXISTANT a bien un href wa.me valide (corrige-le s'il est cassé).
 
 ══ CODE ACTUEL (v${currentVersion[0].versionNumber}) — LIS ATTENTIVEMENT AVANT D'ÉCRIRE ══
 ${currentVersion[0].generatedCode || ""}

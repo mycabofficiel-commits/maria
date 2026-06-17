@@ -2,6 +2,7 @@
 
 | Date (UTC) | Version | Commit (avant) | Message |
 |---|---|---|---|
+| 2026-06-17 21:59 | v1.2.13 | a616754 | fix bouton WhatsApp: regle stricte lien wa.me (numero international chiffres uniquement, sans +/espaces, target _blank) dans generation ET edition chat - corrige les boutons WhatsApp casses sur tous les futurs projets |
 | 2026-06-16 08:42 | v1.2.12 | fc8403f | backend mobile-ready: auth acceptee via Authorization: Bearer (en plus du cookie) + login renvoie le token JWT dans la reponse JSON - prerequis pour l'app mobile Expo |
 | 2026-06-15 22:23 | v1.2.11 | 8b36cf6 | chat: refuse poliment de generer/creer/modifier images et logos (plus de fausse generation/image grise) et redirige vers import / editeur visuel ; autorise toujours la mise en page (redimensionner, centrer, ombre...) |
 | 2026-06-15 21:49 | v1.2.10 | 8098ac3 | fix génération image: le prompt DALL-E était le plan structuré du raisonneur (images hors-sujet) -> on fabrique maintenant un vrai prompt visuel a partir de la demande utilisateur (craftImagePrompt via DeepSeek), fallback nettoye |
