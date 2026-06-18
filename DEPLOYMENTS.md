@@ -2,6 +2,7 @@
 
 | Date (UTC) | Version | Commit (avant) | Message |
 |---|---|---|---|
+| 2026-06-18 20:42 | v1.2.17 | b5000a9 | partage: duree d'acces configurable (1j/7j/30j/date precise/sans expiration) + l'acces collaborateur est revoque automatiquement a l'expiration (verifie a chaque acces, pas seulement a l'acceptation) + affichage de l'expiration dans la liste |
 | 2026-06-18 08:59 | v1.2.16 | 6088bb5 | fix partage/collaborateurs: (1) lien connexion correct /login?next=, (2) retour vers l'invitation apres connexion/inscription, (3) acces projet en lecture autorise aux collaborateurs acceptes (pas seulement le proprietaire) - le partage fonctionne de bout en bout, toujours zero acces sans compte |
 | 2026-06-18 08:18 | v1.2.15 | 8cff441 | UI editeur: la barre d'outils du panneau (Code/Versions/Deploy/Import/API/Reflechir/Supprimer/Partager) passe a la ligne au lieu d'etre coupee - tous les boutons sont desormais visibles |
 | 2026-06-17 22:46 | v1.2.14 | a38162b | UI editeur: suppression du bouton 'Code' redondant en haut a droite (la reduction du code reste possible via le bouton dans l'en-tete du panneau code) |

@@ -32,7 +32,28 @@ export default function ShareProject() {
 
   const [inviteEmail, setInviteEmail] = useState("");
   const [inviteRole, setInviteRole] = useState<"viewer" | "editor">("viewer");
+  const [expiryPreset, setExpiryPreset] = useState<"1d" | "7d" | "30d" | "custom" | "never">("7d");
+  const [customExpiry, setCustomExpiry] = useState(""); // datetime-local
   const [revokeTarget, setRevokeTarget] = useState<number | null>(null);
+
+  const DAY = 86400000;
+  // Expiration à envoyer : ISO string, null (jamais), ou undefined (défaut serveur 7j).
+  const computeExpiresAt = (): string | null | undefined => {
+    const now = Date.now();
+    switch (expiryPreset) {
+      case "never": return null;
+      case "1d": return new Date(now + DAY).toISOString();
+      case "7d": return new Date(now + 7 * DAY).toISOString();
+      case "30d": return new Date(now + 30 * DAY).toISOString();
+      case "custom": return customExpiry ? new Date(customExpiry).toISOString() : undefined;
+    }
+  };
+  const nowLocalMin = (() => {
+    const d = new Date(Date.now() + 5 * 60000);
+    const pad = (n: number) => String(n).padStart(2, "0");
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  })();
+  const customInvalid = expiryPreset === "custom" && (!customExpiry || new Date(customExpiry).getTime() <= Date.now());
   const [copiedToken, setCopiedToken] = useState<string | null>(null);
 
   const utils = trpc.useUtils();
@@ -158,10 +179,40 @@ export default function ShareProject() {
                 </SelectContent>
               </Select>
             </div>
+            {/* Expiration de l'accès */}
+            <div className="space-y-2">
+              <label className="text-xs text-muted-foreground flex items-center gap-1.5">
+                <Clock className="w-3 h-3 text-primary" /> Durée d'accès
+              </label>
+              <Select value={expiryPreset} onValueChange={(v) => setExpiryPreset(v as typeof expiryPreset)}>
+                <SelectTrigger className="h-9 text-xs bg-input border-border/60">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="1d" className="text-xs">Expire dans 1 jour</SelectItem>
+                  <SelectItem value="7d" className="text-xs">Expire dans 7 jours</SelectItem>
+                  <SelectItem value="30d" className="text-xs">Expire dans 30 jours</SelectItem>
+                  <SelectItem value="custom" className="text-xs">Date &amp; heure précises…</SelectItem>
+                  <SelectItem value="never" className="text-xs">Sans expiration</SelectItem>
+                </SelectContent>
+              </Select>
+              {expiryPreset === "custom" && (
+                <input
+                  type="datetime-local"
+                  value={customExpiry}
+                  min={nowLocalMin}
+                  onChange={(e) => setCustomExpiry(e.target.value)}
+                  className="w-full h-9 rounded-md border border-border/60 bg-input px-3 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
+                />
+              )}
+              {customInvalid && (
+                <p className="text-[11px] text-destructive">Choisis une date/heure dans le futur.</p>
+              )}
+            </div>
             <Button
               className="w-full bg-primary hover:bg-primary/90 text-primary-foreground h-9 text-sm"
-              onClick={() => invite.mutate({ projectId, inviteEmail: inviteEmail || undefined, role: inviteRole })}
-              disabled={invite.isPending}
+              onClick={() => invite.mutate({ projectId, inviteEmail: inviteEmail || undefined, role: inviteRole, expiresAt: computeExpiresAt() })}
+              disabled={invite.isPending || customInvalid}
             >
               {invite.isPending ? (
                 <><Loader2 className="w-3.5 h-3.5 animate-spin mr-2" />Génération…</>
@@ -170,7 +221,7 @@ export default function ShareProject() {
               )}
             </Button>
             <p className="text-xs text-muted-foreground text-center">
-              Le lien expire dans 7 jours · <strong>Lecteur</strong> = consultation uniquement · <strong>Éditeur</strong> = peut modifier le site
+              L'accès est révoqué automatiquement à l'expiration · <strong>Lecteur</strong> = consultation · <strong>Éditeur</strong> = peut modifier
             </p>
           </CardContent>
         </Card>
@@ -218,6 +269,15 @@ export default function ShareProject() {
                             <span className="text-[10px] text-muted-foreground">
                               {formatDistanceToNow(new Date(c.createdAt), { addSuffix: true, locale: fr })}
                             </span>
+                          )}
+                          {(c as any).expiresAt ? (
+                            <span className={`text-[10px] ${new Date((c as any).expiresAt) < new Date() ? "text-destructive" : "text-amber-400/80"}`}>
+                              {new Date((c as any).expiresAt) < new Date()
+                                ? "· accès expiré"
+                                : `· expire ${formatDistanceToNow(new Date((c as any).expiresAt), { addSuffix: true, locale: fr })}`}
+                            </span>
+                          ) : (
+                            <span className="text-[10px] text-muted-foreground/60">· sans expiration</span>
                           )}
                         </div>
                       </div>

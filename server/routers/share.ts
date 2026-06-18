@@ -12,6 +12,8 @@ export const shareRouter = router({
       projectId: z.number(),
       inviteEmail: z.string().email().optional(),
       role: z.enum(["viewer", "editor"]).default("viewer"),
+      // Date/heure d'expiration choisie (ISO). null = jamais. absent = défaut 7 jours.
+      expiresAt: z.string().nullable().optional(),
     }))
     .mutation(async ({ ctx, input }) => {
       const db = await getDb();
@@ -23,9 +25,20 @@ export const shareRouter = router({
         .limit(1);
       if (!project[0]) throw new Error("Projet introuvable ou accès refusé");
 
-      // Generate unique token (expires in 7 days)
+      // Expiration : date choisie par le propriétaire, ou null (jamais), ou défaut 7 jours.
+      let expiresAt: Date | null;
+      if (input.expiresAt === null) {
+        expiresAt = null;
+      } else if (input.expiresAt) {
+        const d = new Date(input.expiresAt);
+        if (isNaN(d.getTime())) throw new Error("Date d'expiration invalide");
+        if (d.getTime() <= Date.now()) throw new Error("La date d'expiration doit être dans le futur");
+        expiresAt = d;
+      } else {
+        expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+      }
+
       const inviteToken = nanoid(32);
-      const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
 
       await db.insert(projectCollaborators).values({
         projectId: input.projectId,

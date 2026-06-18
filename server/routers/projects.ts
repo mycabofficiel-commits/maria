@@ -2,7 +2,7 @@ import { z } from "zod";
 import { protectedProcedure, router } from "../_core/trpc";
 import { getDb } from "../db";
 import { projects, versions, chatMessages, projectFiles, usageLogs, users, apiKeys, projectCollaborators } from "../../drizzle/schema";
-import { eq, desc, and, count, sum } from "drizzle-orm";
+import { eq, desc, and, count, sum, or, isNull, gt } from "drizzle-orm";
 import { PLAN_LIMITS, type PlanName } from "@shared/const";
 import crypto from "crypto";
 import { buildInspirationContext } from "../inspiration";
@@ -51,11 +51,14 @@ async function assertProjectAccess(db: Db, projectId: number, userId: number): P
     .where(and(eq(projects.id, projectId), eq(projects.userId, userId)))
     .limit(1);
   if (owned[0]) return;
+  const now = new Date();
   const collab = await db.select({ id: projectCollaborators.id }).from(projectCollaborators)
     .where(and(
       eq(projectCollaborators.projectId, projectId),
       eq(projectCollaborators.collaboratorId, userId),
       eq(projectCollaborators.status, "accepted"),
+      // Accès limité dans le temps : valide seulement si pas d'expiration OU pas encore expiré.
+      or(isNull(projectCollaborators.expiresAt), gt(projectCollaborators.expiresAt, now)),
     ))
     .limit(1);
   if (collab[0]) return;
