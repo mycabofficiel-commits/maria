@@ -2123,7 +2123,7 @@ ${jsCode}`;
               {/* ── Chat zone (bottom-left, 40% height) ── */}
               <div className="flex flex-col" style={{ flex: codeCollapsed ? '1 1 100%' : '0 0 40%', minHeight: 0, overflow: 'hidden', transition: isDraggingRef.current ? 'none' : 'flex 0.2s ease' }}>
                 {/* Chat header */}
-                <div className="px-3 py-1.5 border-b border-border/40 flex-shrink-0 flex items-center gap-2 bg-background/60">
+                <div className="px-3 py-1.5 border-b border-border/40 flex-shrink-0 flex items-center flex-wrap gap-2 gap-y-1 bg-background/60">
                   <div className="w-5 h-5 rounded-full bg-primary/20 flex items-center justify-center">
                     <Sparkles className="w-2.5 h-2.5 text-primary" />
                   </div>
@@ -2139,7 +2139,7 @@ ${jsCode}`;
                       : <PanelLeftClose className="w-3 h-3 rotate-90" />}
                     Code
                   </Button>
-                  <div className="ml-auto flex gap-1">
+                  <div className="ml-auto flex flex-wrap justify-end gap-1">
                     <Button
                       variant={showVersions ? "secondary" : "ghost"}
                       size="sm"
