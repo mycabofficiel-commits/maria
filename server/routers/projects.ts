@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { protectedProcedure, router } from "../_core/trpc";
 import { getDb } from "../db";
-import { projects, versions, chatMessages, projectFiles, usageLogs, users, apiKeys } from "../../drizzle/schema";
+import { projects, versions, chatMessages, projectFiles, usageLogs, users, apiKeys, projectCollaborators } from "../../drizzle/schema";
 import { eq, desc, and, count, sum } from "drizzle-orm";
 import { PLAN_LIMITS, type PlanName } from "@shared/const";
 import crypto from "crypto";
@@ -41,6 +41,35 @@ async function assertOwnedVersion(db: Db, versionId: number, userId: number): Pr
   if (!rows[0]) throw new Error("Version introuvable");
 }
 
+/**
+ * Accès en LECTURE à un projet : autorisé au propriétaire OU à un collaborateur
+ * dont l'invitation est acceptée. Lève "Projet introuvable" sinon (anti-IDOR :
+ * on ne révèle pas l'existence du projet aux non-membres).
+ */
+async function assertProjectAccess(db: Db, projectId: number, userId: number): Promise<void> {
+  const owned = await db.select({ id: projects.id }).from(projects)
+    .where(and(eq(projects.id, projectId), eq(projects.userId, userId)))
+    .limit(1);
+  if (owned[0]) return;
+  const collab = await db.select({ id: projectCollaborators.id }).from(projectCollaborators)
+    .where(and(
+      eq(projectCollaborators.projectId, projectId),
+      eq(projectCollaborators.collaboratorId, userId),
+      eq(projectCollaborators.status, "accepted"),
+    ))
+    .limit(1);
+  if (collab[0]) return;
+  throw new Error("Projet introuvable");
+}
+
+/** Idem mais à partir d'une version (résout le projet de la version). */
+async function assertVersionAccess(db: Db, versionId: number, userId: number): Promise<void> {
+  const v = await db.select({ projectId: versions.projectId }).from(versions)
+    .where(eq(versions.id, versionId)).limit(1);
+  if (!v[0]) throw new Error("Version introuvable");
+  await assertProjectAccess(db, v[0].projectId, userId);
+}
+
 
 export const projectsRouter = router({
   // List projects
@@ -58,8 +87,9 @@ export const projectsRouter = router({
     .query(async ({ ctx, input }) => {
       const db = await getDb();
       if (!db) throw new Error("DB unavailable");
+      await assertProjectAccess(db, input.id, ctx.user.id); // propriétaire OU collaborateur accepté
       const result = await db.select().from(projects)
-        .where(and(eq(projects.id, input.id), eq(projects.userId, ctx.user.id)))
+        .where(eq(projects.id, input.id))
         .limit(1);
       if (!result[0]) throw new Error("Projet introuvable");
       return result[0];
@@ -499,7 +529,7 @@ RÈGLES CODE (à respecter pour chaque modification):
     .query(async ({ ctx, input }) => {
       const db = await getDb();
       if (!db) return [];
-      await assertOwnedProject(db, input.projectId, ctx.user.id); // anti-IDOR
+      await assertProjectAccess(db, input.projectId, ctx.user.id); // propriétaire OU collaborateur accepté
       return db.select().from(versions)
         .where(eq(versions.projectId, input.projectId))
         .orderBy(desc(versions.createdAt));
@@ -511,7 +541,7 @@ RÈGLES CODE (à respecter pour chaque modification):
     .query(async ({ ctx, input }) => {
       const db = await getDb();
       if (!db) throw new Error("DB unavailable");
-      await assertOwnedVersion(db, input.versionId, ctx.user.id); // anti-IDOR
+      await assertVersionAccess(db, input.versionId, ctx.user.id); // propriétaire OU collaborateur accepté
       const result = await db.select().from(versions).where(eq(versions.id, input.versionId)).limit(1);
       return result[0] || null;
     }),
@@ -540,7 +570,7 @@ RÈGLES CODE (à respecter pour chaque modification):
     .query(async ({ ctx, input }) => {
       const db = await getDb();
       if (!db) return [];
-      await assertOwnedProject(db, input.projectId, ctx.user.id); // anti-IDOR
+      await assertProjectAccess(db, input.projectId, ctx.user.id); // propriétaire OU collaborateur accepté
       return db.select().from(chatMessages)
         .where(eq(chatMessages.projectId, input.projectId))
         .orderBy(chatMessages.createdAt, chatMessages.id);

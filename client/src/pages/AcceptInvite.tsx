@@ -130,7 +130,11 @@ export default function AcceptInvite() {
                     className="w-full bg-primary hover:bg-primary/90 text-primary-foreground"
                     onClick={() => {
                       const returnPath = `/invite/${token}`;
-                      window.location.href = getLoginUrl() + `&state=${encodeURIComponent(JSON.stringify({ origin: window.location.origin, returnPath }))}`;
+                      const loginBase = getLoginUrl();
+                      // Connexion locale → /login?next=<retour>. Connexion OAuth → URL OAuth telle quelle.
+                      window.location.href = loginBase.startsWith("/login")
+                        ? `/login?next=${encodeURIComponent(returnPath)}`
+                        : loginBase;
                     }}
                   >
                     Se connecter pour accepter

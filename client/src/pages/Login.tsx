@@ -74,6 +74,15 @@ function OtpInput({ value, onChange }: { value: string; onChange: (v: string) =>
 export default function Login() {
   const [, navigate] = useLocation();
   const { t } = useLang();
+  // Destination après connexion : ?next=<chemin interne> (ex: retour sur une invitation
+  // /invite/<token>). Validé pour rester interne (anti open-redirect). Défaut: /dashboard.
+  const postLoginDest = (() => {
+    try {
+      const next = new URLSearchParams(window.location.search).get("next");
+      if (next && next.startsWith("/") && !next.startsWith("//")) return next;
+    } catch { /* ignore */ }
+    return "/dashboard";
+  })();
   const [mode, setMode] = useState<"login" | "register">("login");
   const [step, setStep] = useState<"form" | "otp" | "forgot" | "forgot_otp" | "forgot_newpw">("form");
 
@@ -145,7 +154,7 @@ export default function Login() {
       const data = await res.json();
       if (!res.ok) { toast.error(data.error || "Erreur de connexion."); return; }
       await utils.auth.me.invalidate();
-      navigate("/dashboard");
+      navigate(postLoginDest);
     } catch { toast.error("Erreur réseau, réessaie."); }
     finally { setLoading(false); }
   }
@@ -190,7 +199,7 @@ export default function Login() {
       const data = await res.json();
       if (!res.ok) { toast.error(data.error || "Code invalide."); return; }
       await utils.auth.me.invalidate();
-      navigate("/dashboard");
+      navigate(postLoginDest);
     } catch { toast.error("Erreur réseau, réessaie."); }
     finally { setLoading(false); }
   }
