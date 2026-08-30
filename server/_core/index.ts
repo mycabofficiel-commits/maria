@@ -136,11 +136,34 @@ async function ensureSchema() {
 }
 
 async function startServer() {
+  // #2 — Avertissement sécurité : JWT_SECRET sert à signer les cookies ET à
+  // chiffrer les clés API stockées. S'il est absent/faible, tout l'est.
+  const jwtSecret = process.env.JWT_SECRET || "";
+  if (!jwtSecret || jwtSecret.length < 32) {
+    console.warn("[SÉCURITÉ] ⚠️ JWT_SECRET manquant ou trop court (<32 caractères). " +
+      "Les cookies de session et le chiffrement des clés API sont AFFAIBLIS. " +
+      "Définissez un JWT_SECRET long et aléatoire dans les variables d'environnement Render.");
+  }
+
   const app = express();
   const server = createServer(app);
   // Configure body parser with larger size limit for file uploads
   app.use(express.json({ limit: "50mb" }));
   app.use(express.urlencoded({ limit: "50mb", extended: true }));
+
+  // #4 — Entêtes de sécurité (défense en profondeur, sans casser l'app ni les sites).
+  app.use((req, res, next) => {
+    res.setHeader("X-Content-Type-Options", "nosniff");
+    res.setHeader("Referrer-Policy", "strict-origin-when-cross-origin");
+    res.setHeader("Strict-Transport-Security", "max-age=15552000; includeSubDomains");
+    // Anti-clickjacking sur l'app, MAIS on laisse les sites publiés (/p/) et les
+    // images (/img/) embarquables (un client peut vouloir intégrer son site ailleurs).
+    if (!req.path.startsWith("/p/") && !req.path.startsWith("/img/")) {
+      res.setHeader("X-Frame-Options", "SAMEORIGIN");
+    }
+    next();
+  });
+
   // Health check for Render
   app.get("/api/health", (_req, res) => res.json({ status: "ok", ts: Date.now() }));
 

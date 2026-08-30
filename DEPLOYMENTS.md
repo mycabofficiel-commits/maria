@@ -2,6 +2,7 @@
 
 | Date (UTC) | Version | Commit (avant) | Message |
 |---|---|---|---|
+| 2026-08-30 19:17 | v1.2.19 | d6ac229 | check-up 2/2: entetes de securite (nosniff, Referrer-Policy, HSTS, X-Frame-Options) ; avertissement au boot si JWT_SECRET faible ; suppression code mort NewProjectConfig.tsx |
 | 2026-08-30 18:58 | v1.2.18 | 18c3b70 | securite (check-up): (1) CRITIQUE faille /api/admin/init secret en dur supprimee -> exige le vrai JWT_SECRET, (2) rate-limit anti-abus sur send-otp et forgot-password, (3) try/catch sur login + message clair 'serveur en cours de reveil' au lieu de 'erreur reseau' |
 | 2026-06-18 20:42 | v1.2.17 | b5000a9 | partage: duree d'acces configurable (1j/7j/30j/date precise/sans expiration) + l'acces collaborateur est revoque automatiquement a l'expiration (verifie a chaque acces, pas seulement a l'acceptation) + affichage de l'expiration dans la liste |
 | 2026-06-18 08:59 | v1.2.16 | 6088bb5 | fix partage/collaborateurs: (1) lien connexion correct /login?next=, (2) retour vers l'invitation apres connexion/inscription, (3) acces projet en lecture autorise aux collaborateurs acceptes (pas seulement le proprietaire) - le partage fonctionne de bout en bout, toujours zero acces sans compte |
