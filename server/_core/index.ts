@@ -164,6 +164,32 @@ async function startServer() {
     next();
   });
 
+  // #1 — ISOLATION DES SITES PUBLIÉS (activée seulement si SITES_HOST est défini).
+  // Les sites publiés (/p/:slug) vivent UNIQUEMENT sur un sous-domaine séparé
+  // (ex: sites.mar-ia.net) et l'app + l'API UNIQUEMENT sur le domaine principal.
+  // → le JS d'un site publié tourne sur une AUTRE origine : il ne peut plus lire
+  //   les réponses de l'API mar-ia.net (bloqué par CORS) = plus d'exfiltration.
+  // Rétro-compatible : sans SITES_HOST, comportement inchangé (/p/ sur le principal).
+  const SITES_HOST = (process.env.SITES_HOST || "").toLowerCase().trim();
+  const MAIN_BASE = (process.env.APP_BASE_URL || process.env.RENDER_EXTERNAL_URL || "https://mar-ia.net").replace(/\/+$/, "");
+  if (SITES_HOST) {
+    app.use((req, res, next) => {
+      const host = (req.hostname || "").toLowerCase();
+      const isPublicAsset = req.path.startsWith("/p/") || req.path.startsWith("/img/");
+      if (host === SITES_HOST) {
+        // Sur le sous-domaine : on ne sert QUE les sites publiés + images.
+        // Tout le reste (app, API) est renvoyé vers le domaine principal.
+        if (isPublicAsset) return next();
+        return res.redirect(302, `${MAIN_BASE}${req.originalUrl}`);
+      }
+      // Sur le domaine principal : un /p/ est redirigé vers le sous-domaine isolé.
+      if (req.path.startsWith("/p/")) {
+        return res.redirect(302, `https://${SITES_HOST}${req.originalUrl}`);
+      }
+      return next();
+    });
+  }
+
   // Health check for Render
   app.get("/api/health", (_req, res) => res.json({ status: "ok", ts: Date.now() }));
 

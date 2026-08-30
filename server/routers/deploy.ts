@@ -11,6 +11,13 @@ function getAppBaseUrl(): string {
   return process.env.APP_BASE_URL || process.env.RENDER_EXTERNAL_URL || "http://localhost:3000";
 }
 
+// URL de base pour les SITES PUBLIÉS : le sous-domaine isolé si configuré
+// (SITES_HOST=sites.mar-ia.net), sinon le domaine principal (rétro-compatible).
+function getSitesBaseUrl(): string {
+  const sitesHost = (process.env.SITES_HOST || "").trim();
+  return sitesHost ? `https://${sitesHost}` : getAppBaseUrl();
+}
+
 function cleanSlug(name: string): string {
   return name.toLowerCase()
     .normalize("NFD").replace(/[̀-ͯ]/g, "") // remove accents
@@ -171,7 +178,7 @@ export const deployRouter = router({
       if (!project[0]) throw new TRPCError({ code: "NOT_FOUND", message: "Projet introuvable" });
 
       const uniqueSlug = await ensureUniqueSlug(db, input.slug, input.projectId);
-      const baseUrl = getAppBaseUrl().replace(/\/$/, "");
+      const baseUrl = getSitesBaseUrl().replace(/\/$/, "");
       const deployedUrl = project[0].isPublished ? `${baseUrl}/p/${uniqueSlug}` : project[0].deployedUrl;
 
       await db.update(projects).set({
@@ -215,7 +222,7 @@ export const deployRouter = router({
         await db.update(projects).set({ slug }).where(eq(projects.id, input.projectId));
       }
 
-      const baseUrl = getAppBaseUrl().replace(/\/$/, "");
+      const baseUrl = getSitesBaseUrl().replace(/\/$/, "");
       const deployedUrl = `${baseUrl}/p/${slug}`;
 
       // Update project — HTML is served from DB via /p/:slug
