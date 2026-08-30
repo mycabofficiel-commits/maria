@@ -144,13 +144,15 @@ async function startServer() {
   // Health check for Render
   app.get("/api/health", (_req, res) => res.json({ status: "ok", ts: Date.now() }));
 
-  // One-time admin account creation — accepts JWT_SECRET or fallback "maria-admin-init"
+  // Récupération admin (break-glass). SÉCURITÉ : exige le VRAI secret serveur
+  // (JWT_SECRET / COOKIE_SECRET, connu du seul propriétaire via Render). Aucun
+  // secret en dur, aucun indice — sinon n'importe qui prendrait le compte admin.
   app.get("/api/admin/init", async (req, res) => {
-    const secret = req.query.secret as string;
+    const secret = typeof req.query.secret === "string" ? req.query.secret : "";
     const jwtSecret = process.env.JWT_SECRET || process.env.COOKIE_SECRET || "";
-    const fallbackSecret = "maria-admin-init";
-    if (!secret || (secret !== jwtSecret && secret !== fallbackSecret)) {
-      return res.status(401).json({ error: "Invalid secret", hint: "Use ?secret=maria-admin-init" });
+    // Désactivé si aucun secret serveur configuré, ou si le secret fourni ne correspond pas.
+    if (!jwtSecret || jwtSecret.length < 16 || secret !== jwtSecret) {
+      return res.status(403).json({ error: "Forbidden" });
     }
     try {
       const db = await getDb();

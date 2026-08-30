@@ -151,11 +151,22 @@ export default function Login() {
         credentials: "include",
         body: JSON.stringify({ email, password }),
       });
-      const data = await res.json();
-      if (!res.ok) { toast.error(data.error || "Erreur de connexion."); return; }
+      // Réponse parsée prudemment : pendant un redéploiement / réveil de l'instance,
+      // le serveur peut renvoyer une page HTML (502/503) au lieu d'un JSON.
+      const raw = await res.text();
+      let data: any = {};
+      try { data = raw ? JSON.parse(raw) : {}; } catch { data = {}; }
+      if (!res.ok) {
+        toast.error(data.error || (res.status >= 500
+          ? "Le serveur démarre (mise en veille). Patiente ~30 s et réessaie."
+          : "Erreur de connexion."));
+        return;
+      }
       await utils.auth.me.invalidate();
       navigate(postLoginDest);
-    } catch { toast.error("Erreur réseau, réessaie."); }
+    } catch {
+      toast.error("Le serveur est momentanément indisponible (il se réveille). Réessaie dans ~30 secondes.");
+    }
     finally { setLoading(false); }
   }
 

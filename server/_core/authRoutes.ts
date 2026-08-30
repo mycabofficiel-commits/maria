@@ -78,10 +78,27 @@ function clearLoginFails(key: string): void {
   loginAttempts.delete(key);
 }
 
+// Anti-abus des ENVOIS D'EMAILS (OTP inscription + reset mot de passe) :
+// max 5 emails / 15 min par IP+email → évite le spam et l'épuisement du quota Resend.
+const EMAIL_SEND_MAX = 5;
+const emailSends = new Map<string, { count: number; resetAt: number }>();
+function emailSendLimited(req: Request, email: string): boolean {
+  const key = rateKey(req, email);
+  const now = Date.now();
+  const rec = emailSends.get(key);
+  if (!rec || now > rec.resetAt) {
+    emailSends.set(key, { count: 1, resetAt: now + LOGIN_WINDOW_MS });
+    return false;
+  }
+  rec.count += 1;
+  return rec.count > EMAIL_SEND_MAX;
+}
+
 // Purge périodique des entrées expirées (évite une fuite mémoire lente).
 setInterval(() => {
   const now = Date.now();
   loginAttempts.forEach((v, k) => { if (now > v.resetAt) loginAttempts.delete(k); });
+  emailSends.forEach((v, k) => { if (now > v.resetAt) emailSends.delete(k); });
 }, 30 * 60 * 1000).unref?.();
 
 interface RegistrationPayload {
@@ -252,6 +269,10 @@ export function registerAuthRoutes(app: Express) {
       res.status(400).json({ error: "Email et mot de passe requis." });
       return;
     }
+    if (emailSendLimited(req, email)) {
+      res.status(429).json({ error: "Trop de demandes de code. Réessayez dans quelques minutes." });
+      return;
+    }
 
     const pwError = validatePassword(password);
     if (pwError) { res.status(400).json({ error: pwError }); return; }
@@ -408,6 +429,10 @@ export function registerAuthRoutes(app: Express) {
   app.post("/api/auth/forgot-password", async (req: Request, res: Response) => {
     const { email } = req.body as { email?: string };
     if (!email) { res.status(400).json({ error: "Email requis." }); return; }
+    if (emailSendLimited(req, email)) {
+      res.status(429).json({ error: "Trop de demandes. Réessayez dans quelques minutes." });
+      return;
+    }
 
     const openId = `local:${email.toLowerCase().trim()}`;
     const db = await getDb();
@@ -481,6 +506,7 @@ export function registerAuthRoutes(app: Express) {
 
   // ── POST /api/auth/login ──────────────────────────────────────────────────
   app.post("/api/auth/login", async (req: Request, res: Response) => {
+   try {
     const { email, password } = req.body as { email?: string; password?: string };
 
     if (!email || !password) {
@@ -528,5 +554,9 @@ export function registerAuthRoutes(app: Express) {
     res.cookie(COOKIE_NAME, sessionToken, { ...cookieOptions, maxAge: ONE_YEAR_MS });
     // `token` renvoyé pour les clients mobiles (à stocker + envoyer en Authorization: Bearer).
     res.json({ success: true, token: sessionToken });
+   } catch (e) {
+     console.error("[login] error:", e);
+     if (!res.headersSent) res.status(500).json({ error: "Erreur serveur, réessayez dans un instant." });
+   }
   });
 }
