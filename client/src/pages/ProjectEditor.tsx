@@ -3155,41 +3155,59 @@ ${jsCode}`;
 
                   {/* Zone preview : même pattern que le preview web — items-start, h-full sur l'enfant */}
                   <div className="flex-1 flex items-start justify-center p-3 bg-[#0c0c14] overflow-hidden">
-                    {expoHtmlLoading && !expoHtmlPreview && (
-                      <div className="flex flex-col items-center gap-3 text-muted-foreground mt-16">
-                        <Loader2 className="w-8 h-8 animate-spin text-primary" />
-                        <span className="text-sm">Génération de l'aperçu…</span>
-                      </div>
-                    )}
-                    {!expoHtmlLoading && !expoHtmlPreview && (
-                      <div className="flex flex-col items-center gap-3 mt-16">
-                        <button
-                          onClick={() => generateExpoHtmlPreview(htmlCode)}
-                          disabled={!htmlCode}
-                          className="flex flex-col items-center gap-3 px-8 py-6 rounded-2xl bg-primary/10 border border-primary/20 text-primary hover:bg-primary/20 transition-colors"
-                        >
-                          <span className="text-4xl">📱</span>
-                          <span className="text-sm font-medium">Générer l'aperçu</span>
-                          <span className="text-xs text-muted-foreground">Aperçu HTML de l'app</span>
-                        </button>
-                      </div>
-                    )}
-                    {expoHtmlPreview && (
-                      /* Phone mockup : h-full + aspect-ratio = même pattern que le web preview */
+                    {activeSnackUrl ? (
+                      /* ── APERÇU NATIF RÉEL via Snack embed — priorité absolue sur le HTML traduit ── */
                       <div
                         className="h-full overflow-hidden shadow-2xl flex-shrink-0"
                         style={{ aspectRatio: "390/844", maxWidth: "390px", borderRadius: "2.5rem", border: "8px solid #1c1c2e", background: "#000" }}
                       >
                         <iframe
-                          key={visualEditMode ? "expo-ve-mode" : inspectMode ? "expo-inspect-mode" : "expo-preview"}
-                          ref={previewRef}
-                          srcDoc={(visualEditMode || inspectMode) ? getPreviewSrc() : previewSrc}
-                          onLoad={() => { if (visualEditMode) setTimeout(injectVeScript, 50); }}
+                          key="expo-snack-native-preview"
+                          src={`https://snack.expo.dev/embedded/${activeSnackUrl.replace("https://snack.expo.dev/", "").replace(/[?#].*/, "")}?platform=ios&preview=true&theme=dark`}
                           className="w-full h-full border-0"
-                          title="App Preview"
-                          sandbox={visualEditMode ? "allow-scripts allow-same-origin" : "allow-scripts"}
+                          title="App Preview (Expo Snack natif)"
+                          allow="geolocation; camera; microphone"
                         />
                       </div>
+                    ) : (
+                      <>
+                        {expoHtmlLoading && !expoHtmlPreview && (
+                          <div className="flex flex-col items-center gap-3 text-muted-foreground mt-16">
+                            <Loader2 className="w-8 h-8 animate-spin text-primary" />
+                            <span className="text-sm">Génération de l'aperçu…</span>
+                          </div>
+                        )}
+                        {!expoHtmlLoading && !expoHtmlPreview && (
+                          <div className="flex flex-col items-center gap-3 mt-16">
+                            <button
+                              onClick={() => generateExpoHtmlPreview(htmlCode)}
+                              disabled={!htmlCode}
+                              className="flex flex-col items-center gap-3 px-8 py-6 rounded-2xl bg-primary/10 border border-primary/20 text-primary hover:bg-primary/20 transition-colors"
+                            >
+                              <span className="text-4xl">📱</span>
+                              <span className="text-sm font-medium">Générer l'aperçu</span>
+                              <span className="text-xs text-muted-foreground">Aperçu HTML de l'app</span>
+                            </button>
+                          </div>
+                        )}
+                        {expoHtmlPreview && (
+                          /* Phone mockup : h-full + aspect-ratio = même pattern que le web preview */
+                          <div
+                            className="h-full overflow-hidden shadow-2xl flex-shrink-0"
+                            style={{ aspectRatio: "390/844", maxWidth: "390px", borderRadius: "2.5rem", border: "8px solid #1c1c2e", background: "#000" }}
+                          >
+                            <iframe
+                              key={visualEditMode ? "expo-ve-mode" : inspectMode ? "expo-inspect-mode" : "expo-preview"}
+                              ref={previewRef}
+                              srcDoc={(visualEditMode || inspectMode) ? getPreviewSrc() : previewSrc}
+                              onLoad={() => { if (visualEditMode) setTimeout(injectVeScript, 50); }}
+                              className="w-full h-full border-0"
+                              title="App Preview"
+                              sandbox={visualEditMode ? "allow-scripts allow-same-origin" : "allow-scripts"}
+                            />
+                          </div>
+                        )}
+                      </>
                     )}
                   </div>
 
