@@ -2,6 +2,7 @@
 
 | Date (UTC) | Version | Commit (avant) | Message |
 |---|---|---|---|
+| 2026-09-03 18:37 | v1.2.21 | 5aeacc5 | i18n Phase 1a: selecteur de langue dans l'app (AppLayout) + navigation traduite + page Profil traduite (FR/EN/ES) |
 | 2026-08-30 20:24 | v1.2.20 | bdef88f | securite #1: isolation des sites publies sur une origine dediee (env SITES_HOST) - /p/ redirige vers le sous-domaine, app/API restent sur le domaine principal ; le JS des sites publies ne peut plus exfiltrer via l'API (CORS). Retro-compatible si SITES_HOST non defini |
 | 2026-08-30 19:17 | v1.2.19 | d6ac229 | check-up 2/2: entetes de securite (nosniff, Referrer-Policy, HSTS, X-Frame-Options) ; avertissement au boot si JWT_SECRET faible ; suppression code mort NewProjectConfig.tsx |
 | 2026-08-30 18:58 | v1.2.18 | 18c3b70 | securite (check-up): (1) CRITIQUE faille /api/admin/init secret en dur supprimee -> exige le vrai JWT_SECRET, (2) rate-limit anti-abus sur send-otp et forgot-password, (3) try/catch sur login + message clair 'serveur en cours de reveil' au lieu de 'erreur reseau' |

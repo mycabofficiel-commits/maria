@@ -13,20 +13,28 @@ import {
 import {
   LayoutDashboard, FolderOpen, Key, CreditCard,
   User, LogOut, ChevronRight, Menu, X, Shield, Crown, Zap,
-  PanelLeftClose, PanelLeftOpen, Sparkles
+  PanelLeftClose, PanelLeftOpen, Sparkles, Globe
 } from "lucide-react";
 import LogoBrand from "@/components/LogoBrand";
 import { useState } from "react";
 import { Loader2 } from "lucide-react";
+import { useLang } from "@/i18n/LangContext";
+import type { Lang, TranslationKey } from "@/i18n/translations";
 
-const NAV_ITEMS_BASE = [
-  { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
-  { href: "/projects", label: "Projets", icon: FolderOpen },
-  { href: "/billing", label: "Billing", icon: CreditCard },
+const NAV_ITEMS_BASE: { href: string; labelKey: TranslationKey; icon: any }[] = [
+  { href: "/dashboard", labelKey: "app_nav_dashboard", icon: LayoutDashboard },
+  { href: "/projects", labelKey: "app_nav_projects", icon: FolderOpen },
+  { href: "/billing", labelKey: "app_nav_billing", icon: CreditCard },
 ];
 
-const NAV_ITEMS_ADMIN = [
-  { href: "/api-keys", label: "Clés API", icon: Key },
+const NAV_ITEMS_ADMIN: { href: string; labelKey: TranslationKey; icon: any }[] = [
+  { href: "/api-keys", labelKey: "app_nav_apikeys", icon: Key },
+];
+
+const APP_LANGS: { code: Lang; flag: string; label: string }[] = [
+  { code: "fr", flag: "🇫🇷", label: "FR" },
+  { code: "en", flag: "🇬🇧", label: "EN" },
+  { code: "es", flag: "🇪🇸", label: "ES" },
 ];
 
 interface AppLayoutProps {
@@ -36,6 +44,7 @@ interface AppLayoutProps {
 
 export default function AppLayout({ children, title }: AppLayoutProps) {
   const { user, isAuthenticated, loading, logout } = useAuth();
+  const { t, lang, setLang } = useLang();
   const [location] = useLocation();
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [navCollapsed, setNavCollapsed] = useState(false);
@@ -95,7 +104,7 @@ export default function AppLayout({ children, title }: AppLayoutProps) {
             return (
               <Link key={item.href} href={item.href}>
                 <div
-                  title={navCollapsed ? item.label : undefined}
+                  title={navCollapsed ? t(item.labelKey) : undefined}
                   className={`flex items-center gap-3 px-2.5 py-2.5 rounded-lg text-sm font-medium transition-colors cursor-pointer ${
                     active
                       ? "bg-primary/10 text-primary"
@@ -105,7 +114,7 @@ export default function AppLayout({ children, title }: AppLayoutProps) {
                 >
                   <item.icon className="w-4 h-4 flex-shrink-0" />
                   <span className={`transition-all duration-300 whitespace-nowrap overflow-hidden ${navCollapsed ? "lg:w-0 lg:opacity-0" : "lg:w-auto lg:opacity-100"}`}>
-                    {item.label}
+                    {t(item.labelKey)}
                   </span>
                   {active && !navCollapsed && <ChevronRight className="ml-auto w-3.5 h-3.5 opacity-50 flex-shrink-0" />}
                 </div>
@@ -118,10 +127,10 @@ export default function AppLayout({ children, title }: AppLayoutProps) {
         {isUltra && (
           <div className="px-2 pb-2">
             <Link href="/ultra">
-              <div title={navCollapsed ? "Tableau Ultra" : undefined} className="flex items-center gap-2 px-2.5 py-2 rounded-lg bg-amber-500/10 border border-amber-500/20 cursor-pointer hover:bg-amber-500/20 transition-colors overflow-hidden">
+              <div title={navCollapsed ? t("app_menu_ultra") : undefined} className="flex items-center gap-2 px-2.5 py-2 rounded-lg bg-amber-500/10 border border-amber-500/20 cursor-pointer hover:bg-amber-500/20 transition-colors overflow-hidden">
                 <Crown className="w-4 h-4 text-amber-400 flex-shrink-0" />
                 <span className={`text-xs font-semibold text-amber-400 whitespace-nowrap transition-all duration-300 ${navCollapsed ? "lg:w-0 lg:opacity-0 overflow-hidden" : "lg:w-auto lg:opacity-100"}`}>
-                  Tableau de bord Ultra
+                  {t("app_ultra_dashboard")}
                 </span>
                 {!navCollapsed && <Zap className="w-3 h-3 text-amber-400 ml-auto flex-shrink-0" />}
               </div>
@@ -133,17 +142,17 @@ export default function AppLayout({ children, title }: AppLayoutProps) {
         <div className="px-2 py-4 border-t border-sidebar-border">
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <button title={navCollapsed ? (user?.name || "Utilisateur") : undefined} className="w-full flex items-center gap-3 px-2.5 py-2.5 rounded-lg hover:bg-sidebar-accent transition-colors overflow-hidden">
+              <button title={navCollapsed ? (user?.name || t("app_user_fallback")) : undefined} className="w-full flex items-center gap-3 px-2.5 py-2.5 rounded-lg hover:bg-sidebar-accent transition-colors overflow-hidden">
                 <Avatar className="w-7 h-7 flex-shrink-0">
                   <AvatarFallback className={`text-xs font-bold ${isUltra ? "bg-amber-500/20 text-amber-400" : "bg-primary/20 text-primary"}`}>{initials}</AvatarFallback>
                 </Avatar>
                 <div className={`flex-1 text-left min-w-0 transition-all duration-300 ${navCollapsed ? "lg:w-0 lg:opacity-0 overflow-hidden" : "lg:w-auto lg:opacity-100"}`}>
                   <div className="flex items-center gap-1.5">
-                    <span className="text-sm font-medium text-foreground truncate">{user?.name || "Utilisateur"}</span>
+                    <span className="text-sm font-medium text-foreground truncate">{user?.name || t("app_user_fallback")}</span>
                     {isUltra && <Crown className="w-3 h-3 text-amber-400 flex-shrink-0" />}
                   </div>
                   <div className={`text-xs ${isUltra ? "text-amber-400 font-semibold" : `capitalize ${planColors[(user as any)?.plan || "free"]}`}`}>
-                    {isUltra ? "⚡ Ultra" : `Plan ${(user as any)?.plan || "free"}`}
+                    {isUltra ? "⚡ Ultra" : `${t("app_plan_prefix")} ${(user as any)?.plan || "free"}`}
                   </div>
                   <div className="text-[10px] text-muted-foreground/70 mt-0.5">v{APP_VERSION}</div>
                 </div>
@@ -152,12 +161,12 @@ export default function AppLayout({ children, title }: AppLayoutProps) {
             <DropdownMenuContent align="end" className="w-52">
               <DropdownMenuItem asChild>
                 <Link href="/profile" className="flex items-center gap-2 cursor-pointer">
-                  <User className="w-4 h-4" /> Profil
+                  <User className="w-4 h-4" /> {t("app_menu_profile")}
                 </Link>
               </DropdownMenuItem>
               <DropdownMenuItem asChild>
                 <Link href="/billing" className="flex items-center gap-2 cursor-pointer">
-                  <CreditCard className="w-4 h-4" /> Billing
+                  <CreditCard className="w-4 h-4" /> {t("app_nav_billing")}
                 </Link>
               </DropdownMenuItem>
               {(user as any)?.role === "admin" && (
@@ -165,7 +174,7 @@ export default function AppLayout({ children, title }: AppLayoutProps) {
                   <DropdownMenuSeparator />
                   <DropdownMenuItem asChild>
                     <Link href="/admin" className="flex items-center gap-2 cursor-pointer">
-                      <Shield className="w-4 h-4" /> Admin
+                      <Shield className="w-4 h-4" /> {t("app_menu_admin")}
                     </Link>
                   </DropdownMenuItem>
                 </>
@@ -175,14 +184,14 @@ export default function AppLayout({ children, title }: AppLayoutProps) {
                   <DropdownMenuSeparator />
                   <DropdownMenuItem asChild>
                     <Link href="/ultra" className="flex items-center gap-2 cursor-pointer text-amber-400">
-                      <Crown className="w-4 h-4" /> Tableau Ultra
+                      <Crown className="w-4 h-4" /> {t("app_menu_ultra")}
                     </Link>
                   </DropdownMenuItem>
                 </>
               )}
               <DropdownMenuSeparator />
               <DropdownMenuItem onClick={() => logout()} className="text-destructive focus:text-destructive cursor-pointer">
-                <LogOut className="w-4 h-4 mr-2" /> Déconnexion
+                <LogOut className="w-4 h-4 mr-2" /> {t("app_menu_logout")}
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
@@ -213,7 +222,7 @@ export default function AppLayout({ children, title }: AppLayoutProps) {
             <button
               className="hidden lg:flex items-center justify-center w-8 h-8 rounded-lg text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
               onClick={() => setNavCollapsed(v => !v)}
-              title={navCollapsed ? "Ouvrir le menu" : "Réduire le menu"}
+              title={navCollapsed ? t("app_menu_open") : t("app_menu_collapse")}
             >
               {navCollapsed ? <PanelLeftOpen className="w-4 h-4" /> : <PanelLeftClose className="w-4 h-4" />}
             </button>
@@ -221,6 +230,30 @@ export default function AppLayout({ children, title }: AppLayoutProps) {
               <h1 className="font-display font-semibold text-foreground">{title}</h1>
             )}
           </div>
+
+          {/* Sélecteur de langue */}
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <button
+                title={t("app_lang_label")}
+                className="flex items-center gap-1.5 px-2.5 h-8 rounded-lg text-sm text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
+              >
+                <Globe className="w-4 h-4" />
+                <span className="font-medium">{APP_LANGS.find(l => l.code === lang)?.label ?? "FR"}</span>
+              </button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-36">
+              {APP_LANGS.map(l => (
+                <DropdownMenuItem
+                  key={l.code}
+                  onClick={() => setLang(l.code)}
+                  className={`flex items-center gap-2 cursor-pointer ${lang === l.code ? "text-primary font-medium" : ""}`}
+                >
+                  <span>{l.flag}</span> {l.label}
+                </DropdownMenuItem>
+              ))}
+            </DropdownMenuContent>
+          </DropdownMenu>
         </header>
 
         {/* Content */}
