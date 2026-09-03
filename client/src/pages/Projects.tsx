@@ -19,10 +19,12 @@ import {
   Link, X, Pencil, Mic, MicOff, Check, ChevronDown, ListChecks
 } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
-import { fr } from "date-fns/locale";
+import { fr, enUS, es } from "date-fns/locale";
 import ProjectCardMenu from "@/components/ProjectCardMenu";
 import { TEMPLATES, TEMPLATE_CATEGORIES, type Template, type TemplateCategory } from "@/data/templates";
 import { TemplatePreviewThumb } from "@/components/TemplatePreviewThumb";
+import { useLang } from "@/i18n/LangContext";
+import type { TranslationKey } from "@/i18n/translations";
 
 const SITE_TYPES = [
   "Landing page", "Site vitrine", "Portfolio", "Restaurant",
@@ -80,36 +82,36 @@ const NEWSLETTER_PROVIDERS = [
 // Options « auxquelles l'utilisateur ne pense pas forcément ».
 // Cochées → leur `directive` (enrichie par le sous-menu) est injectée dans le prompt.
 // `def: true` = pré-cochée par défaut · `sub: true` = a un sous-menu de configuration.
-const EXTRA_OPTIONS: { id: string; icon: string; label: string; desc: string; def: boolean; sub?: boolean; directive: string }[] = [
-  { id: "footer",       icon: "📄", label: "Footer complet",        desc: "Liens, coordonnées, copyright", def: true,
+const EXTRA_OPTIONS: { id: string; icon: string; labelKey: TranslationKey; descKey: TranslationKey; def: boolean; sub?: boolean; directive: string }[] = [
+  { id: "footer",       icon: "📄", labelKey: "proj_opt_footer",       descKey: "proj_optd_footer", def: true,
     directive: "Ajoute un footer complet et soigné : navigation, coordonnées, copyright avec le nom exact du site, et liens vers les pages légales." },
-  { id: "animations",   icon: "✨", label: "Animations",            desc: "Apparitions au scroll, transitions", def: true,
+  { id: "animations",   icon: "✨", labelKey: "proj_opt_animations",   descKey: "proj_optd_animations", def: true,
     directive: "Ajoute des animations modernes et fluides : apparition des sections au scroll (fade/slide), transitions au survol, micro-interactions sur les boutons. Subtiles et professionnelles, jamais clinquantes." },
-  { id: "seo",          icon: "🔍", label: "SEO optimisé",          desc: "Meta tags, Open Graph, mots-clés", def: true, sub: true,
+  { id: "seo",          icon: "🔍", labelKey: "proj_opt_seo",          descKey: "proj_optd_seo", def: true, sub: true,
     directive: "Optimise le SEO : balises meta (title, description), Open Graph + Twitter Card, structure sémantique (un seul h1, hiérarchie h2/h3), attributs alt sur toutes les images." },
-  { id: "video",        icon: "▶️", label: "Vidéo YouTube",         desc: "Intègre une ou plusieurs vidéos", def: false, sub: true,
+  { id: "video",        icon: "▶️", labelKey: "proj_opt_video",        descKey: "proj_optd_video", def: false, sub: true,
     directive: "Intègre une section vidéo avec un lecteur YouTube responsive." },
-  { id: "scrolltop",    icon: "⬆️", label: "Retour en haut",        desc: "Bouton scroll-to-top", def: true,
+  { id: "scrolltop",    icon: "⬆️", labelKey: "proj_opt_scrolltop",    descKey: "proj_optd_scrolltop", def: true,
     directive: "Ajoute un bouton « retour en haut » discret qui apparaît après avoir scrollé." },
-  { id: "social",       icon: "📱", label: "Réseaux sociaux",       desc: "Choisis les réseaux + leurs liens", def: false, sub: true,
+  { id: "social",       icon: "📱", labelKey: "proj_opt_social",       descKey: "proj_optd_social", def: false, sub: true,
     directive: "Ajoute des icônes de réseaux sociaux cliquables dans le header et/ou le footer." },
-  { id: "cookies",      icon: "🍪", label: "Bandeau cookies",       desc: "Consentement RGPD", def: false,
+  { id: "cookies",      icon: "🍪", labelKey: "proj_opt_cookies",      descKey: "proj_optd_cookies", def: false,
     directive: "Ajoute un bandeau de consentement cookies (RGPD) avec boutons Accepter/Refuser, choix mémorisé en localStorage et masqué aux visites suivantes." },
-  { id: "contact",      icon: "✉️", label: "Formulaire de contact", desc: "Nom, email, message", def: false, sub: true,
+  { id: "contact",      icon: "✉️", labelKey: "proj_opt_contact",      descKey: "proj_optd_contact", def: false, sub: true,
     directive: "Ajoute une section formulaire de contact (nom, email, message) avec validation côté client et message de confirmation à l'envoi." },
-  { id: "whatsapp",     icon: "💬", label: "Bouton WhatsApp",       desc: "Contact rapide flottant", def: false, sub: true,
+  { id: "whatsapp",     icon: "💬", labelKey: "proj_opt_whatsapp",     descKey: "proj_optd_whatsapp", def: false, sub: true,
     directive: "Ajoute un bouton WhatsApp flottant en bas à droite, ouvrant une conversation (lien wa.me)." },
-  { id: "faq",          icon: "❓", label: "FAQ",                   desc: "Tes questions fréquentes (accordéon)", def: false, sub: true,
+  { id: "faq",          icon: "❓", labelKey: "proj_opt_faq",          descKey: "proj_optd_faq", def: false, sub: true,
     directive: "Ajoute une section FAQ avec questions/réponses en accordéon dépliable." },
-  { id: "testimonials", icon: "⭐", label: "Témoignages",           desc: "Nombre d'avis clients", def: false, sub: true,
+  { id: "testimonials", icon: "⭐", labelKey: "proj_opt_testimonials", descKey: "proj_optd_testimonials", def: false, sub: true,
     directive: "Ajoute une section témoignages/avis clients : photos placeholder, noms, et notes en étoiles." },
-  { id: "newsletter",   icon: "📧", label: "Newsletter",            desc: "Inscription email + service", def: false, sub: true,
+  { id: "newsletter",   icon: "📧", labelKey: "proj_opt_newsletter",   descKey: "proj_optd_newsletter", def: false, sub: true,
     directive: "Ajoute un bloc d'inscription à la newsletter (champ email + bouton) dans le footer ou une section dédiée." },
-  { id: "maps",         icon: "📍", label: "Google Maps",           desc: "Carte + adresse", def: false, sub: true,
+  { id: "maps",         icon: "📍", labelKey: "proj_opt_maps",         descKey: "proj_optd_maps", def: false, sub: true,
     directive: "Ajoute une carte de localisation (iframe Google Maps) dans la section contact." },
-  { id: "legal",        icon: "⚖️", label: "Pages légales",         desc: "Mentions, CGV, confidentialité", def: false,
+  { id: "legal",        icon: "⚖️", labelKey: "proj_opt_legal",        descKey: "proj_optd_legal", def: false,
     directive: "Ajoute des pages/sections légales (mentions légales, politique de confidentialité, CGV) accessibles depuis le footer." },
-  { id: "loader",       icon: "⏳", label: "Écran de chargement",   desc: "Preloader animé", def: false,
+  { id: "loader",       icon: "⏳", labelKey: "proj_opt_loader",       descKey: "proj_optd_loader", def: false,
     directive: "Ajoute un écran de chargement animé (preloader) au démarrage de la page, qui disparaît une fois le contenu prêt." },
 ];
 
@@ -121,13 +123,13 @@ const CATEGORY_COLORS: Record<string, string> = {
   Mobile: "bg-rose-500/10 text-rose-400 border-rose-500/20",
 };
 
-const STATUS_CONFIG: Record<string, { label: string; color: string; icon: any }> = {
-  draft: { label: "Brouillon", color: "text-muted-foreground", icon: Clock },
-  generating: { label: "Génération…", color: "text-amber-400", icon: Loader2 },
-  ready: { label: "Prêt", color: "text-emerald-400", icon: CheckCircle2 },
-  published: { label: "Publié", color: "text-primary", icon: Globe },
-  archived: { label: "Archivé", color: "text-muted-foreground", icon: Clock },
-  error: { label: "Erreur", color: "text-destructive", icon: AlertCircle },
+const STATUS_CONFIG: Record<string, { labelKey: TranslationKey; color: string; icon: any }> = {
+  draft: { labelKey: "status_draft", color: "text-muted-foreground", icon: Clock },
+  generating: { labelKey: "status_generating", color: "text-amber-400", icon: Loader2 },
+  ready: { labelKey: "status_ready", color: "text-emerald-400", icon: CheckCircle2 },
+  published: { labelKey: "status_published", color: "text-primary", icon: Globe },
+  archived: { labelKey: "status_archived", color: "text-muted-foreground", icon: Clock },
+  error: { labelKey: "status_error", color: "text-destructive", icon: AlertCircle },
 };
 
 // ── Template config constants ────────────────────────────────────────────────
@@ -160,7 +162,11 @@ const TPL_LANG_OPTS = [
 
 type DialogTab = "blank" | "template" | "tpl-confirm";
 
+const PROJ_DF_LOCALE: Record<string, any> = { fr, en: enUS, es };
+
 export default function Projects() {
+  const { t, lang } = useLang();
+  const dfLocale = PROJ_DF_LOCALE[lang] || enUS;
   const [, navigate] = useLocation();
   const [open, setOpen] = useState(false);
   const [tab, setTab] = useState<DialogTab>("blank");
@@ -326,7 +332,7 @@ export default function Projects() {
       case "social":
         return (
           <div className="space-y-3">
-            <p className="text-xs text-muted-foreground">Choisis les réseaux à afficher (et leur lien, optionnel) :</p>
+            <p className="text-xs text-muted-foreground">{t("proj_social_pick")}</p>
             <div className="flex flex-wrap gap-2">
               {SOCIAL_NETWORKS.map(n => {
                 const on = socialNets.includes(n.id);
@@ -346,7 +352,7 @@ export default function Projects() {
                     <div key={nid} className="flex items-center gap-2">
                       <span className="text-xs w-24 flex-shrink-0 text-muted-foreground flex items-center gap-1">{n?.icon} {n?.label}</span>
                       <Input value={socialUrls[nid] ?? ""} onChange={e => setSocialUrls(prev => ({ ...prev, [nid]: e.target.value }))}
-                        placeholder="Lien (optionnel)" className={inputCls} />
+                        placeholder={t("proj_link_optional")} className={inputCls} />
                     </div>
                   );
                 })}
@@ -357,59 +363,59 @@ export default function Projects() {
       case "maps":
         return (
           <div>
-            <Label className="text-xs text-muted-foreground mb-1 block">Adresse à afficher sur la carte</Label>
+            <Label className="text-xs text-muted-foreground mb-1 block">{t("proj_map_address")}</Label>
             <Input value={mapsAddress} onChange={e => setMapsAddress(e.target.value)}
-              placeholder="Ex : 12 rue de la Paix, 75002 Paris" className={inputCls} />
+              placeholder={t("proj_map_placeholder")} className={inputCls} />
           </div>
         );
       case "seo":
         return (
           <div>
-            <Label className="text-xs text-muted-foreground mb-1 block">Mots-clés / hashtags à cibler (séparés par des virgules)</Label>
+            <Label className="text-xs text-muted-foreground mb-1 block">{t("proj_seo_keywords")}</Label>
             <Input value={seoKeywords} onChange={e => setSeoKeywords(e.target.value)}
-              placeholder="Ex : VTC Paris, chauffeur privé, réservation en ligne" className={inputCls} />
+              placeholder={t("proj_seo_placeholder")} className={inputCls} />
           </div>
         );
       case "video":
         return (
           <div className="space-y-2">
-            <Label className="text-xs text-muted-foreground block">Lien(s) de vidéo YouTube</Label>
+            <Label className="text-xs text-muted-foreground block">{t("proj_video_links")}</Label>
             {videoLinks.map((l, i) => (
               <div key={i} className="flex items-center gap-2">
                 <Input value={l} onChange={e => setVideoLink(i, e.target.value)}
                   placeholder="https://www.youtube.com/watch?v=…" className={inputCls} />
                 {videoLinks.length > 1 && (
-                  <button type="button" onClick={() => removeVideoLink(i)} className="p-1.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted/40 flex-shrink-0" title="Retirer">
+                  <button type="button" onClick={() => removeVideoLink(i)} className="p-1.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted/40 flex-shrink-0" title={t("proj_remove")}>
                     <X className="w-4 h-4" />
                   </button>
                 )}
               </div>
             ))}
             <button type="button" onClick={addVideoLink} className="flex items-center gap-1 text-xs text-primary hover:underline">
-              <Plus className="w-3.5 h-3.5" /> Ajouter une vidéo
+              <Plus className="w-3.5 h-3.5" /> {t("proj_add_video")}
             </button>
           </div>
         );
       case "whatsapp":
         return (
           <div>
-            <Label className="text-xs text-muted-foreground mb-1 block">Numéro WhatsApp (format international)</Label>
+            <Label className="text-xs text-muted-foreground mb-1 block">{t("proj_whatsapp_num")}</Label>
             <Input value={whatsappPhone} onChange={e => setWhatsappPhone(e.target.value)}
-              placeholder="Ex : +33 6 12 34 56 78" className={inputCls} />
+              placeholder={t("proj_whatsapp_placeholder")} className={inputCls} />
           </div>
         );
       case "contact":
         return (
           <div>
-            <Label className="text-xs text-muted-foreground mb-1 block">Email de réception des messages (optionnel)</Label>
+            <Label className="text-xs text-muted-foreground mb-1 block">{t("proj_contact_email")}</Label>
             <Input value={contactEmail} onChange={e => setContactEmail(e.target.value)}
-              placeholder="Ex : contact@monsite.fr" className={inputCls} />
+              placeholder={t("proj_contact_placeholder")} className={inputCls} />
           </div>
         );
       case "newsletter":
         return (
           <div>
-            <Label className="text-xs text-muted-foreground mb-1.5 block">Service d'emailing à connecter</Label>
+            <Label className="text-xs text-muted-foreground mb-1.5 block">{t("proj_newsletter_service")}</Label>
             <div className="flex flex-wrap gap-2">
               {NEWSLETTER_PROVIDERS.map(p => {
                 const on = newsletterProvider === p.id;
@@ -426,7 +432,7 @@ export default function Projects() {
       case "testimonials":
         return (
           <div>
-            <Label className="text-xs text-muted-foreground mb-1.5 block">Nombre d'avis à afficher</Label>
+            <Label className="text-xs text-muted-foreground mb-1.5 block">{t("proj_reviews_count")}</Label>
             <div className="flex flex-wrap gap-2">
               {[2, 3, 4, 6, 8].map(n => {
                 const on = testimonialsCount === n;
@@ -443,20 +449,20 @@ export default function Projects() {
       case "faq":
         return (
           <div className="space-y-2">
-            <Label className="text-xs text-muted-foreground block">Tes questions (laisse vide pour que Mar-ia les invente)</Label>
+            <Label className="text-xs text-muted-foreground block">{t("proj_faq_questions")}</Label>
             {faqItems.map((q, i) => (
               <div key={i} className="flex items-center gap-2">
                 <Input value={q} onChange={e => setFaqItem(i, e.target.value)}
-                  placeholder={`Question ${i + 1} — ex : Quels sont vos délais ?`} className={inputCls} />
+                  placeholder={`${t("proj_question")} ${i + 1}`} className={inputCls} />
                 {faqItems.length > 1 && (
-                  <button type="button" onClick={() => removeFaqItem(i)} className="p-1.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted/40 flex-shrink-0" title="Retirer">
+                  <button type="button" onClick={() => removeFaqItem(i)} className="p-1.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted/40 flex-shrink-0" title={t("proj_remove")}>
                     <X className="w-4 h-4" />
                   </button>
                 )}
               </div>
             ))}
             <button type="button" onClick={addFaqItem} className="flex items-center gap-1 text-xs text-primary hover:underline">
-              <Plus className="w-3.5 h-3.5" /> Ajouter une question
+              <Plus className="w-3.5 h-3.5" /> {t("proj_add_question")}
             </button>
           </div>
         );
@@ -466,7 +472,7 @@ export default function Projects() {
   }
 
   const handleCreate = () => {
-    if (!form.name.trim()) return toast.error("Donnez un nom à votre projet");
+    if (!form.name.trim()) return toast.error(t("proj_toast_name"));
     const palette = form.useCustomColors
       ? form.customColors.filter(Boolean).join(",")
       : form.colorPalette;
@@ -519,7 +525,7 @@ export default function Projects() {
 
   function startTplDictation() {
     const SR = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
-    if (!SR) { toast.error("Dictée non supportée sur ce navigateur."); return; }
+    if (!SR) { toast.error(t("proj_dictation_unsupported2")); return; }
     const rec = new SR();
     rec.lang = "fr-FR"; rec.continuous = true; rec.interimResults = true;
     rec.onresult = (e: any) => {
@@ -573,18 +579,18 @@ export default function Projects() {
     : TEMPLATES.filter((t) => t.category === activeCategory);
 
   return (
-    <AppLayout title="Projets">
+    <AppLayout title={t("app_nav_projects")}>
       <div className="max-w-5xl space-y-6">
         <div className="flex items-center justify-between">
           <div>
-            <h2 className="text-2xl font-display font-bold text-foreground">Mes projets</h2>
-            <p className="text-muted-foreground mt-1">{projects?.length || 0} projet{(projects?.length || 0) > 1 ? "s" : ""}</p>
+            <h2 className="text-2xl font-display font-bold text-foreground">{t("proj_my_projects")}</h2>
+            <p className="text-muted-foreground mt-1">{projects?.length || 0} {t("proj_projects_lc")}</p>
           </div>
           <Dialog open={open} onOpenChange={(o) => { if (!o) resetDialog(); else setOpen(true); }}>
             <DialogTrigger asChild>
               <Button className="bg-primary hover:bg-primary/90 text-primary-foreground">
                 <Plus className="w-4 h-4 mr-2" />
-                Nouveau projet
+                {t("dash_new_project")}
               </Button>
             </DialogTrigger>
             <DialogContent className={`bg-card border-border/60 transition-all max-h-[92vh] overflow-y-auto ${tab === "template" ? "max-w-4xl" : tab === "tpl-confirm" ? "max-w-2xl" : "max-w-lg"}`}>
@@ -597,7 +603,7 @@ export default function Projects() {
                   )}
                   {tab === "tpl-confirm" ? (
                     <><span className="text-xl">{selectedTpl?.emoji}</span> {selectedTpl?.name}</>
-                  ) : "Nouveau projet"}
+                  ) : t("dash_new_project")}
                 </DialogTitle>
               </DialogHeader>
 
@@ -610,7 +616,7 @@ export default function Projects() {
                       tab === "blank" ? "bg-card text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"
                     }`}
                   >
-                    <Plus className="w-3.5 h-3.5" /> Projet vide
+                    <Plus className="w-3.5 h-3.5" /> {t("proj_tab_blank")}
                   </button>
                   <button
                     onClick={() => setTab("template")}
@@ -627,9 +633,9 @@ export default function Projects() {
               {tab === "blank" && (
                 <div className="space-y-4 pt-1">
                   <div>
-                    <Label className="text-sm text-foreground mb-1.5 block">Nom du projet *</Label>
+                    <Label className="text-sm text-foreground mb-1.5 block">{t("proj_name_label")} *</Label>
                     <Input
-                      placeholder="Mon site web"
+                      placeholder={t("proj_name_placeholder")}
                       value={form.name}
                       onChange={(e) => setForm({ ...form, name: e.target.value })}
                       className="bg-input border-border/60"
@@ -638,13 +644,13 @@ export default function Projects() {
                   </div>
                   <div>
                     <div className="flex items-center justify-between mb-1.5">
-                      <Label className="text-sm text-foreground">Décrivez votre site *</Label>
+                      <Label className="text-sm text-foreground">{t("proj_describe_label")} *</Label>
                       <button
                         type="button"
-                        title={isDictating ? "Arrêter la dictée" : "Dicter la description (voix)"}
+                        title={isDictating ? t("proj_stop_title") : t("proj_dictate_title")}
                         onClick={() => {
                           const SR = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
-                          if (!SR) { toast.error("Dictée non supportée dans ce navigateur (Chrome recommandé)"); return; }
+                          if (!SR) { toast.error(t("proj_dictation_unsupported")); return; }
                           if (isDictating) {
                             dictRecognitionRef.current?.stop();
                             setIsDictating(false);
@@ -660,7 +666,7 @@ export default function Projects() {
                             setForm(prev => ({ ...prev, description: base + (base && !base.endsWith(" ") ? " " : "") + transcript }));
                           };
                           rec.onend = () => { setIsDictating(false); };
-                          rec.onerror = () => { setIsDictating(false); toast.error("Erreur de dictée"); };
+                          rec.onerror = () => { setIsDictating(false); toast.error(t("proj_dictation_error")); };
                           dictRecognitionRef.current = rec;
                           base = form.description;
                           rec.start();
@@ -673,11 +679,11 @@ export default function Projects() {
                         }`}
                       >
                         {isDictating ? <MicOff className="w-3 h-3" /> : <Mic className="w-3 h-3" />}
-                        {isDictating ? "Arrêter" : "Dicter"}
+                        {isDictating ? t("proj_stop") : t("proj_dictate")}
                       </button>
                     </div>
                     <textarea
-                      placeholder="Ex: Une landing page pour une startup de livraison de repas sains, avec un hero accrocheur, section fonctionnalités et un CTA fort…"
+                      placeholder={t("proj_describe_placeholder")}
                       value={form.description}
                       onChange={(e) => setForm({ ...form, description: e.target.value })}
                       rows={4}
@@ -688,7 +694,7 @@ export default function Projects() {
                     {isDictating && (
                       <p className="mt-1 text-xs text-red-400 flex items-center gap-1">
                         <span className="w-1.5 h-1.5 rounded-full bg-red-400 animate-ping inline-block" />
-                        Dictée en cours… parlez maintenant
+                        {t("proj_dictating_now")}
                       </p>
                     )}
                   </div>
@@ -696,7 +702,7 @@ export default function Projects() {
                   <div>
                     <Label className="text-sm text-foreground mb-1.5 flex items-center gap-1.5">
                       <Link className="w-3.5 h-3.5 text-primary" />
-                      Inspiration <span className="text-muted-foreground font-normal text-xs">(optionnel — jusqu'à 4 sites)</span>
+                      {t("proj_inspiration")} <span className="text-muted-foreground font-normal text-xs">{t("proj_inspiration_hint")}</span>
                     </Label>
                     <div className="space-y-1.5">
                       {form.inspirationUrls.map((url, i) => (
@@ -729,17 +735,17 @@ export default function Projects() {
                         onClick={() => setForm({ ...form, inspirationUrls: [...form.inspirationUrls, ""] })}
                         className="mt-1.5 text-xs text-primary hover:text-primary/80 flex items-center gap-1 transition-colors"
                       >
-                        <Plus className="w-3 h-3" /> Ajouter un site
+                        <Plus className="w-3 h-3" /> {t("proj_add_site")}
                       </button>
                     )}
                     {form.inspirationUrls.some((u) => u.trim().match(/^https?:\/\/.+/)) && (
-                      <p className="text-[10px] text-emerald-400 mt-1">✦ Mar-ia analysera ces sites avant de générer</p>
+                      <p className="text-[10px] text-emerald-400 mt-1">{t("proj_inspiration_note")}</p>
                     )}
                   </div>
 
                   <div className="grid grid-cols-2 gap-3">
                     <div>
-                      <Label className="text-sm text-foreground mb-1.5 block">Type de site</Label>
+                      <Label className="text-sm text-foreground mb-1.5 block">{t("proj_site_type")}</Label>
                       <Select
                         value={form.siteType}
                         onValueChange={(v) => {
@@ -755,11 +761,11 @@ export default function Projects() {
                         <SelectContent>{SITE_TYPES.map((t) => <SelectItem key={t} value={t}>{t === "Application mobile" ? "📱 Application mobile" : t}</SelectItem>)}</SelectContent>
                       </Select>
                       {form.siteType === "Application mobile" && (
-                        <p className="text-[10px] text-amber-400 mt-1">⚡ Génération Expo (iOS &amp; Android)</p>
+                        <p className="text-[10px] text-amber-400 mt-1">{t("proj_expo_note")}</p>
                       )}
                     </div>
                     <div>
-                      <Label className="text-sm text-foreground mb-1.5 block">Style</Label>
+                      <Label className="text-sm text-foreground mb-1.5 block">{t("proj_style")}</Label>
                       <Select value={form.style} onValueChange={(v) => setForm({ ...form, style: v })}>
                         <SelectTrigger className="bg-input border-border/60"><SelectValue /></SelectTrigger>
                         <SelectContent>{STYLES.map((s) => <SelectItem key={s} value={s}>{s}</SelectItem>)}</SelectContent>
@@ -769,7 +775,7 @@ export default function Projects() {
 
                   {/* Langue(s) — multi-select pills */}
                   <div>
-                    <Label className="text-sm text-foreground mb-1.5 block">Langue(s)</Label>
+                    <Label className="text-sm text-foreground mb-1.5 block">{t("proj_languages")}</Label>
                     <div className="flex flex-wrap gap-1.5">
                       {LANGUAGES.map(({ code, label, full }) => {
                         const selected = form.languages.includes(code);
@@ -798,13 +804,13 @@ export default function Projects() {
                       })}
                     </div>
                     {form.languages.length > 1 && (
-                      <p className="text-[10px] text-muted-foreground mt-1">Site multilingue : {form.languages.map(l => LANGUAGES.find(x => x.code === l)?.full).join(", ")}</p>
+                      <p className="text-[10px] text-muted-foreground mt-1">{t("proj_multilang_note")} {form.languages.map(l => LANGUAGES.find(x => x.code === l)?.full).join(", ")}</p>
                     )}
                   </div>
 
                   {/* Palette — presets + personnalisée */}
                   <div>
-                    <Label className="text-sm text-foreground mb-1.5 block">Palette de couleurs</Label>
+                    <Label className="text-sm text-foreground mb-1.5 block">{t("proj_palette")}</Label>
                     <div className="flex flex-wrap gap-2">
                       {PALETTE_PRESETS.map((preset) => (
                         <button
@@ -835,7 +841,7 @@ export default function Projects() {
                             : "border-border/50 text-muted-foreground hover:border-border hover:text-foreground"
                         }`}
                       >
-                        🎨 Personnalisée
+                        🎨 {t("proj_custom")}
                       </button>
                     </div>
                     {form.useCustomColors && (
@@ -862,8 +868,8 @@ export default function Projects() {
                   <div>
                     <Label className="text-sm text-foreground mb-1.5 flex items-center gap-1.5">
                       <ListChecks className="w-3.5 h-3.5 text-primary" />
-                      Options supplémentaires
-                      <span className="text-muted-foreground font-normal text-xs">(souvent oubliées — coche ce que Mar-ia doit intégrer)</span>
+                      {t("proj_options")}
+                      <span className="text-muted-foreground font-normal text-xs">{t("proj_options_hint")}</span>
                     </Label>
                     <div className="space-y-2 max-h-[280px] overflow-y-auto pr-1">
                       {EXTRA_OPTIONS.map(opt => {
@@ -883,16 +889,16 @@ export default function Projects() {
                                 </span>
                                 <div className="min-w-0 flex-1">
                                   <p className={`text-sm font-medium flex items-center gap-1.5 ${active ? "text-primary" : "text-foreground"}`}>
-                                    <span>{opt.icon}</span>{opt.label}
+                                    <span>{opt.icon}</span>{t(opt.labelKey)}
                                   </p>
-                                  <p className="text-xs text-muted-foreground">{opt.desc}</p>
+                                  <p className="text-xs text-muted-foreground">{t(opt.descKey)}</p>
                                 </div>
                               </button>
                               {hasSub && (
                                 <button
                                   type="button"
                                   onClick={() => toggleExpanded(opt.id)}
-                                  title={isOpen ? "Replier la configuration" : "Configurer"}
+                                  title={isOpen ? t("proj_collapse_config") : t("proj_configure")}
                                   className="flex-shrink-0 mt-0.5 p-1 rounded-md text-muted-foreground hover:text-foreground hover:bg-muted/40 transition-colors"
                                 >
                                   <ChevronDown className={`w-4 h-4 transition-transform ${isOpen ? "rotate-180" : ""}`} />
@@ -908,7 +914,7 @@ export default function Projects() {
                         );
                       })}
                     </div>
-                    <p className="text-xs text-muted-foreground mt-1.5">{extras.length} option(s) sélectionnée(s) — modifiable ensuite via le chat.</p>
+                    <p className="text-xs text-muted-foreground mt-1.5">{extras.length} {t("proj_options_count")}</p>
                   </div>
 
                   <Button
@@ -917,7 +923,7 @@ export default function Projects() {
                     disabled={createProject.isPending || !form.name.trim() || !form.description.trim()}
                   >
                     {createProject.isPending ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Sparkles className="w-4 h-4 mr-2" />}
-                    Créer et générer le site
+                    {t("proj_create_generate")}
                   </Button>
                 </div>
               )}
@@ -992,7 +998,7 @@ export default function Projects() {
                     <div className="space-y-4 sm:col-span-2">
                       {/* Name */}
                       <div>
-                        <Label className="text-sm text-foreground mb-1.5 block">Nom du projet</Label>
+                        <Label className="text-sm text-foreground mb-1.5 block">{t("proj_name_label")}</Label>
                         <Input
                           placeholder={selectedTpl.name}
                           value={tplProjectName}
@@ -1005,7 +1011,7 @@ export default function Projects() {
                       {/* Prompt with dictation */}
                       <div>
                         <div className="flex items-center justify-between mb-1.5">
-                          <Label className="text-sm text-foreground">Instructions pour l'IA</Label>
+                          <Label className="text-sm text-foreground">{t("proj_tpl_instructions")}</Label>
                           <button
                             type="button"
                             onClick={tplDictating ? stopTplDictation : startTplDictation}
@@ -1016,25 +1022,25 @@ export default function Projects() {
                             }`}
                           >
                             {tplDictating ? <MicOff className="w-3 h-3" /> : <Mic className="w-3 h-3" />}
-                            {tplDictating ? "Arrêter" : "Dicter"}
+                            {tplDictating ? t("proj_stop") : t("proj_dictate")}
                           </button>
                         </div>
                         <textarea
                           value={tplPrompt}
                           onChange={(e) => setTplPrompt(e.target.value)}
                           rows={5}
-                          placeholder="Décris ton projet : nom, fonctionnalités, sections, contenu, architecture…"
+                          placeholder={t("proj_tpl_placeholder")}
                           className={`w-full rounded-xl bg-input border px-3 py-2.5 text-sm text-foreground placeholder:text-muted-foreground/55 focus:outline-none focus:ring-2 focus:ring-primary/40 resize-y transition-colors ${
                             tplDictating ? "border-red-500/40" : "border-border/60"
                           }`}
                         />
-                        {tplDictating && <p className="text-[11px] text-red-400 mt-1 flex items-center gap-1"><span className="w-1.5 h-1.5 bg-red-400 rounded-full animate-pulse" />Dictée en cours…</p>}
+                        {tplDictating && <p className="text-[11px] text-red-400 mt-1 flex items-center gap-1"><span className="w-1.5 h-1.5 bg-red-400 rounded-full animate-pulse" />{t("proj_dictating_short")}</p>}
                       </div>
                     </div>
 
                     {/* Couleurs */}
                     <div>
-                      <Label className="text-sm text-foreground mb-2 block">Palette de couleurs</Label>
+                      <Label className="text-sm text-foreground mb-2 block">{t("proj_palette")}</Label>
                       <div className="grid grid-cols-3 gap-1.5">
                         {TPL_COLOR_PRESETS.map((preset, i) => (
                           <button
@@ -1063,13 +1069,13 @@ export default function Projects() {
                         <div className={`relative w-8 h-4 rounded-full transition-colors flex-shrink-0 ${tplDarkMode ? "bg-primary" : "bg-muted-foreground/30"}`}>
                           <div className={`absolute top-0.5 w-3 h-3 bg-white rounded-full shadow transition-transform ${tplDarkMode ? "translate-x-4" : "translate-x-0.5"}`} />
                         </div>
-                        <span>Mode sombre</span>
+                        <span>{t("proj_dark_mode")}</span>
                       </button>
                     </div>
 
                     {/* Auth */}
                     <div>
-                      <Label className="text-sm text-foreground mb-2 block">Authentification</Label>
+                      <Label className="text-sm text-foreground mb-2 block">{t("proj_auth")}</Label>
                       <div className="flex flex-col gap-1.5">
                         {TPL_AUTH_OPTS.map(opt => {
                           const active = tplAuthMethods.includes(opt.id);
@@ -1091,7 +1097,7 @@ export default function Projects() {
 
                     {/* Languages */}
                     <div className="sm:col-span-2">
-                      <Label className="text-sm text-foreground mb-2 block">Langues de l'interface</Label>
+                      <Label className="text-sm text-foreground mb-2 block">{t("proj_ui_languages")}</Label>
                       <div className="flex flex-wrap gap-1.5">
                         {TPL_LANG_OPTS.map(l => {
                           const active = tplLangs.includes(l.code);
@@ -1110,7 +1116,7 @@ export default function Projects() {
                       </div>
                       {tplLangs.length > 1 && (
                         <p className="text-[11px] text-muted-foreground mt-1.5 flex items-center gap-1">
-                          <Globe className="w-3 h-3" /> Sélecteur de langue intégré en {tplLangs.length} langues.
+                          <Globe className="w-3 h-3" /> {t("proj_lang_integrated")} ({tplLangs.length})
                         </p>
                       )}
                     </div>
@@ -1120,7 +1126,7 @@ export default function Projects() {
                   {/* Actions */}
                   <div className="flex gap-2 pt-1 border-t border-border/30">
                     <Button variant="outline" className="border-border/60" onClick={() => setTab("template")}>
-                      <ArrowLeft className="w-3.5 h-3.5 mr-1.5" /> Retour
+                      <ArrowLeft className="w-3.5 h-3.5 mr-1.5" /> {t("proj_back")}
                     </Button>
                     <Button
                       className="flex-1 bg-primary hover:bg-primary/90 text-primary-foreground font-semibold"
@@ -1128,8 +1134,8 @@ export default function Projects() {
                       disabled={createProject.isPending || !tplProjectName.trim()}
                     >
                       {createProject.isPending
-                        ? <><Loader2 className="w-4 h-4 animate-spin mr-2" />Création…</>
-                        : <><Sparkles className="w-4 h-4 mr-2" />Créer et générer avec l'IA</>
+                        ? <><Loader2 className="w-4 h-4 animate-spin mr-2" />{t("proj_creating")}</>
+                        : <><Sparkles className="w-4 h-4 mr-2" />{t("proj_create_ai")}</>
                       }
                     </Button>
                   </div>
@@ -1146,11 +1152,11 @@ export default function Projects() {
         ) : !projects || projects.length === 0 ? (
           <div className="text-center py-20 rounded-2xl border border-dashed border-border/60">
             <FolderOpen className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
-            <h3 className="text-lg font-display font-semibold text-foreground mb-2">Aucun projet</h3>
-            <p className="text-muted-foreground mb-6">Créez votre premier site web avec l'IA.</p>
+            <h3 className="text-lg font-display font-semibold text-foreground mb-2">{t("proj_none")}</h3>
+            <p className="text-muted-foreground mb-6">{t("proj_none_desc")}</p>
             <Button onClick={() => { resetDialog(); setOpen(true); }} className="bg-primary hover:bg-primary/90 text-primary-foreground">
               <Plus className="w-4 h-4 mr-2" />
-              Créer mon premier projet
+              {t("dash_create_first")}
             </Button>
           </div>
         ) : (
@@ -1177,16 +1183,16 @@ export default function Projects() {
 
                   <h3 className="font-semibold text-foreground mb-1 truncate pr-8">{project.name}</h3>
                   <p className="text-xs text-muted-foreground mb-3 line-clamp-2">
-                    {project.description || `${project.siteType || "Site web"} · ${project.style || "Moderne"}`}
+                    {project.description || `${project.siteType || t("common_website")} · ${project.style || "Moderne"}`}
                   </p>
 
                   <div className="flex items-center justify-between">
                     <Badge variant="outline" className={`text-xs ${statusConf.color} border-current/20`}>
                       <statusConf.icon className="w-3 h-3 mr-1" />
-                      {statusConf.label}
+                      {t(statusConf.labelKey)}
                     </Badge>
                     <span className="text-xs text-muted-foreground">
-                      {formatDistanceToNow(new Date(project.updatedAt), { addSuffix: true, locale: fr })}
+                      {formatDistanceToNow(new Date(project.updatedAt), { addSuffix: true, locale: dfLocale })}
                     </span>
                   </div>
                 </div>
@@ -1201,7 +1207,7 @@ export default function Projects() {
               <div className="w-10 h-10 rounded-lg bg-muted flex items-center justify-center">
                 <Plus className="w-5 h-5 text-muted-foreground" />
               </div>
-              <span className="text-sm text-muted-foreground">Nouveau projet</span>
+              <span className="text-sm text-muted-foreground">{t("dash_new_project")}</span>
             </div>
           </div>
         )}
@@ -1211,7 +1217,7 @@ export default function Projects() {
           <div className="mt-10">
             <div className="flex items-center gap-2 mb-4">
               <Users className="w-4 h-4 text-primary" />
-              <h2 className="font-display font-semibold text-foreground">Partagés avec moi</h2>
+              <h2 className="font-display font-semibold text-foreground">{t("proj_shared_with_me")}</h2>
               <span className="text-xs text-muted-foreground">({sharedProjects.length})</span>
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -1227,9 +1233,9 @@ export default function Projects() {
                     <div className="absolute top-3 right-3">
                       <Badge variant="outline" className="text-[10px] text-muted-foreground border-border/40">
                         {project.collaboratorRole === "editor" ? (
-                          <><Pencil className="w-2.5 h-2.5 mr-1" />Éditeur</>
+                          <><Pencil className="w-2.5 h-2.5 mr-1" />{t("proj_role_editor")}</>
                         ) : (
-                          <><Eye className="w-2.5 h-2.5 mr-1" />Lecteur</>
+                          <><Eye className="w-2.5 h-2.5 mr-1" />{t("proj_role_viewer")}</>
                         )}
                       </Badge>
                     </div>
@@ -1240,17 +1246,17 @@ export default function Projects() {
 
                     <h3 className="font-semibold text-foreground mb-1 truncate pr-16">{project.name}</h3>
                     <p className="text-xs text-muted-foreground mb-3">
-                      Partagé par <strong>{project.ownerName}</strong>
+                      {t("proj_shared_by")} <strong>{project.ownerName}</strong>
                     </p>
 
                     <div className="flex items-center justify-between">
                       <Badge variant="outline" className={`text-xs ${statusConf.color} border-current/20`}>
                         <statusConf.icon className="w-3 h-3 mr-1" />
-                        {statusConf.label}
+                        {t(statusConf.labelKey)}
                       </Badge>
                       {project.updatedAt && (
                         <span className="text-xs text-muted-foreground">
-                          {formatDistanceToNow(new Date(project.updatedAt), { addSuffix: true, locale: fr })}
+                          {formatDistanceToNow(new Date(project.updatedAt), { addSuffix: true, locale: dfLocale })}
                         </span>
                       )}
                     </div>

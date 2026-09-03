@@ -30,3 +30,4 @@
 | 2026-06-15 09:31 | v1.0.1 | e693784 | Securisation DB/auth (IDOR, OTP en DB, FK/index, rate-limit + revocation session) + systeme de versionnage et sauvegarde des deploiements |
 | 2026-09-03 19:04 | v1.2.22 | 7832101 | i18n Phase 1b: Dashboard + Billing traduits (FR/EN/ES) |
 | 2026-09-03 19:11 | v1.2.23 | 3369cef | i18n Phase 1c: page Cles API (admin) traduite (FR/EN/ES) |
+| 2026-09-03 19:39 | v1.2.24 | f3bf564 | i18n Phase 1d: page Projets traduite (modal creation, 15 options, sous-menus, liste, partages) FR/EN/ES - Phase 1 complete |
