@@ -13,25 +13,31 @@ import {
   ExternalLink, Sparkles, Lock,
 } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
-import { fr } from "date-fns/locale";
+import { fr, enUS, es } from "date-fns/locale";
+import { useLang } from "@/i18n/LangContext";
+import type { TranslationKey } from "@/i18n/translations";
+
+const KEYS_DF_LOCALE: Record<string, any> = { fr, en: enUS, es };
 
 // Provider display info (same order as pipeline)
-const PROVIDERS: { id: "deepseek" | "qwen" | "anthropic" | "openai"; label: string; role: string; color: string; plans: string }[] = [
-  { id: "deepseek",  label: "DeepSeek",       role: "Exécuteur final HTML",         color: "text-blue-400",    plans: "Tous les plans" },
-  { id: "qwen",      label: "Qwen",            role: "Coordinator de contenu",       color: "text-orange-400",  plans: "Creator · Pro · Agency" },
-  { id: "anthropic", label: "Claude",          role: "Architecte + Debug",           color: "text-violet-400",  plans: "Pro · Agency" },
-  { id: "openai",    label: "GPT-4o",          role: "Stratège business",            color: "text-emerald-400", plans: "Agency uniquement" },
+const buildProviders = (t: (k: TranslationKey) => string): { id: "deepseek" | "qwen" | "anthropic" | "openai"; label: string; role: string; color: string; plans: string }[] => [
+  { id: "deepseek",  label: "DeepSeek",       role: t("keys_role_deepseek"),   color: "text-blue-400",    plans: t("keys_plans_all") },
+  { id: "qwen",      label: "Qwen",            role: t("keys_role_qwen"),       color: "text-orange-400",  plans: "Creator · Pro · Agency" },
+  { id: "anthropic", label: "Claude",          role: t("keys_role_anthropic"),  color: "text-violet-400",  plans: "Pro · Agency" },
+  { id: "openai",    label: "GPT-4o",          role: t("keys_role_openai"),     color: "text-emerald-400", plans: t("keys_plans_agency_only") },
 ];
 
 // ── Admin view ─────────────────────────────────────────────────────────────────
 function AdminApiKeys() {
   const [, navigate] = useLocation();
+  const { t, lang } = useLang();
+  const PROVIDERS = buildProviders(t);
   const utils = trpc.useUtils();
   const { data: platformKeys, isLoading } = trpc.admin.getPlatformKeys.useQuery();
 
-  const setPlatformKey    = trpc.admin.setPlatformKey.useMutation({ onSuccess: () => { toast.success("Clé enregistrée"); utils.admin.getPlatformKeys.invalidate(); setAddingFor(null); setNewKey(""); setNewLabel(""); }, onError: e => toast.error(e.message) });
-  const togglePlatformKey = trpc.admin.togglePlatformKey.useMutation({ onSuccess: () => { toast.success("Statut mis à jour"); utils.admin.getPlatformKeys.invalidate(); }, onError: e => toast.error(e.message) });
-  const deletePlatformKey = trpc.admin.deletePlatformKey.useMutation({ onSuccess: () => { toast.success("Clé supprimée"); utils.admin.getPlatformKeys.invalidate(); }, onError: e => toast.error(e.message) });
+  const setPlatformKey    = trpc.admin.setPlatformKey.useMutation({ onSuccess: () => { toast.success(t("keys_toast_saved")); utils.admin.getPlatformKeys.invalidate(); setAddingFor(null); setNewKey(""); setNewLabel(""); }, onError: e => toast.error(e.message) });
+  const togglePlatformKey = trpc.admin.togglePlatformKey.useMutation({ onSuccess: () => { toast.success(t("keys_toast_status")); utils.admin.getPlatformKeys.invalidate(); }, onError: e => toast.error(e.message) });
+  const deletePlatformKey = trpc.admin.deletePlatformKey.useMutation({ onSuccess: () => { toast.success(t("keys_toast_deleted")); utils.admin.getPlatformKeys.invalidate(); }, onError: e => toast.error(e.message) });
 
   const [addingFor, setAddingFor] = useState<string | null>(null);
   const [newKey, setNewKey]       = useState("");
@@ -43,16 +49,16 @@ function AdminApiKeys() {
   return (
     <div className="max-w-2xl space-y-6">
       <div>
-        <h2 className="text-2xl font-display font-bold text-foreground mb-1">Clés API LLM</h2>
-        <p className="text-muted-foreground text-sm">Vous êtes administrateur — vous gérez les clés utilisées par toute la plateforme.</p>
+        <h2 className="text-2xl font-display font-bold text-foreground mb-1">{t("keys_admin_title")}</h2>
+        <p className="text-muted-foreground text-sm">{t("keys_admin_subtitle")}</p>
       </div>
 
       {/* Security notice */}
       <div className="flex items-start gap-3 p-4 rounded-xl border border-emerald-400/20 bg-emerald-400/5">
         <Shield className="w-5 h-5 text-emerald-400 flex-shrink-0 mt-0.5" />
         <div className="text-sm">
-          <div className="font-medium text-foreground mb-0.5">Chiffrement AES-256</div>
-          <div className="text-muted-foreground">Les clés sont chiffrées avant stockage. Seuls les 4 derniers caractères sont visibles.</div>
+          <div className="font-medium text-foreground mb-0.5">{t("keys_encryption")}</div>
+          <div className="text-muted-foreground">{t("keys_encryption_desc")}</div>
         </div>
       </div>
 
@@ -63,24 +69,24 @@ function AdminApiKeys() {
         <div className="rounded-xl border border-border/40 bg-card/60 overflow-hidden">
           <div className="px-4 py-3 border-b border-border/30 flex items-center justify-between">
             <span className="font-semibold text-foreground flex items-center gap-2 text-sm">
-              <Key className="w-4 h-4 text-amber-400" /> Récapitulatif
+              <Key className="w-4 h-4 text-amber-400" /> {t("keys_summary")}
             </span>
             <span className={`text-xs font-semibold px-2.5 py-1 rounded-full ${
               activeCount === PROVIDERS.length ? "bg-emerald-500/10 text-emerald-400" :
               activeCount > 0               ? "bg-amber-500/10 text-amber-400" :
                                               "bg-rose-500/10 text-rose-400"
             }`}>
-              {activeCount} / {PROVIDERS.length} actives
+              {activeCount} / {PROVIDERS.length} {t("keys_active_count")}
             </span>
           </div>
           <table className="w-full text-sm">
             <thead className="bg-muted/10 border-b border-border/30">
               <tr>
                 <th className="text-left px-4 py-2.5 text-xs font-medium text-muted-foreground">LLM</th>
-                <th className="text-left px-4 py-2.5 text-xs font-medium text-muted-foreground">Plans concernés</th>
-                <th className="text-left px-4 py-2.5 text-xs font-medium text-muted-foreground">Statut</th>
-                <th className="text-left px-4 py-2.5 text-xs font-medium text-muted-foreground">Clé</th>
-                <th className="text-right px-4 py-2.5 text-xs font-medium text-muted-foreground">Action</th>
+                <th className="text-left px-4 py-2.5 text-xs font-medium text-muted-foreground">{t("keys_th_plans")}</th>
+                <th className="text-left px-4 py-2.5 text-xs font-medium text-muted-foreground">{t("keys_th_status")}</th>
+                <th className="text-left px-4 py-2.5 text-xs font-medium text-muted-foreground">{t("keys_th_key")}</th>
+                <th className="text-right px-4 py-2.5 text-xs font-medium text-muted-foreground">{t("keys_th_action")}</th>
               </tr>
             </thead>
             <tbody>
@@ -99,11 +105,11 @@ function AdminApiKeys() {
                         {k ? (
                           <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium ${k.isActive ? "bg-emerald-500/10 text-emerald-400" : "bg-muted/30 text-muted-foreground"}`}>
                             <CheckCircle2 className="w-3 h-3" />
-                            {k.isActive ? "Active" : "Désactivée"}
+                            {k.isActive ? t("keys_active") : t("keys_disabled")}
                           </span>
                         ) : (
                           <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-rose-500/10 text-rose-400">
-                            ✗ Manquante
+                            ✗ {t("keys_missing")}
                           </span>
                         )}
                       </td>
@@ -111,7 +117,7 @@ function AdminApiKeys() {
                         {k ? (
                           <div>
                             <div>{k.keyHint}</div>
-                            {k.updatedAt && <div className="text-muted-foreground/50">{formatDistanceToNow(new Date(k.updatedAt), { addSuffix: true, locale: fr })}</div>}
+                            {k.updatedAt && <div className="text-muted-foreground/50">{formatDistanceToNow(new Date(k.updatedAt), { addSuffix: true, locale: KEYS_DF_LOCALE[lang] || enUS })}</div>}
                           </div>
                         ) : "—"}
                       </td>
@@ -121,12 +127,12 @@ function AdminApiKeys() {
                             <>
                               <Button size="sm" variant="ghost" className="h-7 px-2 text-muted-foreground hover:text-amber-400"
                                 onClick={() => togglePlatformKey.mutate({ provider: prov.id, isActive: !k.isActive })}
-                                title={k.isActive ? "Désactiver" : "Activer"}>
+                                title={k.isActive ? t("keys_disable") : t("keys_enable")}>
                                 {k.isActive ? <PowerOff className="w-3.5 h-3.5" /> : <Power className="w-3.5 h-3.5" />}
                               </Button>
                               <Button size="sm" variant="ghost" className="h-7 px-2 text-muted-foreground hover:text-rose-400"
-                                onClick={() => { if (confirm(`Supprimer la clé ${prov.label} ?`)) deletePlatformKey.mutate({ provider: prov.id }); }}
-                                title="Supprimer">
+                                onClick={() => { if (confirm(`${t("keys_confirm_delete")} ${prov.label} ?`)) deletePlatformKey.mutate({ provider: prov.id }); }}
+                                title={t("keys_delete")}>
                                 <Trash2 className="w-3.5 h-3.5" />
                               </Button>
                             </>
@@ -135,7 +141,7 @@ function AdminApiKeys() {
                             className={`h-7 px-2.5 text-xs gap-1 ${!k ? "bg-primary hover:bg-primary/90" : "border-border/50"}`}
                             onClick={() => { setAddingFor(isAdding ? null : prov.id); setNewKey(""); setNewLabel(""); }}>
                             <Plus className="w-3 h-3" />
-                            {k ? "Modifier" : "Ajouter"}
+                            {k ? t("keys_edit") : t("keys_add")}
                           </Button>
                         </div>
                       </td>
@@ -147,11 +153,11 @@ function AdminApiKeys() {
                         <td colSpan={5} className="px-4 py-4">
                           <div className="grid sm:grid-cols-2 gap-3 mb-3">
                             <div className="space-y-1">
-                              <label className="text-xs text-muted-foreground font-medium">Clé API {prov.label} *</label>
+                              <label className="text-xs text-muted-foreground font-medium">{t("keys_th_key")} API {prov.label} *</label>
                               <div className="relative">
                                 <Input
                                   type={showKey ? "text" : "password"}
-                                  placeholder="Colle la clé ici…"
+                                  placeholder={t("keys_paste")}
                                   value={newKey}
                                   onChange={e => setNewKey(e.target.value)}
                                   className="h-9 text-sm pr-9 bg-muted/20 border-border/50 font-mono"
@@ -163,16 +169,16 @@ function AdminApiKeys() {
                               </div>
                             </div>
                             <div className="space-y-1">
-                              <label className="text-xs text-muted-foreground font-medium">Label (optionnel)</label>
-                              <Input placeholder="ex: Production, Test…" value={newLabel} onChange={e => setNewLabel(e.target.value)} className="h-9 text-sm bg-muted/20 border-border/50" />
+                              <label className="text-xs text-muted-foreground font-medium">{t("keys_label")}</label>
+                              <Input placeholder={t("keys_label_placeholder")} value={newLabel} onChange={e => setNewLabel(e.target.value)} className="h-9 text-sm bg-muted/20 border-border/50" />
                             </div>
                           </div>
                           <div className="flex gap-2 justify-end">
-                            <Button size="sm" variant="ghost" className="h-8 text-xs" onClick={() => { setAddingFor(null); setNewKey(""); setNewLabel(""); }}>Annuler</Button>
+                            <Button size="sm" variant="ghost" className="h-8 text-xs" onClick={() => { setAddingFor(null); setNewKey(""); setNewLabel(""); }}>{t("common_cancel")}</Button>
                             <Button size="sm" className="h-8 text-xs bg-primary hover:bg-primary/90"
                               disabled={!newKey.trim() || setPlatformKey.isPending}
                               onClick={() => setPlatformKey.mutate({ provider: prov.id, rawKey: newKey.trim(), label: newLabel.trim() || undefined })}>
-                              {setPlatformKey.isPending ? "Enregistrement…" : "Enregistrer"}
+                              {setPlatformKey.isPending ? t("keys_saving") : t("keys_save")}
                             </Button>
                           </div>
                         </td>
@@ -188,11 +194,11 @@ function AdminApiKeys() {
 
       {/* Info */}
       <div className="rounded-xl border border-border/40 bg-card/60 p-4 text-xs text-muted-foreground space-y-1.5">
-        <p className="font-medium text-foreground">ℹ️ Logique de priorité</p>
-        <p>1. Clé DB active (configurée ici) — priorité absolue</p>
-        <p>2. Variable d'environnement (DEEPSEEK_API_KEY, etc.) — fallback</p>
-        <p>3. Aucune → erreur "Service IA indisponible"</p>
-        <p className="pt-1">Les utilisateurs <strong>n'ont plus besoin</strong> de configurer leur propre clé API.</p>
+        <p className="font-medium text-foreground">{t("keys_priority_title")}</p>
+        <p>{t("keys_priority_1")}</p>
+        <p>{t("keys_priority_2")}</p>
+        <p>{t("keys_priority_3")}</p>
+        <p className="pt-1">{t("keys_priority_note")}</p>
       </div>
     </div>
   );
@@ -255,6 +261,7 @@ function UserApiKeys() {
 // ── Main ───────────────────────────────────────────────────────────────────────
 export default function ApiKeys() {
   const { user } = useAuth();
+  const { t } = useLang();
   const [, navigate] = useLocation();
   const isAdmin = user?.role === "ultra" || user?.role === "admin";
 
@@ -265,7 +272,7 @@ export default function ApiKeys() {
   }
 
   return (
-    <AppLayout title="Clés API">
+    <AppLayout title={t("app_nav_apikeys")}>
       <AdminApiKeys />
     </AppLayout>
   );
