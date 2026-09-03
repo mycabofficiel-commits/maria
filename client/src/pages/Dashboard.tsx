@@ -21,15 +21,19 @@ import {
 } from "@/components/ui/select";
 import { toast } from "sonner";
 import { formatDistanceToNow } from "date-fns";
-import { fr } from "date-fns/locale";
+import { fr, enUS, es } from "date-fns/locale";
+import { useLang } from "@/i18n/LangContext";
+import type { TranslationKey } from "@/i18n/translations";
 
-const STATUS_CONFIG: Record<string, { label: string; color: string; icon: any }> = {
-  draft: { label: "Brouillon", color: "text-muted-foreground", icon: Clock },
-  generating: { label: "Génération…", color: "text-amber-400", icon: Loader2 },
-  ready: { label: "Prêt", color: "text-emerald-400", icon: CheckCircle2 },
-  published: { label: "Publié", color: "text-primary", icon: Globe },
-  archived: { label: "Archivé", color: "text-muted-foreground", icon: Clock },
-  error: { label: "Erreur", color: "text-destructive", icon: AlertCircle },
+const DATE_FNS_LOCALE: Record<string, any> = { fr, en: enUS, es };
+
+const STATUS_CONFIG: Record<string, { labelKey: TranslationKey; color: string; icon: any }> = {
+  draft: { labelKey: "status_draft", color: "text-muted-foreground", icon: Clock },
+  generating: { labelKey: "status_generating", color: "text-amber-400", icon: Loader2 },
+  ready: { labelKey: "status_ready", color: "text-emerald-400", icon: CheckCircle2 },
+  published: { labelKey: "status_published", color: "text-primary", icon: Globe },
+  archived: { labelKey: "status_archived", color: "text-muted-foreground", icon: Clock },
+  error: { labelKey: "status_error", color: "text-destructive", icon: AlertCircle },
 };
 
 const PLAN_COLORS: Record<string, string> = {
@@ -41,12 +45,14 @@ const PLAN_COLORS: Record<string, string> = {
 
 export default function Dashboard() {
   const { user } = useAuth();
+  const { t, lang } = useLang();
+  const dfLocale = DATE_FNS_LOCALE[lang] || enUS;
   const { data: stats, isLoading: statsLoading } = trpc.user.getUsageStats.useQuery();
   const { data: projects, isLoading: projectsLoading } = trpc.projects.list.useQuery();
   const { data: apiKey } = trpc.user.getApiKey.useQuery();
   const [, navigate] = useLocation();
   const [showImportDialog, setShowImportDialog] = useState(false);
-  const [importProjectName, setImportProjectName] = useState("Projet importé");
+  const [importProjectName, setImportProjectName] = useState("");
   const [selectedExistingId, setSelectedExistingId] = useState<string>("");
   const [isDragging, setIsDragging] = useState(false);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
@@ -66,12 +72,12 @@ export default function Dashboard() {
   });
 
   const handleFileSelect = (file: File) => {
-    if (!file.name.endsWith(".zip")) { toast.error("Veuillez sélectionner un fichier .zip"); return; }
+    if (!file.name.endsWith(".zip")) { toast.error(t("dash_toast_zip_only")); return; }
     setSelectedFile(file);
   };
 
   const handleImport = async () => {
-    if (!selectedFile) { toast.error("Sélectionnez un fichier ZIP d'abord"); return; }
+    if (!selectedFile) { toast.error(t("dash_toast_select_zip")); return; }
     setIsImporting(true);
     try {
       // Parse ZIP — collect ALL css/js files and images
@@ -104,7 +110,7 @@ export default function Dashboard() {
         }
       }
 
-      if (!html) { toast.error("Aucun fichier HTML trouvé dans le ZIP"); setIsImporting(false); return; }
+      if (!html) { toast.error(t("dash_toast_no_html")); setIsImporting(false); return; }
 
       // Replace image src references with base64 data URIs
       for (const img of imageFiles) {
@@ -143,10 +149,10 @@ export default function Dashboard() {
       let projectId: number;
       if (atLimit) {
         projectId = parseInt(selectedExistingId || String(projects?.[0]?.id || 0));
-        if (!projectId) { toast.error("Sélectionnez un projet de destination"); setIsImporting(false); return; }
+        if (!projectId) { toast.error(t("dash_toast_select_dest")); setIsImporting(false); return; }
       } else {
         const created = await createProject.mutateAsync({
-          name: importProjectName.trim() || "Projet importé",
+          name: importProjectName.trim() || t("dash_imported_default"),
           description: "Projet importé", siteType: "Site vitrine",
           style: "Moderne", colorPalette: "Bleu/Violet", framework: "html", language: "fr",
         });
@@ -155,11 +161,11 @@ export default function Dashboard() {
       }
 
       await importCode.mutateAsync({ projectId, htmlContent: html, label: `Import ${selectedFile.name}` });
-      toast.success("Projet importé avec succès !");
+      toast.success(t("dash_toast_import_ok"));
       setShowImportDialog(false);
       navigate(`/projects/${projectId}`);
     } catch (e: any) {
-      toast.error(e.message || "Erreur lors de l'import");
+      toast.error(e.message || t("dash_toast_import_err"));
     } finally {
       setIsImporting(false);
     }
@@ -167,7 +173,7 @@ export default function Dashboard() {
 
   const resetImportDialog = () => {
     setSelectedFile(null);
-    setImportProjectName("Projet importé");
+    setImportProjectName("");
     setSelectedExistingId("");
     setIsDragging(false);
   };
@@ -176,24 +182,24 @@ export default function Dashboard() {
   const plan = (user as any)?.plan || "free";
 
   return (
-    <AppLayout title="Dashboard">
+    <AppLayout title={t("app_nav_dashboard")}>
       <div className="space-y-6 max-w-6xl">
         {/* Welcome */}
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div>
             <h2 className="text-2xl font-display font-bold text-foreground">
-              Bonjour, {user?.name?.split(" ")[0] || "là"} 👋
+              {t("dash_hello")}, {user?.name?.split(" ")[0] || t("dash_hello_you")} 👋
             </h2>
-            <p className="text-muted-foreground mt-1">Voici un aperçu de votre activité.</p>
+            <p className="text-muted-foreground mt-1">{t("dash_subtitle")}</p>
           </div>
           <div className="flex items-center gap-3">
             <Badge variant="outline" className={`capitalize ${PLAN_COLORS[plan]}`}>
-              Plan {plan}
+              {t("app_plan_prefix")} {plan}
             </Badge>
             <Link href="/projects">
               <Button className="bg-primary hover:bg-primary/90 text-primary-foreground">
                 <Plus className="w-4 h-4 mr-2" />
-                Nouveau projet
+                {t("dash_new_project")}
               </Button>
             </Link>
           </div>
@@ -203,38 +209,38 @@ export default function Dashboard() {
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
           {[
             {
-              label: "Projets",
+              label: t("profile_projects"),
               value: statsLoading ? "—" : stats?.projectsCount || 0,
               icon: FolderOpen,
               color: "text-primary",
               bg: "bg-primary/10",
-              sub: `/ ${plan === "agency" ? "∞" : plan === "pro" ? 20 : plan === "creator" ? 5 : 1} max`,
+              sub: `/ ${plan === "agency" ? "∞" : plan === "pro" ? 20 : plan === "creator" ? 5 : 1} ${t("dash_max")}`,
             },
             {
-              label: "Générations",
+              label: t("profile_generations"),
               value: statsLoading ? "—" : stats?.dailyGenerationsUsed ?? 0,
               icon: Sparkles,
               color: "text-cyan-400",
               bg: "bg-cyan-400/10",
               sub: stats?.dailyGenerationsLimit === -1
-                ? "illimitées aujourd'hui"
-                : `/ ${stats?.dailyGenerationsLimit ?? 3} aujourd'hui`,
+                ? t("dash_unlimited_today")
+                : `/ ${stats?.dailyGenerationsLimit ?? 3} ${t("dash_per_day")}`,
             },
             {
-              label: "Tokens utilisés",
+              label: t("profile_tokens_used"),
               value: statsLoading ? "—" : ((stats?.tokensTotal || 0) / 1000).toFixed(1) + "k",
               icon: Zap,
               color: "text-amber-400",
               bg: "bg-amber-400/10",
-              sub: "total",
+              sub: t("dash_total"),
             },
             {
-              label: "Clé API",
-              value: apiKey ? "Connectée" : "Non configurée",
+              label: t("dash_stat_apikey"),
+              value: apiKey ? t("dash_connected") : t("dash_not_configured"),
               icon: Key,
               color: apiKey ? "text-emerald-400" : "text-muted-foreground",
               bg: apiKey ? "bg-emerald-400/10" : "bg-muted",
-              sub: apiKey ? `…${apiKey.keyHint}` : "Configurer",
+              sub: apiKey ? `…${apiKey.keyHint}` : t("dash_configure"),
             },
           ].map((stat) => (
             <div key={stat.label} className="p-5 rounded-xl border border-border/60 bg-card">
@@ -251,10 +257,10 @@ export default function Dashboard() {
         {/* Recent projects */}
         <div>
           <div className="flex items-center justify-between mb-4">
-            <h3 className="font-display font-semibold text-foreground">Projets récents</h3>
+            <h3 className="font-display font-semibold text-foreground">{t("dash_recent_projects")}</h3>
             <Link href="/projects">
               <Button variant="ghost" size="sm" className="text-muted-foreground hover:text-foreground">
-                Voir tout
+                {t("dash_see_all")}
                 <ArrowRight className="ml-1.5 w-3.5 h-3.5" />
               </Button>
             </Link>
@@ -267,11 +273,11 @@ export default function Dashboard() {
           ) : recentProjects.length === 0 ? (
             <div className="text-center py-12 rounded-xl border border-dashed border-border/60">
               <FolderOpen className="w-10 h-10 text-muted-foreground mx-auto mb-3" />
-              <p className="text-muted-foreground mb-4">Aucun projet pour l'instant.</p>
+              <p className="text-muted-foreground mb-4">{t("dash_no_projects")}</p>
               <Link href="/projects">
                 <Button className="bg-primary hover:bg-primary/90 text-primary-foreground">
                   <Plus className="w-4 h-4 mr-2" />
-                  Créer mon premier site
+                  {t("dash_create_first")}
                 </Button>
               </Link>
             </div>
@@ -288,12 +294,12 @@ export default function Dashboard() {
                     <div className="flex items-start justify-between mb-3">
                       <div className="flex-1 min-w-0 pr-2">
                         <h4 className="font-semibold text-foreground truncate">{project.name}</h4>
-                        <p className="text-xs text-muted-foreground mt-0.5 truncate">{project.description || project.siteType || "Site web"}</p>
+                        <p className="text-xs text-muted-foreground mt-0.5 truncate">{project.description || project.siteType || t("common_website")}</p>
                       </div>
                       <div className="flex items-center gap-1 flex-shrink-0">
                         <Badge variant="outline" className={`text-xs ${statusConf.color} border-current/20`}>
                           <statusConf.icon className="w-3 h-3 mr-1" />
-                          {statusConf.label}
+                          {t(statusConf.labelKey)}
                         </Badge>
                         <ProjectCardMenu
                           project={{ id: project.id, name: project.name, isPublished: project.isPublished, deployedUrl: project.deployedUrl }}
@@ -302,7 +308,7 @@ export default function Dashboard() {
                     </div>
                     <div className="flex items-center justify-between text-xs text-muted-foreground">
                       <span className="capitalize">{project.framework || "html"}</span>
-                      <span>{formatDistanceToNow(new Date(project.updatedAt), { addSuffix: true, locale: fr })}</span>
+                      <span>{formatDistanceToNow(new Date(project.updatedAt), { addSuffix: true, locale: dfLocale })}</span>
                     </div>
                   </div>
                 );
@@ -313,13 +319,13 @@ export default function Dashboard() {
 
         {/* Quick actions */}
         <div>
-          <h3 className="font-display font-semibold text-foreground mb-4">Actions rapides</h3>
+          <h3 className="font-display font-semibold text-foreground mb-4">{t("dash_quick_actions")}</h3>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
             {[
-              { href: "/projects", icon: Plus, label: "Nouveau projet", desc: "Créer un site avec l'IA", color: "text-primary", bg: "bg-primary/10" },
-              { href: "/templates", icon: LayoutTemplate, label: "Templates", desc: "Partir d'un template prêt", color: "text-violet-400", bg: "bg-violet-400/10" },
-              { href: "/api-keys", icon: Key, label: "Clés API", desc: "Gérer votre clé Anthropic", color: "text-cyan-400", bg: "bg-cyan-400/10" },
-              { href: "/billing", icon: Zap, label: "Billing", desc: "Gérer votre abonnement", color: "text-amber-400", bg: "bg-amber-400/10" },
+              { href: "/projects", icon: Plus, label: t("dash_new_project"), desc: t("dash_new_project_desc"), color: "text-primary", bg: "bg-primary/10" },
+              { href: "/templates", icon: LayoutTemplate, label: t("dash_templates"), desc: t("dash_templates_desc"), color: "text-violet-400", bg: "bg-violet-400/10" },
+              { href: "/api-keys", icon: Key, label: t("app_nav_apikeys"), desc: t("dash_apikeys_desc"), color: "text-cyan-400", bg: "bg-cyan-400/10" },
+              { href: "/billing", icon: Zap, label: t("app_nav_billing"), desc: t("dash_billing_desc"), color: "text-amber-400", bg: "bg-amber-400/10" },
             ].map((action) => (
               <Link key={action.href} href={action.href}>
                 <div className="flex items-center gap-4 p-4 rounded-xl border border-border/60 bg-card card-hover cursor-pointer">
@@ -342,8 +348,8 @@ export default function Dashboard() {
                 <Upload className="w-4.5 h-4.5 text-emerald-400" />
               </div>
               <div>
-                <div className="text-sm font-medium text-foreground">Importer</div>
-                <div className="text-xs text-muted-foreground">ZIP, fichiers ou code HTML</div>
+                <div className="text-sm font-medium text-foreground">{t("dash_import")}</div>
+                <div className="text-xs text-muted-foreground">{t("dash_import_desc")}</div>
               </div>
             </div>
           </div>
@@ -356,10 +362,10 @@ export default function Dashboard() {
           <DialogHeader className="px-5 pt-5 pb-3 border-b border-border/40">
             <DialogTitle className="flex items-center gap-2">
               <Upload className="w-4 h-4 text-emerald-400" />
-              Importer un projet ZIP
+              {t("dash_import_title")}
             </DialogTitle>
             <DialogDescription>
-              Sélectionnez un fichier .zip contenant votre site (index.html, style.css, script.js).
+              {t("dash_import_dialog_desc")}
             </DialogDescription>
           </DialogHeader>
 
@@ -387,13 +393,13 @@ export default function Dashboard() {
                 <>
                   <CheckCircle2 className="w-8 h-8 text-emerald-400 mx-auto mb-2" />
                   <p className="text-sm font-medium text-emerald-400">{selectedFile.name}</p>
-                  <p className="text-xs text-muted-foreground mt-1">Cliquez pour changer</p>
+                  <p className="text-xs text-muted-foreground mt-1">{t("dash_click_change")}</p>
                 </>
               ) : (
                 <>
                   <FileArchive className="w-8 h-8 text-muted-foreground mx-auto mb-2" />
-                  <p className="text-sm font-medium text-foreground">Glissez votre ZIP ici</p>
-                  <p className="text-xs text-muted-foreground mt-1">ou cliquez pour parcourir</p>
+                  <p className="text-sm font-medium text-foreground">{t("dash_drag_zip")}</p>
+                  <p className="text-xs text-muted-foreground mt-1">{t("dash_or_browse")}</p>
                 </>
               )}
             </div>
@@ -403,11 +409,11 @@ export default function Dashboard() {
               <div className="space-y-2">
                 <div className="flex items-start gap-2 p-3 rounded-lg bg-amber-400/10 border border-amber-400/20 text-xs text-amber-400">
                   <AlertCircle className="w-3.5 h-3.5 mt-0.5 flex-shrink-0" />
-                  Limite plan {plan} atteinte — sera importé comme nouvelle version d'un projet existant.
+                  {t("dash_limit_reached")}
                 </div>
                 <Select value={selectedExistingId || String(projects?.[0]?.id || "")} onValueChange={setSelectedExistingId}>
                   <SelectTrigger className="bg-input border-border/60 text-sm">
-                    <SelectValue placeholder="Choisir un projet…" />
+                    <SelectValue placeholder={t("dash_choose_project")} />
                   </SelectTrigger>
                   <SelectContent>
                     {projects?.map((p: any) => (
@@ -418,9 +424,9 @@ export default function Dashboard() {
               </div>
             ) : (
               <div>
-                <label className="text-xs text-muted-foreground mb-1.5 block">Nom du projet</label>
+                <label className="text-xs text-muted-foreground mb-1.5 block">{t("dash_project_name")}</label>
                 <Input
-                  placeholder="Mon site importé"
+                  placeholder={t("dash_imported_placeholder")}
                   value={importProjectName}
                   onChange={(e) => setImportProjectName(e.target.value)}
                   className="bg-input border-border/60"
@@ -430,14 +436,14 @@ export default function Dashboard() {
 
             {/* Actions */}
             <div className="flex gap-2 justify-end pt-1">
-              <Button variant="outline" onClick={() => { setShowImportDialog(false); resetImportDialog(); }}>Annuler</Button>
+              <Button variant="outline" onClick={() => { setShowImportDialog(false); resetImportDialog(); }}>{t("common_cancel")}</Button>
               <Button
                 className="bg-emerald-600 hover:bg-emerald-700 text-white"
                 onClick={handleImport}
                 disabled={!selectedFile || isImporting}
               >
                 {isImporting ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Upload className="w-4 h-4 mr-2" />}
-                Importer
+                {t("dash_import")}
               </Button>
             </div>
           </div>
