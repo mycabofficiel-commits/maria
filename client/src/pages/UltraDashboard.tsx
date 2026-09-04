@@ -13,8 +13,11 @@ import {
   Coins, Gauge, DollarSign, Layers,
 } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
-import { fr } from "date-fns/locale";
+import { fr, enUS, es } from "date-fns/locale";
 import AppLayout from "@/components/AppLayout";
+import { useLang } from "@/i18n/LangContext";
+
+const UD_DF_LOCALE = { fr, en: enUS, es } as const;
 
 // ─── Stat Card ────────────────────────────────────────────────────────────────
 function StatCard({ icon: Icon, label, value, sub, color = "primary" }: {
@@ -88,6 +91,8 @@ function fmtCost(microUsd: number): string {
 // ─── Main ─────────────────────────────────────────────────────────────────────
 export default function UltraDashboard() {
   const { user, loading } = useAuth();
+  const { t, lang } = useLang();
+  const dfLocale = UD_DF_LOCALE[lang] || enUS;
   const [, navigate] = useLocation();
   const [activeTab, setActiveTab] = useState<"overview" | "users" | "keys" | "tokens" | "projects">("overview");
 
@@ -105,16 +110,16 @@ export default function UltraDashboard() {
   const { data: tokensByLlm, isLoading: tokensLlmLoading } = trpc.admin.getTokensByLlm.useQuery(undefined, { enabled: user?.role === "ultra" && activeTab === "tokens" });
 
   // ── User mutations ──────────────────────────────────────────────────────────
-  const setRole  = trpc.admin.setUserRole.useMutation({ onSuccess: () => { toast.success("Rôle mis à jour"); utils.admin.getAllUsers.invalidate(); }, onError: e => toast.error(e.message) });
-  const setPlan  = trpc.admin.setUserPlan.useMutation({ onSuccess: () => { toast.success("Plan mis à jour"); utils.admin.getAllUsers.invalidate(); }, onError: e => toast.error(e.message) });
-  const resetGen = trpc.admin.resetUserGenerations.useMutation({ onSuccess: () => { toast.success("Générations réinitialisées"); utils.admin.getAllUsers.invalidate(); }, onError: e => toast.error(e.message) });
-  const setTokenLimit = trpc.admin.setUserTokenLimit.useMutation({ onSuccess: () => { toast.success("Limite tokens mise à jour"); utils.admin.getAllUsers.invalidate(); }, onError: e => toast.error(e.message) });
+  const setRole  = trpc.admin.setUserRole.useMutation({ onSuccess: () => { toast.success(t("ud_toast_role")); utils.admin.getAllUsers.invalidate(); }, onError: e => toast.error(e.message) });
+  const setPlan  = trpc.admin.setUserPlan.useMutation({ onSuccess: () => { toast.success(t("ud_toast_plan")); utils.admin.getAllUsers.invalidate(); }, onError: e => toast.error(e.message) });
+  const resetGen = trpc.admin.resetUserGenerations.useMutation({ onSuccess: () => { toast.success(t("ud_toast_gen_reset")); utils.admin.getAllUsers.invalidate(); }, onError: e => toast.error(e.message) });
+  const setTokenLimit = trpc.admin.setUserTokenLimit.useMutation({ onSuccess: () => { toast.success(t("ud_toast_limit")); utils.admin.getAllUsers.invalidate(); }, onError: e => toast.error(e.message) });
 
   // ── Platform key mutations ──────────────────────────────────────────────────
-  const setPlatformKey    = trpc.admin.setPlatformKey.useMutation({ onSuccess: () => { toast.success("Clé enregistrée"); utils.admin.getPlatformKeys.invalidate(); setNewKey(""); setNewLabel(""); setAddingFor(null); }, onError: e => toast.error(e.message) });
-  const togglePlatformKey = trpc.admin.togglePlatformKey.useMutation({ onSuccess: () => { toast.success("Statut mis à jour"); utils.admin.getPlatformKeys.invalidate(); }, onError: e => toast.error(e.message) });
-  const deletePlatformKey = trpc.admin.deletePlatformKey.useMutation({ onSuccess: () => { toast.success("Clé supprimée"); utils.admin.getPlatformKeys.invalidate(); }, onError: e => toast.error(e.message) });
-  const deleteProject     = trpc.admin.deleteProject.useMutation({ onSuccess: () => { toast.success("Projet supprimé"); utils.admin.getAllProjects.invalidate(); }, onError: e => toast.error(e.message) });
+  const setPlatformKey    = trpc.admin.setPlatformKey.useMutation({ onSuccess: () => { toast.success(t("ud_toast_key_saved")); utils.admin.getPlatformKeys.invalidate(); setNewKey(""); setNewLabel(""); setAddingFor(null); }, onError: e => toast.error(e.message) });
+  const togglePlatformKey = trpc.admin.togglePlatformKey.useMutation({ onSuccess: () => { toast.success(t("ud_toast_status")); utils.admin.getPlatformKeys.invalidate(); }, onError: e => toast.error(e.message) });
+  const deletePlatformKey = trpc.admin.deletePlatformKey.useMutation({ onSuccess: () => { toast.success(t("ud_toast_key_deleted")); utils.admin.getPlatformKeys.invalidate(); }, onError: e => toast.error(e.message) });
+  const deleteProject     = trpc.admin.deleteProject.useMutation({ onSuccess: () => { toast.success(t("ud_toast_project_deleted")); utils.admin.getAllProjects.invalidate(); }, onError: e => toast.error(e.message) });
 
   // ── Local state ─────────────────────────────────────────────────────────────
   const [addingFor, setAddingFor] = useState<string | null>(null);
@@ -142,26 +147,26 @@ export default function UltraDashboard() {
             <div>
               <div className="flex items-center gap-2">
                 <Crown className="w-5 h-5 text-amber-400" />
-                <h1 className="text-xl font-bold text-foreground">Tableau de bord Ultra</h1>
-                <Badge className="bg-amber-500/20 text-amber-400 border-amber-500/30 text-xs">⚡ Accès exclusif</Badge>
+                <h1 className="text-xl font-bold text-foreground">{t("ud_title")}</h1>
+                <Badge className="bg-amber-500/20 text-amber-400 border-amber-500/30 text-xs">{t("ud_exclusive")}</Badge>
               </div>
-              <p className="text-sm text-muted-foreground mt-0.5">Contrôle total de la plateforme Mar-ia</p>
+              <p className="text-sm text-muted-foreground mt-0.5">{t("ud_subtitle")}</p>
             </div>
           </div>
           <Button variant="outline" size="sm" className="gap-2 border-border/50 text-muted-foreground hover:text-foreground"
             onClick={() => { utils.admin.getUltraStats.invalidate(); utils.admin.getAllUsers.invalidate(); utils.admin.getAllProjects.invalidate(); utils.admin.getPlatformKeys.invalidate(); }}>
-            <RefreshCw className="w-3.5 h-3.5" /> Actualiser
+            <RefreshCw className="w-3.5 h-3.5" /> {t("ud_refresh")}
           </Button>
         </div>
 
         {/* Tabs */}
         <div className="flex gap-1 border-b border-border/40">
           {[
-            { id: "overview",  label: "Vue d'ensemble",  icon: BarChart3 },
-            { id: "users",     label: "Utilisateurs",    icon: Users },
-            { id: "keys",      label: "Clés LLM",        icon: Key },
-            { id: "tokens",    label: "Tokens & Coûts",  icon: DollarSign },
-            { id: "projects",  label: "Projets",         icon: FolderOpen },
+            { id: "overview",  label: t("ud_tab_overview"),  icon: BarChart3 },
+            { id: "users",     label: t("ud_tab_users"),    icon: Users },
+            { id: "keys",      label: t("ud_tab_keys"),        icon: Key },
+            { id: "tokens",    label: t("ud_tab_tokens"),  icon: DollarSign },
+            { id: "projects",  label: t("ud_tab_projects"),         icon: FolderOpen },
           ].map(({ id, label, icon: Icon }) => (
             <button key={id} onClick={() => setActiveTab(id as typeof activeTab)}
               className={`flex items-center gap-2 px-4 py-2.5 text-sm font-medium border-b-2 transition-colors ${
@@ -182,47 +187,47 @@ export default function UltraDashboard() {
             ) : stats ? (
               <>
                 <div>
-                  <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider mb-3">Totaux plateforme</h2>
+                  <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider mb-3">{t("ud_platform_totals")}</h2>
                   <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                    <StatCard icon={Users}      label="Utilisateurs"     value={stats.totals.users}    color="primary" />
-                    <StatCard icon={FolderOpen} label="Projets"          value={stats.totals.projects} color="emerald" />
-                    <StatCard icon={Zap}        label="Versions générées" value={stats.totals.versions} color="amber" />
-                    <StatCard icon={Key}        label="Clés API users"   value={stats.totals.apiKeys}  color="violet" />
+                    <StatCard icon={Users}      label={t("ud_users")}     value={stats.totals.users}    color="primary" />
+                    <StatCard icon={FolderOpen} label={t("ud_projects")}          value={stats.totals.projects} color="emerald" />
+                    <StatCard icon={Zap}        label={t("ud_versions_gen")} value={stats.totals.versions} color="amber" />
+                    <StatCard icon={Key}        label={t("ud_user_api_keys")}   value={stats.totals.apiKeys}  color="violet" />
                   </div>
                 </div>
                 <div className="grid md:grid-cols-2 gap-4">
                   <div className="rounded-xl border border-border/40 bg-card/60 p-5">
-                    <h3 className="text-sm font-semibold text-foreground mb-4 flex items-center gap-2"><Calendar className="w-4 h-4 text-primary" /> Ce mois-ci</h3>
+                    <h3 className="text-sm font-semibold text-foreground mb-4 flex items-center gap-2"><Calendar className="w-4 h-4 text-primary" /> {t("ud_this_month")}</h3>
                     <div className="grid grid-cols-2 gap-4">
-                      <div><div className="text-2xl font-bold text-foreground">{stats.monthly.generations.toLocaleString()}</div><div className="text-xs text-muted-foreground">Générations</div></div>
-                      <div><div className="text-2xl font-bold text-foreground">{(stats.monthly.tokens / 1000).toFixed(1)}k</div><div className="text-xs text-muted-foreground">Tokens utilisés</div></div>
+                      <div><div className="text-2xl font-bold text-foreground">{stats.monthly.generations.toLocaleString()}</div><div className="text-xs text-muted-foreground">{t("ud_generations")}</div></div>
+                      <div><div className="text-2xl font-bold text-foreground">{(stats.monthly.tokens / 1000).toFixed(1)}k</div><div className="text-xs text-muted-foreground">{t("ud_tokens_used")}</div></div>
                     </div>
                   </div>
                   <div className="rounded-xl border border-border/40 bg-card/60 p-5">
-                    <h3 className="text-sm font-semibold text-foreground mb-4 flex items-center gap-2"><TrendingUp className="w-4 h-4 text-emerald-400" /> Cette semaine</h3>
+                    <h3 className="text-sm font-semibold text-foreground mb-4 flex items-center gap-2"><TrendingUp className="w-4 h-4 text-emerald-400" /> {t("ud_this_week")}</h3>
                     <div className="grid grid-cols-2 gap-4">
-                      <div><div className="text-2xl font-bold text-foreground">{stats.weekly.generations.toLocaleString()}</div><div className="text-xs text-muted-foreground">Générations</div></div>
-                      <div><div className="text-2xl font-bold text-foreground">{(stats.weekly.tokens / 1000).toFixed(1)}k</div><div className="text-xs text-muted-foreground">Tokens utilisés</div></div>
+                      <div><div className="text-2xl font-bold text-foreground">{stats.weekly.generations.toLocaleString()}</div><div className="text-xs text-muted-foreground">{t("ud_generations")}</div></div>
+                      <div><div className="text-2xl font-bold text-foreground">{(stats.weekly.tokens / 1000).toFixed(1)}k</div><div className="text-xs text-muted-foreground">{t("ud_tokens_used")}</div></div>
                     </div>
                   </div>
                 </div>
                 <div className="rounded-xl border border-border/40 bg-card/60 p-5">
-                  <h3 className="text-sm font-semibold text-foreground mb-4 flex items-center gap-2"><Cpu className="w-4 h-4 text-violet-400" /> Répartition par plan</h3>
+                  <h3 className="text-sm font-semibold text-foreground mb-4 flex items-center gap-2"><Cpu className="w-4 h-4 text-violet-400" /> {t("ud_by_plan")}</h3>
                   <div className="flex flex-wrap gap-4">
                     {stats.usersByPlan.map((p) => (
-                      <div key={p.plan} className="flex items-center gap-2"><PlanBadge plan={p.plan} /><span className="text-sm font-semibold text-foreground">{p.count}</span><span className="text-xs text-muted-foreground">utilisateurs</span></div>
+                      <div key={p.plan} className="flex items-center gap-2"><PlanBadge plan={p.plan} /><span className="text-sm font-semibold text-foreground">{p.count}</span><span className="text-xs text-muted-foreground">{t("ud_users_word")}</span></div>
                     ))}
                   </div>
                 </div>
                 <div className="rounded-xl border border-border/40 bg-card/60 p-5">
-                  <h3 className="text-sm font-semibold text-foreground mb-4 flex items-center gap-2"><Activity className="w-4 h-4 text-cyan-400" /> Activité récente (50 dernières actions)</h3>
+                  <h3 className="text-sm font-semibold text-foreground mb-4 flex items-center gap-2"><Activity className="w-4 h-4 text-cyan-400" /> {t("ud_recent_activity")}</h3>
                   <div className="overflow-x-auto">
                     <table className="w-full text-xs">
                       <thead><tr className="border-b border-border/40">
-                        <th className="text-left py-2 pr-4 text-muted-foreground font-medium">Action</th>
-                        <th className="text-left py-2 pr-4 text-muted-foreground font-medium">Statut</th>
-                        <th className="text-left py-2 pr-4 text-muted-foreground font-medium">Tokens</th>
-                        <th className="text-left py-2 text-muted-foreground font-medium">Date</th>
+                        <th className="text-left py-2 pr-4 text-muted-foreground font-medium">{t("ud_col_action")}</th>
+                        <th className="text-left py-2 pr-4 text-muted-foreground font-medium">{t("ud_col_status")}</th>
+                        <th className="text-left py-2 pr-4 text-muted-foreground font-medium">{t("ud_col_tokens")}</th>
+                        <th className="text-left py-2 text-muted-foreground font-medium">{t("ud_col_date")}</th>
                       </tr></thead>
                       <tbody>
                         {stats.recentActivity.map((log) => (
@@ -230,7 +235,7 @@ export default function UltraDashboard() {
                             <td className="py-2 pr-4 font-mono text-foreground">{log.action}</td>
                             <td className="py-2 pr-4"><span className={`px-1.5 py-0.5 rounded text-xs ${log.status === "success" ? "bg-emerald-500/10 text-emerald-400" : "bg-rose-500/10 text-rose-400"}`}>{log.status}</span></td>
                             <td className="py-2 pr-4 text-muted-foreground">{log.tokensUsed?.toLocaleString() || 0}</td>
-                            <td className="py-2 text-muted-foreground">{formatDistanceToNow(new Date(log.createdAt), { addSuffix: true, locale: fr })}</td>
+                            <td className="py-2 text-muted-foreground">{formatDistanceToNow(new Date(log.createdAt), { addSuffix: true, locale: dfLocale })}</td>
                           </tr>
                         ))}
                       </tbody>
@@ -238,7 +243,7 @@ export default function UltraDashboard() {
                   </div>
                 </div>
               </>
-            ) : <div className="text-center py-12 text-muted-foreground">Impossible de charger les statistiques.</div>}
+            ) : <div className="text-center py-12 text-muted-foreground">{t("ud_stats_fail")}</div>}
           </div>
         )}
 
@@ -246,7 +251,7 @@ export default function UltraDashboard() {
         {activeTab === "users" && (
           <div className="space-y-4">
             <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider">
-              Tous les utilisateurs ({allUsers?.length || 0})
+              {t("ud_all_users")} ({allUsers?.length || 0})
             </h2>
             {usersLoading ? (
               <div className="space-y-2">{Array.from({ length: 5 }).map((_, i) => <div key={i} className="h-14 rounded-lg bg-muted/20 animate-pulse" />)}</div>
@@ -255,14 +260,14 @@ export default function UltraDashboard() {
                 <table className="w-full text-sm min-w-[900px]">
                   <thead className="bg-muted/20 border-b border-border/40">
                     <tr>
-                      <th className="text-left px-4 py-3 text-xs font-medium text-muted-foreground">Utilisateur</th>
-                      <th className="text-left px-4 py-3 text-xs font-medium text-muted-foreground">Rôle</th>
-                      <th className="text-left px-4 py-3 text-xs font-medium text-muted-foreground">Plan</th>
-                      <th className="text-left px-4 py-3 text-xs font-medium text-muted-foreground">Générations</th>
-                      <th className="text-left px-4 py-3 text-xs font-medium text-muted-foreground">Tokens ce mois</th>
-                      <th className="text-left px-4 py-3 text-xs font-medium text-muted-foreground">Tokens total</th>
-                      <th className="text-left px-4 py-3 text-xs font-medium text-muted-foreground">Limite tokens/mois</th>
-                      <th className="text-right px-4 py-3 text-xs font-medium text-muted-foreground">Actions</th>
+                      <th className="text-left px-4 py-3 text-xs font-medium text-muted-foreground">{t("ud_col_user")}</th>
+                      <th className="text-left px-4 py-3 text-xs font-medium text-muted-foreground">{t("ud_col_role")}</th>
+                      <th className="text-left px-4 py-3 text-xs font-medium text-muted-foreground">{t("ud_col_plan")}</th>
+                      <th className="text-left px-4 py-3 text-xs font-medium text-muted-foreground">{t("ud_col_generations")}</th>
+                      <th className="text-left px-4 py-3 text-xs font-medium text-muted-foreground">{t("ud_col_tokens_month")}</th>
+                      <th className="text-left px-4 py-3 text-xs font-medium text-muted-foreground">{t("ud_col_tokens_total")}</th>
+                      <th className="text-left px-4 py-3 text-xs font-medium text-muted-foreground">{t("ud_col_token_limit")}</th>
+                      <th className="text-right px-4 py-3 text-xs font-medium text-muted-foreground">{t("ud_col_actions")}</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -306,7 +311,7 @@ export default function UltraDashboard() {
                             <div className="flex items-center gap-1">
                               <Input
                                 className="h-7 w-28 text-xs bg-muted/20 border-border/40 font-mono"
-                                placeholder="illimité"
+                                placeholder={t("ud_unlimited")}
                                 value={limitEdit ?? (u.monthlyTokensLimit?.toString() || "")}
                                 onChange={e => setTokenLimitEdits(prev => ({ ...prev, [u.id]: e.target.value }))}
                                 onKeyDown={e => {
@@ -318,7 +323,7 @@ export default function UltraDashboard() {
                                 }}
                               />
                               <Button size="sm" variant="ghost" className="h-7 px-1.5 text-xs"
-                                title="Enregistrer (ou appuyer Entrée)"
+                                title={t("ud_save_enter")}
                                 onClick={() => {
                                   const val = tokenLimitEdits[u.id];
                                   if (val === undefined) return;
@@ -341,14 +346,14 @@ export default function UltraDashboard() {
                                 <option value="agency">Agency</option>
                               </select>
                               <Button size="sm" variant="ghost" className="h-7 px-2 text-xs text-muted-foreground hover:text-foreground"
-                                onClick={() => resetGen.mutate({ userId: u.id })} title="Réinitialiser les générations">
+                                onClick={() => resetGen.mutate({ userId: u.id })} title={t("ud_reset_gen")}>
                                 <RefreshCw className="w-3 h-3" />
                               </Button>
                               {u.role !== "ultra" && (
                                 <Button size="sm" variant="ghost"
                                   className="h-7 px-2 text-xs text-muted-foreground hover:text-amber-400"
                                   onClick={() => setRole.mutate({ userId: u.id, role: u.role === "admin" ? "user" : "admin" })}
-                                  title={u.role === "admin" ? "Rétrograder en user" : "Promouvoir en admin"}>
+                                  title={u.role === "admin" ? t("ud_demote") : t("ud_promote")}>
                                   <Shield className="w-3 h-3" />
                                 </Button>
                               )}
@@ -368,8 +373,8 @@ export default function UltraDashboard() {
         {activeTab === "keys" && (
           <div className="space-y-6">
             <div>
-              <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider mb-1">Clés API LLM — plateforme</h2>
-              <p className="text-xs text-muted-foreground">Seul le compte Ultra peut modifier ces clés. Elles sont chiffrées en base de données.</p>
+              <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider mb-1">{t("ud_keys_h")}</h2>
+              <p className="text-xs text-muted-foreground">{t("ud_keys_desc")}</p>
             </div>
 
             {/* ── Tableau récapitulatif ── */}
@@ -378,20 +383,20 @@ export default function UltraDashboard() {
                 <div className="px-4 py-3 border-b border-border/30 flex items-center justify-between">
                   <span className="text-sm font-semibold text-foreground flex items-center gap-2">
                     <Key className="w-4 h-4 text-amber-400" />
-                    Récapitulatif des clés
+                    {t("ud_keys_summary")}
                   </span>
                   <span className="text-xs font-semibold px-2.5 py-1 rounded-full bg-primary/10 text-primary">
-                    {platformKeys?.filter(k => k.isActive).length || 0} / {PROVIDERS.length} actives
+                    {platformKeys?.filter(k => k.isActive).length || 0} / {PROVIDERS.length} {t("ud_actives")}
                   </span>
                 </div>
                 <table className="w-full text-sm">
                   <thead className="bg-muted/10 border-b border-border/30">
                     <tr>
-                      <th className="text-left px-4 py-2.5 text-xs font-medium text-muted-foreground">LLM</th>
-                      <th className="text-left px-4 py-2.5 text-xs font-medium text-muted-foreground">Rôle dans la chaîne</th>
-                      <th className="text-left px-4 py-2.5 text-xs font-medium text-muted-foreground">Statut</th>
-                      <th className="text-left px-4 py-2.5 text-xs font-medium text-muted-foreground">Hint clé</th>
-                      <th className="text-left px-4 py-2.5 text-xs font-medium text-muted-foreground">Mis à jour</th>
+                      <th className="text-left px-4 py-2.5 text-xs font-medium text-muted-foreground">{t("ud_col_llm")}</th>
+                      <th className="text-left px-4 py-2.5 text-xs font-medium text-muted-foreground">{t("ud_col_chain_role")}</th>
+                      <th className="text-left px-4 py-2.5 text-xs font-medium text-muted-foreground">{t("ud_col_status")}</th>
+                      <th className="text-left px-4 py-2.5 text-xs font-medium text-muted-foreground">{t("ud_col_key_hint")}</th>
+                      <th className="text-left px-4 py-2.5 text-xs font-medium text-muted-foreground">{t("ud_col_updated")}</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -406,11 +411,11 @@ export default function UltraDashboard() {
                           <td className="px-4 py-3">
                             {k ? (
                               <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium ${k.isActive ? "bg-emerald-500/10 text-emerald-400" : "bg-muted/30 text-muted-foreground"}`}>
-                                {k.isActive ? "✓ Active" : "Désactivée"}
+                                {k.isActive ? t("ud_active") : t("ud_disabled")}
                               </span>
                             ) : (
                               <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-rose-500/10 text-rose-400">
-                                ✗ Manquante
+                                {t("ud_missing")}
                               </span>
                             )}
                           </td>
@@ -418,7 +423,7 @@ export default function UltraDashboard() {
                             {k?.keyHint || "—"}
                           </td>
                           <td className="px-4 py-3 text-xs text-muted-foreground">
-                            {k?.updatedAt ? formatDistanceToNow(new Date(k.updatedAt), { addSuffix: true, locale: fr }) : "—"}
+                            {k?.updatedAt ? formatDistanceToNow(new Date(k.updatedAt), { addSuffix: true, locale: dfLocale }) : "—"}
                           </td>
                         </tr>
                       );
@@ -450,18 +455,18 @@ export default function UltraDashboard() {
                                 <Badge className={existing.isActive
                                   ? "bg-emerald-500/15 text-emerald-400 border-emerald-500/30 text-xs"
                                   : "bg-muted/30 text-muted-foreground border-border/40 text-xs"}>
-                                  {existing.isActive ? "✓ Active" : "Désactivée"}
+                                  {existing.isActive ? t("ud_active") : t("ud_disabled")}
                                 </Badge>
                               ) : (
-                                <Badge className="bg-rose-500/10 text-rose-400 border-rose-500/30 text-xs">Non configurée</Badge>
+                                <Badge className="bg-rose-500/10 text-rose-400 border-rose-500/30 text-xs">{t("ud_not_configured")}</Badge>
                               )}
                             </div>
                             <div className="text-xs text-muted-foreground mt-0.5">{prov.role}</div>
                             {existing && (
                               <div className="text-xs text-muted-foreground/60 mt-0.5 font-mono">
                                 {existing.label && <span className="mr-2 text-muted-foreground">{existing.label}</span>}
-                                Clé : {existing.keyHint}
-                                {existing.updatedAt && <span className="ml-2">· Mis à jour {formatDistanceToNow(new Date(existing.updatedAt), { addSuffix: true, locale: fr })}</span>}
+                                {t("ud_key_word")} {existing.keyHint}
+                                {existing.updatedAt && <span className="ml-2">· {t("ud_updated_prefix")}{formatDistanceToNow(new Date(existing.updatedAt), { addSuffix: true, locale: dfLocale })}</span>}
                               </div>
                             )}
                           </div>
@@ -474,14 +479,14 @@ export default function UltraDashboard() {
                               <Button size="sm" variant="ghost"
                                 className={`h-8 px-3 text-xs gap-1.5 ${existing.isActive ? "text-muted-foreground hover:text-amber-400" : "text-muted-foreground hover:text-emerald-400"}`}
                                 onClick={() => togglePlatformKey.mutate({ provider: prov.id, isActive: !existing.isActive })}
-                                title={existing.isActive ? "Désactiver" : "Activer"}>
+                                title={existing.isActive ? t("ud_disable") : t("ud_enable")}>
                                 {existing.isActive ? <PowerOff className="w-3.5 h-3.5" /> : <Power className="w-3.5 h-3.5" />}
-                                {existing.isActive ? "Désactiver" : "Activer"}
+                                {existing.isActive ? t("ud_disable") : t("ud_enable")}
                               </Button>
                               <Button size="sm" variant="ghost"
                                 className="h-8 px-2 text-muted-foreground hover:text-rose-400"
-                                onClick={() => { if (confirm(`Supprimer la clé ${prov.label} ?`)) deletePlatformKey.mutate({ provider: prov.id }); }}
-                                title="Supprimer">
+                                onClick={() => { if (confirm(`${t("ud_confirm_del_key_1")}${prov.label}${t("ud_confirm_del_key_2")}`)) deletePlatformKey.mutate({ provider: prov.id }); }}
+                                title={t("ud_delete")}>
                                 <Trash2 className="w-3.5 h-3.5" />
                               </Button>
                             </>
@@ -490,7 +495,7 @@ export default function UltraDashboard() {
                             className={`h-8 px-3 text-xs gap-1.5 ${!existing ? "bg-primary hover:bg-primary/90" : "border-border/50"}`}
                             onClick={() => setAddingFor(isAdding ? null : prov.id)}>
                             <Plus className="w-3.5 h-3.5" />
-                            {existing ? "Remplacer" : "Ajouter"}
+                            {existing ? t("ud_replace") : t("ud_add")}
                           </Button>
                         </div>
                       </div>
@@ -500,11 +505,11 @@ export default function UltraDashboard() {
                         <div className="mt-4 pt-4 border-t border-border/30 space-y-3">
                           <div className="grid sm:grid-cols-2 gap-3">
                             <div className="space-y-1">
-                              <label className="text-xs text-muted-foreground font-medium">Clé API *</label>
+                              <label className="text-xs text-muted-foreground font-medium">{t("ud_api_key_req")}</label>
                               <div className="relative">
                                 <Input
                                   type={showKey ? "text" : "password"}
-                                  placeholder={`Colle ta clé ${prov.label} ici`}
+                                  placeholder={`${t("ud_paste_key_prefix")}${prov.label}${t("ud_paste_key_suffix")}`}
                                   value={newKey}
                                   onChange={e => setNewKey(e.target.value)}
                                   className="h-9 text-sm pr-9 bg-muted/20 border-border/50 font-mono"
@@ -516,9 +521,9 @@ export default function UltraDashboard() {
                               </div>
                             </div>
                             <div className="space-y-1">
-                              <label className="text-xs text-muted-foreground font-medium">Label (optionnel)</label>
+                              <label className="text-xs text-muted-foreground font-medium">{t("ud_label_opt")}</label>
                               <Input
-                                placeholder="ex: Production, Test…"
+                                placeholder={t("ud_label_ph")}
                                 value={newLabel}
                                 onChange={e => setNewLabel(e.target.value)}
                                 className="h-9 text-sm bg-muted/20 border-border/50"
@@ -527,12 +532,12 @@ export default function UltraDashboard() {
                           </div>
                           <div className="flex gap-2 justify-end">
                             <Button size="sm" variant="ghost" className="h-8 text-xs" onClick={() => { setAddingFor(null); setNewKey(""); setNewLabel(""); }}>
-                              Annuler
+                              {t("ud_cancel")}
                             </Button>
                             <Button size="sm" className="h-8 text-xs bg-primary hover:bg-primary/90"
                               disabled={!newKey.trim() || setPlatformKey.isPending}
                               onClick={() => setPlatformKey.mutate({ provider: prov.id, rawKey: newKey.trim(), label: newLabel.trim() || undefined })}>
-                              {setPlatformKey.isPending ? "Enregistrement…" : "Enregistrer la clé"}
+                              {setPlatformKey.isPending ? t("ud_saving") : t("ud_save_key")}
                             </Button>
                           </div>
                         </div>
@@ -545,10 +550,10 @@ export default function UltraDashboard() {
 
             {/* Info box */}
             <div className="rounded-xl border border-amber-500/20 bg-amber-500/5 p-4 text-xs text-amber-300/80 space-y-1">
-              <p className="font-semibold text-amber-300">⚠ Sécurité</p>
-              <p>Les clés sont chiffrées (AES-256-CBC) avant stockage. Seuls les 4 derniers caractères sont visibles.</p>
-              <p>Si une clé DB est présente et active, elle prend le dessus sur la variable d'environnement correspondante.</p>
-              <p>Désactiver une clé (sans la supprimer) fait basculer automatiquement sur la variable d'environnement si définie.</p>
+              <p className="font-semibold text-amber-300">{t("ud_security")}</p>
+              <p>{t("ud_sec_1")}</p>
+              <p>{t("ud_sec_2")}</p>
+              <p>{t("ud_sec_3")}</p>
             </div>
           </div>
         )}
@@ -557,8 +562,8 @@ export default function UltraDashboard() {
         {activeTab === "tokens" && (
           <div className="space-y-6">
             <div>
-              <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider mb-1">Consommation Tokens & Coûts estimés</h2>
-              <p className="text-xs text-muted-foreground">Coûts calculés à partir des tarifs publics de chaque fournisseur. Valeur indicative.</p>
+              <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider mb-1">{t("ud_tokens_h")}</h2>
+              <p className="text-xs text-muted-foreground">{t("ud_tokens_desc")}</p>
             </div>
 
             {tokensLlmLoading ? (
@@ -575,34 +580,34 @@ export default function UltraDashboard() {
                 <>
                   {/* Summary cards */}
                   <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                    <StatCard icon={DollarSign} label="Coût ce mois"        value={fmtCost(totalMonthCost)}                     color="amber" />
-                    <StatCard icon={Coins}       label="Tokens ce mois"      value={`${(totalMonthTokens/1000).toFixed(1)}k`}    color="primary" />
-                    <StatCard icon={DollarSign} label="Coût total"           value={fmtCost(totalCost)}                          color="rose" />
-                    <StatCard icon={Layers}      label="Tokens total"         value={`${(totalTokens/1000).toFixed(1)}k`}         color="violet" />
+                    <StatCard icon={DollarSign} label={t("ud_cost_month")}        value={fmtCost(totalMonthCost)}                     color="amber" />
+                    <StatCard icon={Coins}       label={t("ud_tokens_month")}      value={`${(totalMonthTokens/1000).toFixed(1)}k`}    color="primary" />
+                    <StatCard icon={DollarSign} label={t("ud_cost_total")}           value={fmtCost(totalCost)}                          color="rose" />
+                    <StatCard icon={Layers}      label={t("ud_tokens_total")}         value={`${(totalTokens/1000).toFixed(1)}k`}         color="violet" />
                   </div>
 
                   {/* Per-LLM breakdown table */}
                   <div className="rounded-xl border border-border/40 bg-card/60 overflow-hidden">
                     <div className="px-4 py-3 border-b border-border/30 flex items-center gap-2">
                       <BarChart3 className="w-4 h-4 text-amber-400" />
-                      <span className="text-sm font-semibold text-foreground">Détail par LLM</span>
+                      <span className="text-sm font-semibold text-foreground">{t("ud_detail_llm")}</span>
                     </div>
                     <table className="w-full text-sm">
                       <thead className="bg-muted/10 border-b border-border/30">
                         <tr>
-                          <th className="text-left px-4 py-2.5 text-xs font-medium text-muted-foreground">Modèle</th>
-                          <th className="text-left px-4 py-2.5 text-xs font-medium text-muted-foreground">Rôle</th>
-                          <th className="text-left px-4 py-2.5 text-xs font-medium text-muted-foreground">Plans</th>
-                          <th className="text-right px-4 py-2.5 text-xs font-medium text-muted-foreground">Appels (mois)</th>
-                          <th className="text-right px-4 py-2.5 text-xs font-medium text-muted-foreground">Tokens (mois)</th>
-                          <th className="text-right px-4 py-2.5 text-xs font-medium text-muted-foreground">Coût (mois)</th>
-                          <th className="text-right px-4 py-2.5 text-xs font-medium text-muted-foreground">Tokens (total)</th>
-                          <th className="text-right px-4 py-2.5 text-xs font-medium text-muted-foreground">Coût (total)</th>
+                          <th className="text-left px-4 py-2.5 text-xs font-medium text-muted-foreground">{t("ud_col_model")}</th>
+                          <th className="text-left px-4 py-2.5 text-xs font-medium text-muted-foreground">{t("ud_col_role")}</th>
+                          <th className="text-left px-4 py-2.5 text-xs font-medium text-muted-foreground">{t("ud_col_plans")}</th>
+                          <th className="text-right px-4 py-2.5 text-xs font-medium text-muted-foreground">{t("ud_col_calls_month")}</th>
+                          <th className="text-right px-4 py-2.5 text-xs font-medium text-muted-foreground">{t("ud_col_tokens_month2")}</th>
+                          <th className="text-right px-4 py-2.5 text-xs font-medium text-muted-foreground">{t("ud_col_cost_month")}</th>
+                          <th className="text-right px-4 py-2.5 text-xs font-medium text-muted-foreground">{t("ud_col_tokens_total2")}</th>
+                          <th className="text-right px-4 py-2.5 text-xs font-medium text-muted-foreground">{t("ud_col_cost_total")}</th>
                         </tr>
                       </thead>
                       <tbody>
                         {rows.length === 0 ? (
-                          <tr><td colSpan={8} className="px-4 py-8 text-center text-xs text-muted-foreground">Aucune donnée — les tokens seront comptés dès la première génération.</td></tr>
+                          <tr><td colSpan={8} className="px-4 py-8 text-center text-xs text-muted-foreground">{t("ud_no_data")}</td></tr>
                         ) : rows.map((r) => {
                           const meta = LLM_META[r.model] || { label: r.model, role: "—", color: "text-foreground", plans: "—" };
                           const barPct = maxMonthCost > 0 ? Math.round((r.monthCost / maxMonthCost) * 100) : 0;
@@ -628,7 +633,7 @@ export default function UltraDashboard() {
                       {rows.length > 0 && (
                         <tfoot className="bg-muted/10 border-t border-border/30">
                           <tr>
-                            <td colSpan={4} className="px-4 py-2.5 text-xs font-semibold text-foreground">Total</td>
+                            <td colSpan={4} className="px-4 py-2.5 text-xs font-semibold text-foreground">{t("ud_total")}</td>
                             <td className="px-4 py-2.5 text-right font-mono text-xs font-semibold text-foreground">{totalMonthTokens.toLocaleString()}</td>
                             <td className="px-4 py-2.5 text-right font-mono text-xs font-semibold text-amber-400">{fmtCost(totalMonthCost)}</td>
                             <td className="px-4 py-2.5 text-right font-mono text-xs font-semibold text-muted-foreground">{totalTokens.toLocaleString()}</td>
@@ -641,7 +646,7 @@ export default function UltraDashboard() {
 
                   {/* Pipeline legend */}
                   <div className="rounded-xl border border-border/40 bg-card/60 p-5 space-y-3">
-                    <h3 className="text-sm font-semibold text-foreground flex items-center gap-2"><Cpu className="w-4 h-4 text-violet-400" /> Pipeline d'orchestration par plan</h3>
+                    <h3 className="text-sm font-semibold text-foreground flex items-center gap-2"><Cpu className="w-4 h-4 text-violet-400" /> {t("ud_pipeline_h")}</h3>
                     <div className="space-y-2 text-xs">
                       {[
                         { plan: "Free",    color: "text-muted-foreground",  badge: "bg-muted/30 text-muted-foreground",         chain: ["DeepSeek → HTML"] },
@@ -658,7 +663,7 @@ export default function UltraDashboard() {
                       ))}
                     </div>
                     <p className="text-xs text-muted-foreground/60 pt-1">
-                      Chaque étape est loggée séparément dans <code className="font-mono bg-muted/30 px-1 rounded">usage_logs</code>. Si un agent est indisponible, son relais prend le relais et le log porte le suffixe <code className="font-mono bg-muted/30 px-1 rounded">:relay</code>.
+                      {t("ud_pipeline_note_1")}<code className="font-mono bg-muted/30 px-1 rounded">usage_logs</code>{t("ud_pipeline_note_2")}<code className="font-mono bg-muted/30 px-1 rounded">:relay</code>{t("ud_pipeline_note_3")}
                     </p>
                   </div>
                 </>
@@ -670,7 +675,7 @@ export default function UltraDashboard() {
         {/* ═══════════════════════════ PROJECTS ═══════════════════════════════ */}
         {activeTab === "projects" && (
           <div className="space-y-4">
-            <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider">Tous les projets ({allProjects?.length || 0})</h2>
+            <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider">{t("ud_all_projects")} ({allProjects?.length || 0})</h2>
             {projectsLoading ? (
               <div className="space-y-2">{Array.from({ length: 5 }).map((_, i) => <div key={i} className="h-14 rounded-lg bg-muted/20 animate-pulse" />)}</div>
             ) : (
@@ -678,12 +683,12 @@ export default function UltraDashboard() {
                 <table className="w-full text-sm">
                   <thead className="bg-muted/20 border-b border-border/40">
                     <tr>
-                      <th className="text-left px-4 py-3 text-xs font-medium text-muted-foreground">Projet</th>
-                      <th className="text-left px-4 py-3 text-xs font-medium text-muted-foreground">Statut</th>
-                      <th className="text-left px-4 py-3 text-xs font-medium text-muted-foreground">Framework</th>
-                      <th className="text-left px-4 py-3 text-xs font-medium text-muted-foreground">Déployé</th>
-                      <th className="text-left px-4 py-3 text-xs font-medium text-muted-foreground">Créé</th>
-                      <th className="text-right px-4 py-3 text-xs font-medium text-muted-foreground">Actions</th>
+                      <th className="text-left px-4 py-3 text-xs font-medium text-muted-foreground">{t("ud_col_project")}</th>
+                      <th className="text-left px-4 py-3 text-xs font-medium text-muted-foreground">{t("ud_col_status")}</th>
+                      <th className="text-left px-4 py-3 text-xs font-medium text-muted-foreground">{t("ud_col_framework")}</th>
+                      <th className="text-left px-4 py-3 text-xs font-medium text-muted-foreground">{t("ud_col_deployed")}</th>
+                      <th className="text-left px-4 py-3 text-xs font-medium text-muted-foreground">{t("ud_col_created")}</th>
+                      <th className="text-right px-4 py-3 text-xs font-medium text-muted-foreground">{t("ud_col_actions")}</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -692,11 +697,11 @@ export default function UltraDashboard() {
                         <td className="px-4 py-3"><div className="font-medium text-foreground">{p.name}</div><div className="text-xs text-muted-foreground">ID #{p.id} · User #{p.userId}</div></td>
                         <td className="px-4 py-3"><span className={`px-2 py-0.5 rounded-full text-xs font-medium ${p.status === "ready" ? "bg-emerald-500/10 text-emerald-400" : p.status === "published" ? "bg-blue-500/10 text-blue-400" : p.status === "generating" ? "bg-amber-500/10 text-amber-400" : "bg-muted/30 text-muted-foreground"}`}>{p.status}</span></td>
                         <td className="px-4 py-3 text-xs text-muted-foreground uppercase">{p.framework}</td>
-                        <td className="px-4 py-3">{p.deployedUrl ? <a href={p.deployedUrl} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1 text-xs text-primary hover:underline"><Globe className="w-3 h-3" /> Voir</a> : <span className="text-xs text-muted-foreground">—</span>}</td>
-                        <td className="px-4 py-3 text-xs text-muted-foreground">{formatDistanceToNow(new Date(p.createdAt), { addSuffix: true, locale: fr })}</td>
+                        <td className="px-4 py-3">{p.deployedUrl ? <a href={p.deployedUrl} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1 text-xs text-primary hover:underline"><Globe className="w-3 h-3" /> {t("ud_view")}</a> : <span className="text-xs text-muted-foreground">—</span>}</td>
+                        <td className="px-4 py-3 text-xs text-muted-foreground">{formatDistanceToNow(new Date(p.createdAt), { addSuffix: true, locale: dfLocale })}</td>
                         <td className="px-4 py-3 text-right">
                           <Button size="sm" variant="ghost" className="h-7 px-2 text-xs text-muted-foreground hover:text-rose-400"
-                            onClick={() => { if (confirm(`Supprimer "${p.name}" ? Irréversible.`)) deleteProject.mutate({ projectId: p.id }); }}>
+                            onClick={() => { if (confirm(`${t("ud_confirm_del_proj_1")}${p.name}${t("ud_confirm_del_proj_2")}`)) deleteProject.mutate({ projectId: p.id }); }}>
                             <Trash2 className="w-3 h-3" />
                           </Button>
                         </td>
