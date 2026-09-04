@@ -3,64 +3,75 @@ import PublicNav from "@/components/PublicNav";
 import PublicFooter from "@/components/PublicFooter";
 import { Badge } from "@/components/ui/badge";
 import { BookOpen, Zap, Key, Globe, MessageSquare, History, Rocket, ChevronRight } from "lucide-react";
+import { useLang } from "@/i18n/LangContext";
+import type { TranslationKey } from "@/i18n/translations";
 
-const sections = [
+type DocSection = { icon: any; title: TranslationKey; badge: TranslationKey; content: { step: string; text: TranslationKey }[] };
+
+const SECTION_KEYS: DocSection[] = [
   {
     icon: Zap,
-    title: "Démarrage rapide",
-    badge: "5 min",
+    title: "doc_s1_title",
+    badge: "doc_s1_badge",
     content: [
-      { step: "1", text: "Créez un compte gratuit et connectez-vous." },
-      { step: "2", text: "Depuis le Dashboard, cliquez sur « Nouveau projet »." },
-      { step: "3", text: "Décrivez votre site en quelques phrases, choisissez un style et une palette." },
-      { step: "4", text: "Cliquez sur « Générer le site » — Mar-ia produit votre code en temps réel." },
-      { step: "5", text: "Affinez avec le chat, puis publiez en un clic." },
+      { step: "1", text: "doc_s1_1" },
+      { step: "2", text: "doc_s1_2" },
+      { step: "3", text: "doc_s1_3" },
+      { step: "4", text: "doc_s1_4" },
+      { step: "5", text: "doc_s1_5" },
     ],
   },
   {
     icon: Key,
-    title: "Clé API Anthropic",
-    badge: "Requis",
+    title: "doc_s2_title",
+    badge: "doc_s2_badge",
     content: [
-      { step: "1", text: "Rendez-vous sur console.anthropic.com et créez une clé API." },
-      { step: "2", text: "Dans Mar-ia, allez dans Paramètres > Clés API." },
-      { step: "3", text: "Collez votre clé — elle est chiffrée AES-256 avant stockage." },
-      { step: "4", text: "Choisissez le modèle : claude-sonnet-4-5 est recommandé." },
+      { step: "1", text: "doc_s2_1" },
+      { step: "2", text: "doc_s2_2" },
+      { step: "3", text: "doc_s2_3" },
+      { step: "4", text: "doc_s2_4" },
     ],
   },
   {
     icon: MessageSquare,
-    title: "Chat avec Mar-ia",
-    badge: "IA",
+    title: "doc_s3_title",
+    badge: "doc_s3_badge",
     content: [
-      { step: "→", text: "Demandez des modifications en langage naturel : « Change le fond en noir », « Ajoute une section témoignages »." },
-      { step: "→", text: "Mar-ia comprend le contexte du projet et de toute la conversation précédente." },
-      { step: "→", text: "Chaque modification génère une nouvelle version sauvegardée automatiquement." },
+      { step: "→", text: "doc_s3_1" },
+      { step: "→", text: "doc_s3_2" },
+      { step: "→", text: "doc_s3_3" },
     ],
   },
   {
     icon: History,
-    title: "Versions",
-    badge: "Historique",
+    title: "doc_s4_title",
+    badge: "doc_s4_badge",
     content: [
-      { step: "→", text: "Chaque génération crée une version numérotée (v1, v2, v3…)." },
-      { step: "→", text: "Cliquez sur « Versions » dans le chat pour voir l'historique." },
-      { step: "→", text: "Cliquez sur « Restaurer » pour revenir à n'importe quelle version précédente." },
+      { step: "→", text: "doc_s4_1" },
+      { step: "→", text: "doc_s4_2" },
+      { step: "→", text: "doc_s4_3" },
     ],
   },
   {
     icon: Globe,
-    title: "Publication",
-    badge: "Deploy",
+    title: "doc_s5_title",
+    badge: "doc_s5_badge",
     content: [
-      { step: "→", text: "Cliquez sur « Publier » dans la barre du haut pour mettre votre site en ligne." },
-      { step: "→", text: "Votre site reçoit une URL publique sous mariaai-*.manus.space." },
-      { step: "→", text: "Utilisez le panneau Deploy dans le chat pour gérer votre déploiement." },
+      { step: "→", text: "doc_s5_1" },
+      { step: "→", text: "doc_s5_2" },
+      { step: "→", text: "doc_s5_3" },
     ],
   },
 ];
 
 export default function Documentation() {
+  const { t } = useLang();
+  const sections = SECTION_KEYS.map((s) => ({
+    icon: s.icon,
+    title: t(s.title),
+    badge: t(s.badge),
+    content: s.content.map((c) => ({ step: c.step, text: t(c.text) })),
+  }));
   return (
     <div className="min-h-screen bg-background text-foreground">
       <PublicNav />
@@ -70,11 +81,11 @@ export default function Documentation() {
           <div className="text-center mb-14">
             <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-primary/10 border border-primary/20 text-primary text-sm mb-4">
               <BookOpen className="w-4 h-4" />
-              Documentation
+              {t("doc_badge")}
             </div>
-            <h1 className="text-4xl font-bold mb-4">Guide d'utilisation</h1>
+            <h1 className="text-4xl font-bold mb-4">{t("doc_title")}</h1>
             <p className="text-muted-foreground text-lg max-w-2xl mx-auto">
-              Tout ce dont vous avez besoin pour créer, modifier et publier votre site web avec Mar-ia.
+              {t("doc_subtitle")}
             </p>
           </div>
 
@@ -109,11 +120,11 @@ export default function Documentation() {
           {/* CTA */}
           <div className="mt-14 text-center rounded-2xl border border-primary/20 bg-primary/5 p-8">
             <Rocket className="w-10 h-10 text-primary mx-auto mb-3" />
-            <h3 className="text-xl font-semibold mb-2">Prêt à créer votre site ?</h3>
-            <p className="text-muted-foreground text-sm mb-5">Commencez gratuitement, sans carte bancaire.</p>
+            <h3 className="text-xl font-semibold mb-2">{t("doc_cta_h")}</h3>
+            <p className="text-muted-foreground text-sm mb-5">{t("doc_cta_desc")}</p>
             <Link href="/dashboard">
               <button className="inline-flex items-center gap-2 px-6 py-2.5 rounded-xl bg-primary text-primary-foreground font-medium text-sm hover:bg-primary/90 transition-colors">
-                Accéder au dashboard <ChevronRight className="w-4 h-4" />
+                {t("doc_cta_btn")} <ChevronRight className="w-4 h-4" />
               </button>
             </Link>
           </div>

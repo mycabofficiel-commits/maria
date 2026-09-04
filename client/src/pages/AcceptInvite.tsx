@@ -8,12 +8,17 @@ import { getLoginUrl } from "@/const";
 import { Loader2, CheckCircle2, XCircle, Users, Eye, Edit3 } from "lucide-react";
 import LogoBrand from "@/components/LogoBrand";
 import { Link } from "wouter";
+import { useLang } from "@/i18n/LangContext";
+
+const INV_DATE_LOCALE = { fr: "fr-FR", en: "en-US", es: "es-ES" } as const;
 
 export default function AcceptInvite() {
   const params = useParams<{ token: string }>();
   const token = params.token || "";
   const [, navigate] = useLocation();
   const { isAuthenticated, loading: authLoading } = useAuth();
+  const { t, lang } = useLang();
+  const dateLocale = INV_DATE_LOCALE[lang] || "en-US";
   const [accepted, setAccepted] = useState(false);
   const [acceptedProjectId, setAcceptedProjectId] = useState<number | null>(null);
 
@@ -56,15 +61,13 @@ export default function AcceptInvite() {
             <CardContent className="pt-6 text-center space-y-3">
               <XCircle className="w-12 h-12 text-destructive mx-auto" />
               <h2 className="font-display font-semibold text-lg text-foreground">
-                {isExpired ? "Invitation expirée" : "Invitation invalide"}
+                {isExpired ? t("inv_expired_title") : t("inv_invalid_title")}
               </h2>
               <p className="text-sm text-muted-foreground">
-                {isExpired
-                  ? "Ce lien d'invitation a expiré. Demandez un nouveau lien au propriétaire du projet."
-                  : "Ce lien d'invitation est invalide ou a été révoqué."}
+                {isExpired ? t("inv_expired_desc") : t("inv_invalid_desc")}
               </p>
               <Link href="/">
-                <Button variant="outline" className="mt-2">Retour à l'accueil</Button>
+                <Button variant="outline" className="mt-2">{t("inv_home")}</Button>
               </Link>
             </CardContent>
           </Card>
@@ -75,13 +78,13 @@ export default function AcceptInvite() {
           <Card className="border-emerald-500/30 bg-card">
             <CardContent className="pt-6 text-center space-y-3">
               <CheckCircle2 className="w-12 h-12 text-emerald-400 mx-auto" />
-              <h2 className="font-display font-semibold text-lg text-foreground">Invitation acceptée !</h2>
+              <h2 className="font-display font-semibold text-lg text-foreground">{t("inv_accepted_title")}</h2>
               <p className="text-sm text-muted-foreground">
-                Vous avez maintenant accès au projet <strong>{preview?.projectName}</strong>.
+                {t("inv_accepted_pre")}<strong>{preview?.projectName}</strong>{t("inv_accepted_post")}
               </p>
               <Link href={`/projects/${acceptedProjectId}`}>
                 <Button className="bg-primary hover:bg-primary/90 text-primary-foreground mt-2">
-                  Ouvrir le projet
+                  {t("inv_open_project")}
                 </Button>
               </Link>
             </CardContent>
@@ -95,9 +98,9 @@ export default function AcceptInvite() {
               <div className="w-12 h-12 rounded-xl bg-primary/10 flex items-center justify-center mx-auto mb-3">
                 <Users className="w-6 h-6 text-primary" />
               </div>
-              <CardTitle className="text-lg">Invitation à collaborer</CardTitle>
+              <CardTitle className="text-lg">{t("inv_collab_title")}</CardTitle>
               <CardDescription className="text-sm">
-                <strong>{preview.ownerName}</strong> vous invite à rejoindre le projet
+                <strong>{preview.ownerName}</strong>{t("inv_collab_desc")}
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
@@ -106,9 +109,9 @@ export default function AcceptInvite() {
                 <p className="font-semibold text-foreground">{preview.projectName}</p>
                 <div className="flex items-center justify-center gap-1.5 mt-1.5">
                   {preview.role === "editor" ? (
-                    <><Edit3 className="w-3.5 h-3.5 text-primary" /><span className="text-xs text-muted-foreground">Accès éditeur — vous pouvez modifier le site</span></>
+                    <><Edit3 className="w-3.5 h-3.5 text-primary" /><span className="text-xs text-muted-foreground">{t("inv_role_editor")}</span></>
                   ) : (
-                    <><Eye className="w-3.5 h-3.5 text-primary" /><span className="text-xs text-muted-foreground">Accès lecteur — consultation uniquement</span></>
+                    <><Eye className="w-3.5 h-3.5 text-primary" /><span className="text-xs text-muted-foreground">{t("inv_role_viewer")}</span></>
                   )}
                 </div>
               </div>
@@ -116,7 +119,7 @@ export default function AcceptInvite() {
               {/* Expiry */}
               {preview.expiresAt && (
                 <p className="text-xs text-muted-foreground text-center">
-                  Lien valide jusqu'au {new Date(preview.expiresAt).toLocaleDateString("fr-FR", { day: "numeric", month: "long", year: "numeric" })}
+                  {t("inv_valid_until")}{new Date(preview.expiresAt).toLocaleDateString(dateLocale, { day: "numeric", month: "long", year: "numeric" })}
                 </p>
               )}
 
@@ -124,7 +127,7 @@ export default function AcceptInvite() {
               {!isAuthenticated ? (
                 <div className="space-y-2">
                   <p className="text-xs text-muted-foreground text-center">
-                    Connectez-vous pour accepter l'invitation
+                    {t("inv_login_hint")}
                   </p>
                   <Button
                     className="w-full bg-primary hover:bg-primary/90 text-primary-foreground"
@@ -137,7 +140,7 @@ export default function AcceptInvite() {
                         : loginBase;
                     }}
                   >
-                    Se connecter pour accepter
+                    {t("inv_login_btn")}
                   </Button>
                 </div>
               ) : (
@@ -147,9 +150,9 @@ export default function AcceptInvite() {
                   disabled={accept.isPending}
                 >
                   {accept.isPending ? (
-                    <><Loader2 className="w-4 h-4 animate-spin mr-2" />Acceptation…</>
+                    <><Loader2 className="w-4 h-4 animate-spin mr-2" />{t("inv_accepting")}</>
                   ) : (
-                    <>Accepter l'invitation</>
+                    <>{t("inv_accept_btn")}</>
                   )}
                 </Button>
               )}

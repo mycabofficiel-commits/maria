@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Link, useLocation } from "wouter";
 import { useAuth } from "@/hooks/useAuth";
+import { useLang } from "@/i18n/LangContext";
 
 export default function Register() {
   const [name, setName] = useState("");
@@ -9,13 +10,14 @@ export default function Register() {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const { register } = useAuth();
+  const { t } = useLang();
   const [, navigate] = useLocation();
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError("");
     if (password.length < 8) {
-      setError("Le mot de passe doit contenir au moins 8 caractères");
+      setError(t("reg_err_pwd"));
       return;
     }
     setLoading(true);
@@ -23,7 +25,7 @@ export default function Register() {
       await register(email, password, name);
       navigate("/onboarding");
     } catch (err: any) {
-      setError(err.message || "Erreur lors de l'inscription");
+      setError(err.message || t("reg_err_generic"));
     } finally {
       setLoading(false);
     }
@@ -39,8 +41,8 @@ export default function Register() {
               <span className="text-white text-xl font-semibold">Mar-ia</span>
             </div>
           </Link>
-          <h1 className="text-white text-2xl font-bold mt-6">Créer un compte</h1>
-          <p className="text-gray-400 mt-2">Commencez gratuitement — aucune carte requise.</p>
+          <h1 className="text-white text-2xl font-bold mt-6">{t("reg_title")}</h1>
+          <p className="text-gray-400 mt-2">{t("reg_subtitle")}</p>
         </div>
 
         {/* Form */}
@@ -54,26 +56,26 @@ export default function Register() {
 
             <div>
               <label className="text-gray-300 text-sm font-medium block mb-2">
-                Nom complet
+                {t("reg_name")}
               </label>
               <input
                 type="text"
                 value={name}
                 onChange={(e) => setName(e.target.value)}
-                placeholder="Jean Dupont"
+                placeholder={t("reg_name_ph")}
                 className="w-full bg-gray-800 border border-gray-700 rounded-lg px-4 py-3 text-white placeholder-gray-500 focus:outline-none focus:border-blue-500 transition-colors"
               />
             </div>
 
             <div>
               <label className="text-gray-300 text-sm font-medium block mb-2">
-                Email
+                {t("reg_email")}
               </label>
               <input
                 type="email"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                placeholder="vous@exemple.com"
+                placeholder={t("reg_email_ph")}
                 required
                 className="w-full bg-gray-800 border border-gray-700 rounded-lg px-4 py-3 text-white placeholder-gray-500 focus:outline-none focus:border-blue-500 transition-colors"
               />
@@ -81,13 +83,13 @@ export default function Register() {
 
             <div>
               <label className="text-gray-300 text-sm font-medium block mb-2">
-                Mot de passe
+                {t("reg_password")}
               </label>
               <input
                 type="password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                placeholder="8 caractères minimum"
+                placeholder={t("reg_password_ph")}
                 required
                 className="w-full bg-gray-800 border border-gray-700 rounded-lg px-4 py-3 text-white placeholder-gray-500 focus:outline-none focus:border-blue-500 transition-colors"
               />
@@ -98,27 +100,27 @@ export default function Register() {
               disabled={loading}
               className="w-full bg-blue-600 hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed text-white font-semibold py-3 rounded-lg transition-colors"
             >
-              {loading ? "Création..." : "Créer mon compte"}
+              {loading ? t("reg_submitting") : t("reg_submit")}
             </button>
           </form>
 
           <p className="text-center text-gray-400 text-sm mt-6">
-            Déjà un compte ?{" "}
+            {t("reg_have_account")}{" "}
             <Link href="/login">
               <span className="text-blue-400 hover:text-blue-300 cursor-pointer font-medium">
-                Se connecter
+                {t("reg_login_link")}
               </span>
             </Link>
           </p>
 
           <p className="text-center text-gray-500 text-xs mt-4">
-            En créant un compte, vous acceptez nos{" "}
+            {t("reg_terms_pre")}
             <Link href="/legal/terms">
-              <span className="text-gray-400 hover:text-gray-300 cursor-pointer">CGU</span>
-            </Link>{" "}
-            et notre{" "}
+              <span className="text-gray-400 hover:text-gray-300 cursor-pointer">{t("reg_terms_cgu")}</span>
+            </Link>
+            {t("reg_terms_and")}
             <Link href="/legal/privacy">
-              <span className="text-gray-400 hover:text-gray-300 cursor-pointer">Politique de confidentialité</span>
+              <span className="text-gray-400 hover:text-gray-300 cursor-pointer">{t("reg_terms_privacy")}</span>
             </Link>
           </p>
         </div>

@@ -9,22 +9,24 @@ import { toast } from "sonner";
 import { ArrowRight, CheckCircle2, Loader2, Sparkles } from "lucide-react";
 import LogoBrand from "@/components/LogoBrand";
 import { getLoginUrl } from "@/const";
-
-const PLAN_OPTIONS = [
-  { slug: "free", name: "Free", price: "Gratuit", desc: "1 projet, 3 générations/mois" },
-  { slug: "creator", name: "Creator", price: "19€/mois", desc: "5 projets, 30 générations/mois" },
-  { slug: "pro", name: "Pro", price: "49€/mois", desc: "20 projets, 100 générations/mois" },
-];
+import { useLang } from "@/i18n/LangContext";
 
 export default function Onboarding() {
   const { user, isAuthenticated, loading } = useAuth();
+  const { t } = useLang();
   const [, navigate] = useLocation();
   const [step, setStep] = useState(1);
   const [selectedPlan, setSelectedPlan] = useState("free");
 
+  const PLAN_OPTIONS = [
+    { slug: "free", name: "Free", price: t("onb_free_price"), desc: t("onb_free_desc") },
+    { slug: "creator", name: "Creator", price: "19€/mois", desc: t("onb_creator_desc") },
+    { slug: "pro", name: "Pro", price: "49€/mois", desc: t("onb_pro_desc") },
+  ];
+
   const completeOnboarding = trpc.auth.completeOnboarding.useMutation({
     onSuccess: () => {
-      toast.success("Bienvenue sur Mar-ia !");
+      toast.success(t("onb_welcome_toast"));
       navigate("/dashboard");
     },
     onError: (err: any) => toast.error(err.message),
@@ -76,10 +78,10 @@ export default function Onboarding() {
           {step === 1 && (
             <div>
               <h1 className="text-2xl font-display font-bold text-foreground mb-2">
-                Bienvenue, {user?.name?.split(" ")[0] || "là"} !
+                {t("onb_welcome")} {user?.name?.split(" ")[0] || t("onb_welcome_you")} !
               </h1>
               <p className="text-muted-foreground mb-6">
-                Mar-ia est prêt. Commençons par choisir votre plan.
+                {t("onb_choose_plan")}
               </p>
 
               <div className="space-y-3 mb-6">
@@ -106,7 +108,7 @@ export default function Onboarding() {
                 className="w-full bg-primary hover:bg-primary/90 text-primary-foreground"
                 onClick={() => setStep(2)}
               >
-                Continuer
+                {t("onb_continue")}
                 <ArrowRight className="ml-2 w-4 h-4" />
               </Button>
             </div>
@@ -115,17 +117,17 @@ export default function Onboarding() {
           {step === 2 && (
             <div>
               <h1 className="text-2xl font-display font-bold text-foreground mb-2">
-                Tout est prêt !
+                {t("onb_ready")}
               </h1>
               <p className="text-muted-foreground mb-6">
-                Votre compte est configuré. Vous pouvez maintenant créer votre premier site.
+                {t("onb_ready_desc")}
               </p>
 
               <div className="space-y-3 mb-6">
                 {[
-                  "Créez votre premier projet",
-                  "Décrivez votre site en quelques mots",
-                  "Générez, modifiez et publiez en un clic",
+                  t("onb_step1"),
+                  t("onb_step2"),
+                  t("onb_step3"),
                 ].map((item, i) => (
                   <div key={i} className="flex items-center gap-3 p-3 rounded-lg bg-card border border-border/50">
                     <div className="w-6 h-6 rounded-full bg-primary/10 flex items-center justify-center text-xs font-bold text-primary">
@@ -146,7 +148,7 @@ export default function Onboarding() {
                 ) : (
                   <Sparkles className="w-4 h-4 mr-2" />
                 )}
-                Accéder au dashboard
+                {t("onb_goto_dashboard")}
               </Button>
             </div>
           )}
