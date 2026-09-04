@@ -32,3 +32,4 @@
 | 2026-09-03 19:11 | v1.2.23 | 3369cef | i18n Phase 1c: page Cles API (admin) traduite (FR/EN/ES) |
 | 2026-09-03 19:39 | v1.2.24 | f3bf564 | i18n Phase 1d: page Projets traduite (modal creation, 15 options, sous-menus, liste, partages) FR/EN/ES - Phase 1 complete |
 | 2026-09-04 07:33 | v1.2.25 | 8530781 | i18n Phase 2a: Onboarding, Register, AcceptInvite, Support, Documentation, Blog (FR/EN/ES) |
+| 2026-09-04 07:38 | v1.2.26 | 9492b24 | i18n Phase 2b: Templates + ShareProject (FR/EN/ES) |

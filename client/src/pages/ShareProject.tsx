@@ -22,13 +22,18 @@ import {
 } from "lucide-react";
 import { Link } from "wouter";
 import { formatDistanceToNow } from "date-fns";
-import { fr } from "date-fns/locale";
+import { fr, enUS, es } from "date-fns/locale";
+import { useLang } from "@/i18n/LangContext";
+
+const SHARE_DF_LOCALE = { fr, en: enUS, es } as const;
 
 export default function ShareProject() {
   const params = useParams<{ id: string }>();
   const projectId = parseInt(params.id || "0");
   const [, navigate] = useLocation();
   const { isAuthenticated, loading: authLoading } = useAuth();
+  const { t, lang } = useLang();
+  const dfLocale = SHARE_DF_LOCALE[lang] || enUS;
 
   const [inviteEmail, setInviteEmail] = useState("");
   const [inviteRole, setInviteRole] = useState<"viewer" | "editor">("viewer");
@@ -68,7 +73,7 @@ export default function ShareProject() {
 
   const invite = trpc.share.invite.useMutation({
     onSuccess: (data) => {
-      toast.success("Invitation créée !");
+      toast.success(t("share_toast_invited"));
       utils.share.list.invalidate({ projectId });
       // Auto-copy link
       const link = `${window.location.origin}/invite/${data.inviteToken}`;
@@ -81,7 +86,7 @@ export default function ShareProject() {
 
   const revoke = trpc.share.revoke.useMutation({
     onSuccess: () => {
-      toast.success("Accès révoqué");
+      toast.success(t("share_toast_revoked"));
       utils.share.list.invalidate({ projectId });
       setRevokeTarget(null);
     },
@@ -106,18 +111,18 @@ export default function ShareProject() {
   const copyLink = (token: string) => {
     navigator.clipboard.writeText(getInviteLink(token));
     setCopiedToken(token);
-    toast.success("Lien copié !");
+    toast.success(t("share_toast_copied"));
     setTimeout(() => setCopiedToken(null), 2000);
   };
 
   const statusBadge = (status: string) => {
     switch (status) {
       case "pending":
-        return <Badge variant="outline" className="text-amber-400 border-amber-400/30 text-xs"><Clock className="w-3 h-3 mr-1" />En attente</Badge>;
+        return <Badge variant="outline" className="text-amber-400 border-amber-400/30 text-xs"><Clock className="w-3 h-3 mr-1" />{t("share_st_pending")}</Badge>;
       case "accepted":
-        return <Badge variant="outline" className="text-emerald-400 border-emerald-400/30 text-xs"><CheckCircle2 className="w-3 h-3 mr-1" />Accepté</Badge>;
+        return <Badge variant="outline" className="text-emerald-400 border-emerald-400/30 text-xs"><CheckCircle2 className="w-3 h-3 mr-1" />{t("share_st_accepted")}</Badge>;
       case "revoked":
-        return <Badge variant="outline" className="text-muted-foreground border-border/40 text-xs"><XCircle className="w-3 h-3 mr-1" />Révoqué</Badge>;
+        return <Badge variant="outline" className="text-muted-foreground border-border/40 text-xs"><XCircle className="w-3 h-3 mr-1" />{t("share_st_revoked")}</Badge>;
       default:
         return null;
     }
@@ -127,7 +132,7 @@ export default function ShareProject() {
   const revokedCollabs = collaborators?.filter(c => c.status === "revoked") || [];
 
   return (
-    <AppLayout title={`Partager — ${project?.name || "Projet"}`}>
+    <AppLayout title={`${t("share_app_title")} — ${project?.name || t("share_project_fallback")}`}>
       <div className="max-w-2xl mx-auto space-y-6">
         {/* Header */}
         <div className="flex items-center gap-3">
@@ -139,7 +144,7 @@ export default function ShareProject() {
           <div>
             <h1 className="font-display font-bold text-xl text-foreground flex items-center gap-2">
               <Share2 className="w-5 h-5 text-primary" />
-              Partager le projet
+              {t("share_header")}
             </h1>
             <p className="text-sm text-muted-foreground">{project?.name}</p>
           </div>
@@ -150,16 +155,16 @@ export default function ShareProject() {
           <CardHeader className="pb-3">
             <CardTitle className="text-base flex items-center gap-2">
               <UserPlus className="w-4 h-4 text-primary" />
-              Inviter un collaborateur
+              {t("share_invite_title")}
             </CardTitle>
             <CardDescription className="text-xs">
-              Générez un lien d'invitation. L'invité devra se connecter pour accéder au projet.
+              {t("share_invite_desc")}
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-3">
             <div className="flex gap-2">
               <Input
-                placeholder="Email (optionnel)"
+                placeholder={t("share_email_ph")}
                 value={inviteEmail}
                 onChange={(e) => setInviteEmail(e.target.value)}
                 className="bg-input border-border/60 text-sm h-9"
@@ -171,10 +176,10 @@ export default function ShareProject() {
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="viewer" className="text-xs">
-                    <div className="flex items-center gap-1.5"><Eye className="w-3 h-3" /> Lecteur</div>
+                    <div className="flex items-center gap-1.5"><Eye className="w-3 h-3" /> {t("share_role_viewer")}</div>
                   </SelectItem>
                   <SelectItem value="editor" className="text-xs">
-                    <div className="flex items-center gap-1.5"><Edit3 className="w-3 h-3" /> Éditeur</div>
+                    <div className="flex items-center gap-1.5"><Edit3 className="w-3 h-3" /> {t("share_role_editor")}</div>
                   </SelectItem>
                 </SelectContent>
               </Select>
@@ -182,18 +187,18 @@ export default function ShareProject() {
             {/* Expiration de l'accès */}
             <div className="space-y-2">
               <label className="text-xs text-muted-foreground flex items-center gap-1.5">
-                <Clock className="w-3 h-3 text-primary" /> Durée d'accès
+                <Clock className="w-3 h-3 text-primary" /> {t("share_duration")}
               </label>
               <Select value={expiryPreset} onValueChange={(v) => setExpiryPreset(v as typeof expiryPreset)}>
                 <SelectTrigger className="h-9 text-xs bg-input border-border/60">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="1d" className="text-xs">Expire dans 1 jour</SelectItem>
-                  <SelectItem value="7d" className="text-xs">Expire dans 7 jours</SelectItem>
-                  <SelectItem value="30d" className="text-xs">Expire dans 30 jours</SelectItem>
-                  <SelectItem value="custom" className="text-xs">Date &amp; heure précises…</SelectItem>
-                  <SelectItem value="never" className="text-xs">Sans expiration</SelectItem>
+                  <SelectItem value="1d" className="text-xs">{t("share_exp_1d")}</SelectItem>
+                  <SelectItem value="7d" className="text-xs">{t("share_exp_7d")}</SelectItem>
+                  <SelectItem value="30d" className="text-xs">{t("share_exp_30d")}</SelectItem>
+                  <SelectItem value="custom" className="text-xs">{t("share_exp_custom")}</SelectItem>
+                  <SelectItem value="never" className="text-xs">{t("share_exp_never")}</SelectItem>
                 </SelectContent>
               </Select>
               {expiryPreset === "custom" && (
@@ -206,7 +211,7 @@ export default function ShareProject() {
                 />
               )}
               {customInvalid && (
-                <p className="text-[11px] text-destructive">Choisis une date/heure dans le futur.</p>
+                <p className="text-[11px] text-destructive">{t("share_custom_invalid")}</p>
               )}
             </div>
             <Button
@@ -215,13 +220,13 @@ export default function ShareProject() {
               disabled={invite.isPending || customInvalid}
             >
               {invite.isPending ? (
-                <><Loader2 className="w-3.5 h-3.5 animate-spin mr-2" />Génération…</>
+                <><Loader2 className="w-3.5 h-3.5 animate-spin mr-2" />{t("share_generating")}</>
               ) : (
-                <><Link2 className="w-3.5 h-3.5 mr-2" />Générer le lien d'invitation</>
+                <><Link2 className="w-3.5 h-3.5 mr-2" />{t("share_gen_link")}</>
               )}
             </Button>
             <p className="text-xs text-muted-foreground text-center">
-              L'accès est révoqué automatiquement à l'expiration · <strong>Lecteur</strong> = consultation · <strong>Éditeur</strong> = peut modifier
+              {t("share_hint_1")}<strong>{t("share_role_viewer")}</strong>{t("share_hint_2")}<strong>{t("share_role_editor")}</strong>{t("share_hint_3")}
             </p>
           </CardContent>
         </Card>
@@ -231,7 +236,7 @@ export default function ShareProject() {
           <CardHeader className="pb-3">
             <CardTitle className="text-base flex items-center gap-2">
               <Users className="w-4 h-4 text-primary" />
-              Collaborateurs actifs
+              {t("share_active_h")}
               {activeCollabs.length > 0 && (
                 <Badge variant="secondary" className="text-xs ml-auto">{activeCollabs.length}</Badge>
               )}
@@ -245,8 +250,8 @@ export default function ShareProject() {
             ) : activeCollabs.length === 0 ? (
               <div className="text-center py-6">
                 <Users className="w-8 h-8 text-muted-foreground mx-auto mb-2 opacity-40" />
-                <p className="text-sm text-muted-foreground">Aucun collaborateur pour l'instant.</p>
-                <p className="text-xs text-muted-foreground mt-1">Invitez des personnes pour collaborer sur ce projet.</p>
+                <p className="text-sm text-muted-foreground">{t("share_empty1")}</p>
+                <p className="text-xs text-muted-foreground mt-1">{t("share_empty2")}</p>
               </div>
             ) : (
               <div className="space-y-2">
@@ -258,26 +263,26 @@ export default function ShareProject() {
                       </div>
                       <div className="min-w-0">
                         <div className="text-sm font-medium text-foreground truncate">
-                          {(c as any).collaboratorName || c.inviteEmail || "Invitation en attente"}
+                          {(c as any).collaboratorName || c.inviteEmail || t("share_pending_name")}
                         </div>
                         <div className="flex items-center gap-2 mt-0.5">
                           {statusBadge(c.status)}
                           <Badge variant="outline" className="text-[10px] border-border/40 text-muted-foreground">
-                            {c.role === "editor" ? <><Edit3 className="w-2.5 h-2.5 mr-0.5" />Éditeur</> : <><Eye className="w-2.5 h-2.5 mr-0.5" />Lecteur</>}
+                            {c.role === "editor" ? <><Edit3 className="w-2.5 h-2.5 mr-0.5" />{t("share_role_editor")}</> : <><Eye className="w-2.5 h-2.5 mr-0.5" />{t("share_role_viewer")}</>}
                           </Badge>
                           {c.createdAt && (
                             <span className="text-[10px] text-muted-foreground">
-                              {formatDistanceToNow(new Date(c.createdAt), { addSuffix: true, locale: fr })}
+                              {formatDistanceToNow(new Date(c.createdAt), { addSuffix: true, locale: dfLocale })}
                             </span>
                           )}
                           {(c as any).expiresAt ? (
                             <span className={`text-[10px] ${new Date((c as any).expiresAt) < new Date() ? "text-destructive" : "text-amber-400/80"}`}>
                               {new Date((c as any).expiresAt) < new Date()
-                                ? "· accès expiré"
-                                : `· expire ${formatDistanceToNow(new Date((c as any).expiresAt), { addSuffix: true, locale: fr })}`}
+                                ? t("share_expired")
+                                : `${t("share_expires_prefix")}${formatDistanceToNow(new Date((c as any).expiresAt), { addSuffix: true, locale: dfLocale })}`}
                             </span>
                           ) : (
-                            <span className="text-[10px] text-muted-foreground/60">· sans expiration</span>
+                            <span className="text-[10px] text-muted-foreground/60">{t("share_no_expiry")}</span>
                           )}
                         </div>
                       </div>
@@ -289,7 +294,7 @@ export default function ShareProject() {
                           size="icon"
                           className="w-7 h-7 text-muted-foreground hover:text-foreground"
                           onClick={() => copyLink(c.inviteToken)}
-                          title="Copier le lien"
+                          title={t("share_copy_link")}
                         >
                           {copiedToken === c.inviteToken ? (
                             <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
@@ -303,7 +308,7 @@ export default function ShareProject() {
                         size="icon"
                         className="w-7 h-7 text-muted-foreground hover:text-destructive"
                         onClick={() => setRevokeTarget(c.id)}
-                        title="Révoquer l'accès"
+                        title={t("share_revoke_access")}
                       >
                         <Trash2 className="w-3.5 h-3.5" />
                       </Button>
@@ -318,7 +323,7 @@ export default function ShareProject() {
         {/* Revoked (collapsed) */}
         {revokedCollabs.length > 0 && (
           <div className="text-xs text-muted-foreground text-center">
-            {revokedCollabs.length} invitation(s) révoquée(s) masquée(s)
+            {revokedCollabs.length} {t("share_revoked_hidden")}
           </div>
         )}
       </div>
@@ -327,18 +332,18 @@ export default function ShareProject() {
       <AlertDialog open={!!revokeTarget} onOpenChange={() => setRevokeTarget(null)}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Révoquer l'accès ?</AlertDialogTitle>
+            <AlertDialogTitle>{t("share_revoke_q")}</AlertDialogTitle>
             <AlertDialogDescription>
-              Cette personne ne pourra plus accéder au projet. Le lien d'invitation sera désactivé.
+              {t("share_revoke_desc")}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Annuler</AlertDialogCancel>
+            <AlertDialogCancel>{t("common_cancel")}</AlertDialogCancel>
             <AlertDialogAction
               className="bg-destructive hover:bg-destructive/90 text-destructive-foreground"
               onClick={() => revokeTarget && revoke.mutate({ collaboratorId: revokeTarget })}
             >
-              Révoquer
+              {t("share_revoke_confirm")}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

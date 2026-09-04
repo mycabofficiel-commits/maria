@@ -12,6 +12,7 @@ import {
 import { toast } from "sonner";
 import { Loader2, Sparkles, LayoutTemplate, ArrowRight } from "lucide-react";
 import { TEMPLATES, TEMPLATE_CATEGORIES, type TemplateCategory, type Template } from "@/data/templates";
+import { useLang } from "@/i18n/LangContext";
 
 const CATEGORY_COLORS: Record<string, string> = {
   Business: "bg-blue-500/10 text-blue-400 border-blue-500/20",
@@ -21,6 +22,10 @@ const CATEGORY_COLORS: Record<string, string> = {
 };
 
 export default function Templates() {
+  const { t } = useLang();
+  // Libellés d'affichage des catégories (les valeurs restent en français côté data)
+  const catLabel = (cat: string) =>
+    cat === "Tous" ? t("tpl_cat_all") : cat === "Créatif" ? t("tpl_cat_creative") : cat;
   const [, navigate] = useLocation();
   const [activeCategory, setActiveCategory] = useState<TemplateCategory>("Tous");
   const [selected, setSelected] = useState<Template | null>(null);
@@ -29,7 +34,7 @@ export default function Templates() {
   const utils = trpc.useUtils();
   const createProject = trpc.projects.create.useMutation({
     onSuccess: (data) => {
-      toast.success("Projet créé à partir du template !");
+      toast.success(t("tpl_toast_created"));
       setSelected(null);
       utils.projects.list.invalidate();
       navigate(`/projects/${data.id}?autoGenerate=true`);
@@ -67,10 +72,10 @@ export default function Templates() {
         <div>
           <div className="flex items-center gap-2 mb-1">
             <LayoutTemplate className="w-5 h-5 text-primary" />
-            <h2 className="text-2xl font-display font-bold text-foreground">Galerie de templates</h2>
+            <h2 className="text-2xl font-display font-bold text-foreground">{t("tpl_gallery_h")}</h2>
           </div>
           <p className="text-muted-foreground text-sm">
-            Choisis un template et Mar-ia génère ton site en quelques secondes.
+            {t("tpl_gallery_sub")}
           </p>
         </div>
 
@@ -86,7 +91,7 @@ export default function Templates() {
                   : "border-border/60 text-muted-foreground hover:text-foreground hover:border-border"
               }`}
             >
-              {cat}
+              {catLabel(cat)}
               {cat !== "Tous" && (
                 <span className="ml-1.5 text-xs opacity-60">
                   {TEMPLATES.filter((t) => t.category === cat).length}
@@ -112,7 +117,7 @@ export default function Templates() {
                   variant="outline"
                   className={`text-[10px] font-medium flex-shrink-0 ${CATEGORY_COLORS[tpl.category]}`}
                 >
-                  {tpl.category}
+                  {catLabel(tpl.category)}
                 </Badge>
               </div>
 
@@ -146,7 +151,7 @@ export default function Templates() {
                   className="h-7 px-3 text-xs bg-primary hover:bg-primary/90 text-primary-foreground opacity-0 group-hover:opacity-100 transition-opacity"
                   onClick={() => handleUse(tpl)}
                 >
-                  Utiliser
+                  {t("tpl_use")}
                   <ArrowRight className="w-3 h-3 ml-1" />
                 </Button>
               </div>
@@ -166,10 +171,10 @@ export default function Templates() {
           </DialogHeader>
           <div className="space-y-4 pt-2">
             <p className="text-sm text-muted-foreground">
-              Mar-ia va générer ce site en partant de ce template. Tu peux modifier le nom du projet.
+              {t("tpl_dialog_desc")}
             </p>
             <div>
-              <Label className="text-sm text-foreground mb-1.5 block">Nom du projet</Label>
+              <Label className="text-sm text-foreground mb-1.5 block">{t("tpl_project_name")}</Label>
               <Input
                 placeholder={selected?.name}
                 value={projectName}
@@ -185,7 +190,7 @@ export default function Templates() {
                 className="flex-1 border-border/60"
                 onClick={() => setSelected(null)}
               >
-                Annuler
+                {t("common_cancel")}
               </Button>
               <Button
                 className="flex-1 bg-primary hover:bg-primary/90 text-primary-foreground"
@@ -193,8 +198,8 @@ export default function Templates() {
                 disabled={createProject.isPending}
               >
                 {createProject.isPending
-                  ? <><Loader2 className="w-4 h-4 animate-spin mr-2" />Création…</>
-                  : <><Sparkles className="w-4 h-4 mr-2" />Créer le projet</>
+                  ? <><Loader2 className="w-4 h-4 animate-spin mr-2" />{t("tpl_creating")}</>
+                  : <><Sparkles className="w-4 h-4 mr-2" />{t("tpl_create")}</>
                 }
               </Button>
             </div>
