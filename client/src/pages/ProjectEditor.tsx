@@ -34,22 +34,18 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Link } from "wouter";
 import { formatDistanceToNow } from "date-fns";
-import { fr } from "date-fns/locale";
 import { Streamdown } from "streamdown";
 import DeployPanel from "@/components/DeployPanel";
 import ImportProjectPanel from "@/components/ImportProjectPanel";
+import { useLang } from "@/i18n/LangContext";
+import { fr as dfFr, enUS as dfEnUS, es as dfEs } from "date-fns/locale";
+
+const PE_DF_LOCALE = { fr: dfFr, en: dfEnUS, es: dfEs } as const;
 
 /* ── helpers ─────────────────────────────────────────────── */
 const SITE_TYPES = ["Landing page", "Site vitrine", "Portfolio", "Restaurant", "Artisan", "Agence", "SaaS", "E-commerce simple"];
 const STYLES = ["Moderne", "Minimaliste", "Luxe", "Corporate", "Startup", "Premium"];
 const COLORS = ["Bleu/Violet", "Vert/Émeraude", "Orange/Ambre", "Rose/Rouge", "Gris/Noir", "Multicolore"];
-const PROMPT_SUGGESTIONS = [
-  "Une landing page pour une startup SaaS de gestion de projet",
-  "Un site vitrine pour un restaurant gastronomique parisien",
-  "Un portfolio créatif pour un photographe",
-  "Une page de vente pour un coach en développement personnel",
-];
-
 type ViewMode = "desktop" | "tablet" | "mobile";
 const VIEW_SIZES: Record<ViewMode, string> = { desktop: "100%", tablet: "768px", mobile: "390px" };
 type CodeTab = "html" | "css" | "js";
@@ -477,26 +473,27 @@ function ApiKeyField({ value, onChange, placeholder }: { value: string; onChange
 
 /* ── Add integration form (used in integrations panel) ──────────────────── */
 function AddIntegrationForm({ projectId, onSave, saving }: { projectId: number; onSave: (d: any) => void; saving: boolean }) {
+  const { t } = useLang();
   const [name, setName] = useState("");
   const [key, setKey] = useState("");
   return (
     <div className="space-y-1.5 border border-dashed border-border/40 rounded-lg p-2">
-      <p className="text-[10px] text-muted-foreground font-medium">Ajouter une intégration</p>
+      <p className="text-[10px] text-muted-foreground font-medium">{t("pe_add_integration")}</p>
       <input
         type="text"
-        placeholder="Nom de l'API (ex: stripe, openai…)"
+        placeholder={t("pe_api_name_ph")}
         value={name}
         onChange={e => setName(e.target.value)}
         className="w-full px-2 py-1.5 text-xs bg-white/5 border border-white/10 rounded-lg placeholder:text-white/30 focus:outline-none focus:border-primary/50"
       />
-      <ApiKeyField value={key} onChange={setKey} placeholder="Clé API secrète…" />
+      <ApiKeyField value={key} onChange={setKey} placeholder={t("pe_api_secret_ph")} />
       <button
         disabled={!name.trim() || !key.trim() || saving}
         onClick={() => { if (name && key) { onSave({ apiName: name.trim().toLowerCase(), apiLabel: name.trim(), key: key.trim(), projectId }); setName(""); setKey(""); }}}
         className="w-full py-1.5 rounded-lg bg-primary/80 hover:bg-primary disabled:opacity-40 text-white text-[11px] font-medium transition-colors flex items-center justify-center gap-1"
       >
         {saving ? <Loader2 className="w-3 h-3 animate-spin" /> : <Plus className="w-3 h-3" />}
-        {saving ? "Sauvegarde…" : "Ajouter"}
+        {saving ? t("pe_saving") : t("pe_add")}
       </button>
     </div>
   );
@@ -573,6 +570,8 @@ export default function ProjectEditor() {
   const projectId = parseInt(params.id || "0");
   const [, navigate] = useLocation();
   const { isAuthenticated, loading: authLoading } = useAuth();
+  const { t, lang } = useLang();
+  const dfLocale = PE_DF_LOCALE[lang] || dfEnUS;
 
   /* state */
   const [prompt, setPrompt] = useState("");
@@ -642,15 +641,15 @@ export default function ProjectEditor() {
         if (hashId) {
           const url = `https://snack.expo.dev/${hashId}`;
           setExpoSnackUrl(url);
-          toast.success("Lien Expo Snack généré !");
+          toast.success(t("pe_toast_expo_link"));
         } else {
-          toast.error("Expo Snack n'a pas retourné d'ID.");
+          toast.error(t("pe_toast_expo_noid"));
         }
       } else {
-        toast.error("Erreur lors de la création du Snack.");
+        toast.error(t("pe_toast_snack_err"));
       }
     } catch {
-      toast.error("Impossible de contacter Expo Snack.");
+      toast.error(t("pe_toast_snack_contact"));
     } finally {
       setExpoSnackLoading(false);
     }
@@ -706,13 +705,13 @@ export default function ProjectEditor() {
               setExpoHtmlPreview(evt.html);
               buildPreview(evt.html, "", "");
             } else if (evt.message) {
-              toast.error("Erreur aperçu : " + evt.message);
+              toast.error(t("pe_toast_preview_err") + evt.message);
             }
           } catch { /* skip malformed */ }
         }
       }
     } catch (err: any) {
-      toast.error("Impossible de générer l'aperçu : " + (err?.message ?? "erreur réseau"));
+      toast.error(t("pe_toast_preview_fail") + (err?.message ?? t("pe_toast_neterr")));
     } finally {
       if (debounceTimer) clearTimeout(debounceTimer);
       setExpoHtmlLoading(false);
@@ -1072,7 +1071,7 @@ export default function ProjectEditor() {
   const [streamingCode, setStreamingCode] = useState("");
 
   const generateSiteStream = useCallback(async () => {
-    if (!prompt.trim()) { toast.error("Décrivez votre site d'abord."); return; }
+    if (!prompt.trim()) { toast.error(t("pe_toast_describe_first")); return; }
     setIsGenerating(true);
     setAgentStep(null);
     setConsoleErrors([]); // reset console errors on new generation
@@ -1123,7 +1122,7 @@ export default function ProjectEditor() {
                 setSelectedVersionId(evt.versionId);
                 setStreamingTokens(evt.tokensUsed || 0);
                 const isExpo = project?.framework === "expo";
-                toast.success(isExpo ? `App générée ! ${evt.tokensUsed} tokens.` : `Site généré ! ${evt.tokensUsed} tokens.`);
+                toast.success(`${isExpo ? t("pe_toast_app_gen") : t("pe_toast_site_gen")} ${evt.tokensUsed} ${t("pe_toast_tokens")}`);
                 utils.projects.getVersions.invalidate({ projectId });
                 utils.projects.get.invalidate({ id: projectId });
                 utils.user.getUsageStats.invalidate();
@@ -1150,7 +1149,7 @@ export default function ProjectEditor() {
   /* Keep tRPC mutation as fallback (unused but keeps types happy) */
   const generateSite = trpc.projects.generate.useMutation({ onError: (err: any) => toast.error(err.message) });
   const clearChat = trpc.projects.clearChat.useMutation({
-    onSuccess: () => { utils.projects.getChatMessages.invalidate({ projectId }); toast.success("Historique effacé"); },
+    onSuccess: () => { utils.projects.getChatMessages.invalidate({ projectId }); toast.success(t("pe_toast_history_cleared")); },
     onError: (err: any) => toast.error(err.message),
   });
 
@@ -1315,7 +1314,7 @@ export default function ProjectEditor() {
               const m = accJson.match(/"reply"\s*:\s*"((?:[^"\\]|\\.)*)"/);
               if (m) setStreamingReply(m[1].replace(/\\n/g, "\n").replace(/\\"/g, '"').replace(/\\\\/g, "\\"));
             }
-            if (evt.versionId) { setSelectedVersionId(evt.versionId); toast.success(isExpoProject ? "App modifiée !" : "Site modifié !"); }
+            if (evt.versionId) { setSelectedVersionId(evt.versionId); toast.success(isExpoProject ? t("pe_toast_app_modified") : t("pe_toast_site_modified")); }
             if (evt.reply !== undefined) {
               setStreamingReply("");
               utils.projects.getChatMessages.invalidate({ projectId });
@@ -1330,7 +1329,7 @@ export default function ProjectEditor() {
                   generateExpoHtmlPreview(evt.generatedCode);
                 }
               } else if (evt.action === "modify") {
-                toast.warning("Code non extrait. Réessaie.");
+                toast.warning(t("pe_toast_code_not_extracted"));
               }
               setChatPhase("idle");
             }
@@ -1355,7 +1354,7 @@ export default function ProjectEditor() {
   /* ── Dictation ── */
   const toggleDictation = useCallback(() => {
     const SR = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
-    if (!SR) { toast.error("Dictée non supportée dans ce navigateur (Chrome/Edge recommandé)"); return; }
+    if (!SR) { toast.error(t("pe_toast_dictation_unsupported")); return; }
     if (isRecording) {
       recognitionRef.current?.stop();
       setIsRecording(false);
@@ -1381,8 +1380,8 @@ export default function ProjectEditor() {
   const handleAttachFiles = useCallback((files: FileList | null) => {
     if (!files) return;
     Array.from(files).forEach((file) => {
-      if (!file.type.startsWith("image/")) { toast.error(`${file.name}: seules les images sont supportées`); return; }
-      if (file.size > 5 * 1024 * 1024) { toast.error(`${file.name}: taille max 5 Mo`); return; }
+      if (!file.type.startsWith("image/")) { toast.error(`${file.name}${t("pe_toast_only_images")}`); return; }
+      if (file.size > 5 * 1024 * 1024) { toast.error(`${file.name}${t("pe_toast_max_size")}`); return; }
       const reader = new FileReader();
       reader.onload = (e) => {
         const dataUrl = e.target?.result as string;
@@ -1395,7 +1394,7 @@ export default function ProjectEditor() {
 
   const restoreVersion = trpc.projects.restoreVersion.useMutation({
     onSuccess: (_, vars) => {
-      toast.success("Version restaurée !");
+      toast.success(t("pe_toast_version_restored"));
       setSelectedVersionId(vars.versionId);
       setRestoreTarget(null);
       utils.projects.get.invalidate({ id: projectId });
@@ -1410,17 +1409,17 @@ export default function ProjectEditor() {
     { enabled: showIntegrationsPanel }
   );
   const saveIntegration = trpc.integrations.save.useMutation({
-    onSuccess: () => { refetchIntegrations(); toast.success("Clé API sauvegardée 🔐"); },
+    onSuccess: () => { refetchIntegrations(); toast.success(t("pe_toast_apikey_saved")); },
     onError: (err: any) => toast.error(err.message),
   });
   const deleteIntegration = trpc.integrations.delete.useMutation({
-    onSuccess: () => { refetchIntegrations(); toast.success("Intégration supprimée"); },
+    onSuccess: () => { refetchIntegrations(); toast.success(t("pe_toast_integration_deleted")); },
     onError: (err: any) => toast.error(err.message),
   });
 
   const updateProject = trpc.projects.update.useMutation({ onSuccess: () => refetchProject() });
   const updateCode = trpc.projects.updateCode.useMutation({
-    onSuccess: () => toast.success("Code sauvegardé"),
+    onSuccess: () => toast.success(t("pe_toast_code_saved")),
     onError: (err: any) => toast.error(err.message),
   });
 
@@ -1467,7 +1466,7 @@ export default function ProjectEditor() {
 
   const deployProject = trpc.deploy.deploy.useMutation({
     onSuccess: (data) => {
-      toast.success("Site déployé en ligne !", { duration: 6000,
+      toast.success(t("pe_toast_site_deployed"), { duration: 6000,
         action: { label: "Voir le site", onClick: () => window.open(data.deployedUrl, "_blank") }
       });
       utils.projects.get.invalidate({ id: projectId });
@@ -1563,14 +1562,14 @@ export default function ProjectEditor() {
     let screenshot: { data: string; mimeType: string } | null = null;
     try {
       // ── Step 1: capture screenshot (best-effort — debug still runs without it)
-      toast.info("📸 Capture de la preview en cours…", { id: "debug-snap", duration: 10000 });
+      toast.info(t("pe_toast_debug_snap"), { id: "debug-snap", duration: 10000 });
       try {
         screenshot = await captureScreenshot();
         toast.dismiss("debug-snap");
-        toast.info("🔍 Analyse visuelle + code par l'IA…", { id: "debug-analyze", duration: 30000 });
+        toast.info(t("pe_toast_debug_analyze_full"), { id: "debug-analyze", duration: 30000 });
       } catch (snapErr: any) {
         toast.dismiss("debug-snap");
-        toast.info("🔍 Analyse du code par l'IA (sans screenshot)…", { id: "debug-analyze", duration: 30000 });
+        toast.info(t("pe_toast_debug_analyze_code"), { id: "debug-analyze", duration: 30000 });
         console.warn("[debug] screenshot failed:", snapErr.message);
       }
 
@@ -1609,7 +1608,7 @@ export default function ProjectEditor() {
               utils.projects.getVersions.invalidate({ projectId });
               utils.projects.get.invalidate({ id: projectId });
               utils.projects.getVersionCode.invalidate({ versionId: evt.versionId });
-              toast.success("✅ Débogage terminé — nouvelle version créée", { duration: 5000 });
+              toast.success(t("pe_toast_debug_done"), { duration: 5000 });
               fetchSuggestions("débogage automatique du site", "debug", language);
             }
             if (evt.message) throw new Error(evt.message);
@@ -1780,7 +1779,7 @@ export default function ProjectEditor() {
 
   /* ── RENDER ─────────────────────────────────────────────── */
   return (
-    <AppLayout title={project?.name || "Éditeur"}>
+    <AppLayout title={project?.name || t("pe_app_title_fallback")}>
       <div className="flex flex-col h-[calc(100vh-4rem)] -mx-4 -my-4 lg:-mx-6 lg:-my-6 overflow-hidden">
 
         {/* ── Top bar ── */}
@@ -1795,9 +1794,9 @@ export default function ProjectEditor() {
               <h1 className="font-display font-semibold text-sm truncate max-w-[140px] sm:max-w-xs">{project?.name}</h1>
               <div className="flex items-center gap-1.5">
                 <Badge variant="outline" className="text-xs text-muted-foreground border-border/40">{project?.framework?.toUpperCase() || "HTML"}</Badge>
-                {project?.status === "ready" && <Badge variant="outline" className="text-xs text-emerald-400 border-emerald-400/20"><CheckCircle2 className="w-2.5 h-2.5 mr-1" />Prêt</Badge>}
-                {project?.status === "published" && <Badge variant="outline" className="text-xs text-primary border-primary/20"><Globe className="w-2.5 h-2.5 mr-1" />Publié</Badge>}
-                {isGenerating && <Badge variant="outline" className="text-xs text-amber-400 border-amber-400/20"><Loader2 className="w-2.5 h-2.5 mr-1 animate-spin" />Génération…</Badge>}
+                {project?.status === "ready" && <Badge variant="outline" className="text-xs text-emerald-400 border-emerald-400/20"><CheckCircle2 className="w-2.5 h-2.5 mr-1" />{t("pe_status_ready")}</Badge>}
+                {project?.status === "published" && <Badge variant="outline" className="text-xs text-primary border-primary/20"><Globe className="w-2.5 h-2.5 mr-1" />{t("pe_status_published")}</Badge>}
+                {isGenerating && <Badge variant="outline" className="text-xs text-amber-400 border-amber-400/20"><Loader2 className="w-2.5 h-2.5 mr-1 animate-spin" />{t("pe_status_generating")}</Badge>}
               </div>
             </div>
           </div>
@@ -1829,7 +1828,7 @@ export default function ProjectEditor() {
                   }
                 }}>
                 <PencilRuler className="w-3.5 h-3.5 sm:mr-1.5" />
-                <span className="hidden sm:inline">Éditeur Visuel</span>
+                <span className="hidden sm:inline">{t("pe_visual_editor")}</span>
               </Button>
             )}
             {hasCode && (
@@ -1837,16 +1836,16 @@ export default function ProjectEditor() {
                 className={`text-xs h-8 px-2 sm:px-3 ${consoleErrors.length > 0
                   ? "border-red-500/60 text-red-400 hover:bg-red-500/10 hover:text-red-300"
                   : "border-amber-500/40 text-amber-400 hover:bg-amber-500/10 hover:text-amber-300"}`}
-                onClick={() => setPendingAction({ summary: "Analyser le code du site, identifier les erreurs et les corriger automatiquement.", action: runDebug })}
+                onClick={() => setPendingAction({ summary: t("pe_debug_summary"), action: runDebug })}
                 disabled={isDebugging}
                 title={consoleErrors.length > 0
-                  ? `${consoleErrors.length} erreur(s) JS détectée(s) — cliquez pour analyser et corriger`
-                  : "Analyser et corriger automatiquement les bugs, liens cassés et erreurs"}>
+                  ? `${consoleErrors.length}${t("pe_debug_title_errors")}`
+                  : t("pe_debug_title_default")}>
                 {isDebugging
                   ? <Loader2 className="w-3.5 h-3.5 animate-spin sm:mr-1.5" />
                   : <PharmacieCross className="w-3.5 h-3.5 sm:mr-1.5" />}
                 <span className="hidden sm:inline">
-                  {isDebugging ? "Débogage…" : consoleErrors.length > 0 ? `Réparer (${consoleErrors.length})` : "Débugger"}
+                  {isDebugging ? t("pe_debugging") : consoleErrors.length > 0 ? `${t("pe_repair")} (${consoleErrors.length})` : t("pe_debug")}
                 </span>
               </Button>
             )}
@@ -1858,7 +1857,7 @@ export default function ProjectEditor() {
                 {deployProject.isPending
                   ? <Loader2 className="w-3.5 h-3.5 animate-spin sm:mr-1.5" />
                   : <Rocket className="w-3.5 h-3.5 sm:mr-1.5" />}
-                <span className="hidden sm:inline">{project?.isPublished ? "Redéployer" : "Déployer"}</span>
+                <span className="hidden sm:inline">{project?.isPublished ? t("pe_redeploy") : t("pe_deploy")}</span>
               </Button>
             )}
           </div>
@@ -1870,18 +1869,18 @@ export default function ProjectEditor() {
           <div className="flex-1 overflow-y-auto p-4 max-w-2xl mx-auto w-full">
             <div className="space-y-4">
               <div>
-                <h2 className="font-display font-semibold text-base mb-1">Décrivez votre site</h2>
-                <p className="text-xs text-muted-foreground mb-3">Soyez précis : secteur, public cible, sections souhaitées…</p>
+                <h2 className="font-display font-semibold text-base mb-1">{t("pe_describe_h")}</h2>
+                <p className="text-xs text-muted-foreground mb-3">{t("pe_describe_hint")}</p>
                 <Textarea
-                  placeholder="Ex: Une landing page pour une startup de livraison de repas sains, avec un hero accrocheur, une section fonctionnalités et un CTA fort..."
+                  placeholder={t("pe_describe_ph")}
                   value={prompt}
                   onChange={(e) => setPrompt(e.target.value)}
                   className="min-h-[120px] bg-input border-border/60 text-sm resize-none"
                 />
               </div>
               <div className="space-y-1.5">
-                <p className="text-xs text-muted-foreground font-medium">Suggestions</p>
-                {PROMPT_SUGGESTIONS.map((s) => (
+                <p className="text-xs text-muted-foreground font-medium">{t("pe_suggestions")}</p>
+                {[t("pe_prompt1"), t("pe_prompt2"), t("pe_prompt3"), t("pe_prompt4")].map((s) => (
                   <button key={s} onClick={() => setPrompt(s)}
                     className="w-full text-left text-xs px-3 py-2 rounded-lg border border-border/40 text-muted-foreground hover:text-foreground hover:border-primary/30 hover:bg-primary/5 transition-all">
                     {s}
@@ -1890,21 +1889,21 @@ export default function ProjectEditor() {
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="text-xs text-muted-foreground mb-1 block">Type</label>
+                  <label className="text-xs text-muted-foreground mb-1 block">{t("pe_type")}</label>
                   <Select value={siteType} onValueChange={setSiteType}>
                     <SelectTrigger className="h-9 text-xs bg-input border-border/60"><SelectValue /></SelectTrigger>
                     <SelectContent>{SITE_TYPES.map(t => <SelectItem key={t} value={t} className="text-xs">{t}</SelectItem>)}</SelectContent>
                   </Select>
                 </div>
                 <div>
-                  <label className="text-xs text-muted-foreground mb-1 block">Style</label>
+                  <label className="text-xs text-muted-foreground mb-1 block">{t("pe_style")}</label>
                   <Select value={style} onValueChange={setStyle}>
                     <SelectTrigger className="h-9 text-xs bg-input border-border/60"><SelectValue /></SelectTrigger>
                     <SelectContent>{STYLES.map(s => <SelectItem key={s} value={s} className="text-xs">{s}</SelectItem>)}</SelectContent>
                   </Select>
                 </div>
                 <div>
-                  <label className="text-xs text-muted-foreground mb-1 block">Langue</label>
+                  <label className="text-xs text-muted-foreground mb-1 block">{t("pe_language")}</label>
                   <Select value={language} onValueChange={setLanguage}>
                     <SelectTrigger className="h-9 text-xs bg-input border-border/60"><SelectValue /></SelectTrigger>
                     <SelectContent>
@@ -1915,7 +1914,7 @@ export default function ProjectEditor() {
                   </Select>
                 </div>
                 <div>
-                  <label className="text-xs text-muted-foreground mb-1 block">Palette</label>
+                  <label className="text-xs text-muted-foreground mb-1 block">{t("pe_palette")}</label>
                   <Select value={colorPalette} onValueChange={setColorPalette}>
                     <SelectTrigger className="h-9 text-xs bg-input border-border/60"><SelectValue /></SelectTrigger>
                     <SelectContent>{COLORS.map(c => <SelectItem key={c} value={c} className="text-xs">{c}</SelectItem>)}</SelectContent>
@@ -1925,12 +1924,12 @@ export default function ProjectEditor() {
               <Button
                 className="w-full h-11 bg-primary hover:bg-primary/90 text-primary-foreground font-medium gap-2"
                 onClick={() => setPendingAction({
-                  summary: `Générer un ${siteType.toLowerCase()} de style "${style}" en ${language === 'fr' ? 'français' : language === 'en' ? 'anglais' : language}, palette ${colorPalette}. Prompt : "${prompt.slice(0, 120)}${prompt.length > 120 ? '…' : ''}"`,
+                  summary: `${t("pe_gen_sum_1")}${siteType.toLowerCase()}${t("pe_gen_sum_style")}"${style}"${t("pe_gen_sum_lang")}${language === 'fr' ? t("pe_lang_fr_name") : language === 'en' ? t("pe_lang_en_name") : language === 'es' ? t("pe_lang_es_name") : language}${t("pe_gen_sum_palette")}${colorPalette}${t("pe_gen_sum_prompt")}"${prompt.slice(0, 120)}${prompt.length > 120 ? '…' : ''}"`,
                   action: generateSiteStream,
                 })}
                 disabled={isGenerating || !prompt.trim()}
               >
-                {isGenerating ? <><Loader2 className="w-4 h-4 animate-spin" />Génération en cours…</> : <><Sparkles className="w-4 h-4" />Générer le site</>}
+                {isGenerating ? <><Loader2 className="w-4 h-4 animate-spin" />{t("pe_generating_now")}</> : <><Sparkles className="w-4 h-4" />{t("pe_generate_site")}</>}
               </Button>
             </div>
           </div>
@@ -1943,11 +1942,11 @@ export default function ProjectEditor() {
             {agentStep ? (
               <div className="flex flex-col items-center gap-1">
                 <div className="flex items-center gap-2 px-4 py-2 rounded-full bg-primary/10 border border-primary/20 text-sm font-medium text-primary animate-pulse">
-                  <span className="font-semibold">Réflexion…</span>
+                  <span className="font-semibold">{t("pe_thinking")}</span>
                 </div>
               </div>
             ) : (
-              <p className="text-sm text-muted-foreground animate-pulse">{isExpoProject ? "Mar-ia génère votre application mobile…" : "Mar-ia génère votre site…"}</p>
+              <p className="text-sm text-muted-foreground animate-pulse">{isExpoProject ? t("pe_generating_app") : t("pe_generating_web")}</p>
             )}
 
             {/* Code streaming progress */}
@@ -1959,7 +1958,7 @@ export default function ProjectEditor() {
                     style={{ width: `${Math.min(100, (streamingChars / 12000) * 100)}%` }}
                   />
                 </div>
-                <span className="text-xs text-muted-foreground/70 font-mono">{streamingChars.toLocaleString()} caractères générés</span>
+                <span className="text-xs text-muted-foreground/70 font-mono">{streamingChars.toLocaleString()} {t("pe_chars_generated")}</span>
               </div>
             )}
           </div>
@@ -1987,16 +1986,16 @@ export default function ProjectEditor() {
                   <button
                     onClick={() => setShowDbPanel(true)}
                     className="flex items-center gap-1 px-2.5 py-1 text-xs rounded transition-colors text-[#858585] hover:text-white hover:bg-[#2a2d2e]"
-                    title="Base de données">
+                    title={t("pe_db_title")}>
                     <Database className="w-3 h-3" />
-                    <span className="hidden sm:inline">BD</span>
+                    <span className="hidden sm:inline">{t("pe_db")}</span>
                   </button>
                   <button
                     onClick={() => { setDomainInput(project?.customDomain ?? ""); setShowDomainPanel(true); }}
                     className="flex items-center gap-1 px-2.5 py-1 text-xs rounded transition-colors text-[#858585] hover:text-white hover:bg-[#2a2d2e]"
-                    title="Domaine & DNS">
+                    title={t("pe_domain_title")}>
                     <Link2 className="w-3 h-3" />
-                    <span className="hidden sm:inline">Domaine</span>
+                    <span className="hidden sm:inline">{t("pe_domain")}</span>
                   </button>
                   <button
                     onClick={() => {
@@ -2013,15 +2012,15 @@ export default function ProjectEditor() {
                       setShowSeoPanel(true);
                     }}
                     className="flex items-center gap-1 px-2.5 py-1 text-xs rounded transition-colors text-[#858585] hover:text-white hover:bg-[#2a2d2e]"
-                    title="SEO — Titre, description, Open Graph">
+                    title={t("pe_seo_title_tip")}>
                     <TrendingUp className="w-3 h-3" />
-                    <span className="hidden sm:inline">SEO</span>
+                    <span className="hidden sm:inline">{t("pe_seo")}</span>
                   </button>
                        <div className="ml-auto flex items-center gap-1">
                     {/* Copy button */}
                     <Button size="sm" variant="ghost"
                       className="h-6 px-2 text-[10px] gap-1 text-[#858585] hover:text-white"
-                      title="Copier le code"
+                      title={t("pe_copy_code")}
                       onClick={() => {
                         const code = codeTab === "html" ? htmlCode : codeTab === "css" ? cssCode : jsCode;
                         navigator.clipboard.writeText(code).then(() => {
@@ -2030,14 +2029,14 @@ export default function ProjectEditor() {
                         });
                       }}>
                       {copiedTab === codeTab ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3" />}
-                      <span className="hidden sm:inline">{copiedTab === codeTab ? "Copié !" : "Copier"}</span>
+                      <span className="hidden sm:inline">{copiedTab === codeTab ? t("pe_copied") : t("pe_copy")}</span>
                     </Button>
                     <Button size="sm" variant="ghost"
                       className={`h-6 px-2 text-[10px] gap-1 ${showStoragePanel ? "text-primary bg-primary/10" : "text-[#858585] hover:text-white"}`}
                       onClick={() => { setImgEdits({}); setTextEdits({}); setStorageTab("images"); setShowStoragePanel(true); }}
-                      title="Storage : bibliothèque d'images et de contenu du site">
+                      title={t("pe_storage_tip")}>
                       <HardDrive className="w-3 h-3" />
-                      <span className="hidden sm:inline">Storage</span>
+                      <span className="hidden sm:inline">{t("pe_storage")}</span>
                     </Button>
                     <Button size="sm" variant="ghost" className="h-6 px-2 text-[10px] gap-1 text-[#858585] hover:text-white"
                       onClick={() => {
@@ -2052,7 +2051,7 @@ ${jsCode}`;
                         }
                       }}>
                       <Save className="w-3 h-3" />
-                      <span className="hidden sm:inline">Sauvegarder</span>
+                      <span className="hidden sm:inline">{t("pe_save")}</span>
                     </Button>
                   </div>
                 </div>
@@ -2111,12 +2110,12 @@ ${jsCode}`;
                 <div className="h-5 bg-[#007acc] flex items-center px-3 gap-4 flex-shrink-0">
                   <span className="text-[10px] text-white/80">{isExpoProject ? "App.js" : codeTab === "html" ? "index.html" : codeTab === "css" ? "style.css" : "script.js"}</span>
                   <span className="text-[10px] text-white/60">
-                    {(codeTab === "html" ? htmlCode : codeTab === "css" ? cssCode : jsCode).split("\n").length} lignes
+                    {(codeTab === "html" ? htmlCode : codeTab === "css" ? cssCode : jsCode).split("\n").length} {t("pe_lines")}
                   </span>
                   {streamingTokens > 0 && !isGenerating && (
                     <span className="text-[10px] text-white/50 ml-auto">{streamingTokens.toLocaleString()} tokens</span>
                   )}
-                  {inspectMode && <span className="text-[10px] text-yellow-300 ml-auto">🔍 Mode inspection actif</span>}
+                  {inspectMode && <span className="text-[10px] text-yellow-300 ml-auto">{t("pe_inspect_active")}</span>}
                 </div>
               </div>
 
@@ -2131,13 +2130,13 @@ ${jsCode}`;
                     variant="ghost"
                     size="sm"
                     className="h-6 px-2 text-[10px] gap-1 font-semibold"
-                    title={codeCollapsed ? "Afficher la partie code" : "Masquer la partie code"}
+                    title={codeCollapsed ? t("pe_show_code") : t("pe_hide_code")}
                     onClick={() => setCodeCollapsed(v => !v)}
                   >
                     {codeCollapsed
                       ? <PanelLeftOpen className="w-3 h-3 rotate-90" />
                       : <PanelLeftClose className="w-3 h-3 rotate-90" />}
-                    Code
+                    {t("pe_code")}
                   </Button>
                   <div className="ml-auto flex flex-wrap justify-end gap-1">
                     <Button
@@ -2147,7 +2146,7 @@ ${jsCode}`;
                       onClick={() => setShowVersions(v => !v)}
                     >
                       <History className="w-3 h-3" />
-                      Versions
+                      {t("pe_versions")}
                     </Button>
                     <Button
                       variant={sideTab === "deploy" ? "secondary" : "ghost"}
@@ -2171,7 +2170,7 @@ ${jsCode}`;
                       variant={showIntegrationsPanel ? "secondary" : "ghost"}
                       size="sm"
                       className="h-6 px-2 text-[10px] gap-1"
-                      title="Gérer les clés API connectées"
+                      title={t("pe_manage_api_title")}
                       onClick={() => setShowIntegrationsPanel(v => !v)}
                     >
                       <Plug className="w-3 h-3" />
@@ -2181,18 +2180,18 @@ ${jsCode}`;
                       variant={discussionMode ? "secondary" : "ghost"}
                       size="sm"
                       className={`h-6 px-2 text-[10px] gap-1 transition-colors ${discussionMode ? "text-sky-400 border-sky-500/40 bg-sky-500/10 hover:bg-sky-500/20" : ""}`}
-                      title={discussionMode ? "Mode Réflexion actif — aucune modification du code" : "Activer le mode Réflexion (discussion sans action)"}
+                      title={discussionMode ? t("pe_reflection_active") : t("pe_reflection_activate")}
                       onClick={() => { setDiscussionMode(v => !v); setChatPhase("idle"); setSuggestions([]); }}
                     >
                       <Brain className="w-3 h-3" />
-                      {discussionMode ? "Réflexion" : "Réfléchir"}
+                      {discussionMode ? t("pe_reflection") : t("pe_reflect")}
                     </Button>
                     <Button
                       variant="ghost"
                       size="sm"
                       className="h-6 px-2 text-[10px] gap-1 text-muted-foreground hover:text-destructive"
-                      title="Vider l'historique du chat"
-                      onClick={() => { if (confirm("Vider tout l'historique du chat ?")) clearChat.mutate({ projectId }); }}
+                      title={t("pe_clear_history_title")}
+                      onClick={() => { if (confirm(t("pe_clear_history_confirm"))) clearChat.mutate({ projectId }); }}
                     >
                       <Trash2 className="w-3 h-3" />
                     </Button>
@@ -2206,7 +2205,7 @@ ${jsCode}`;
                 {showImport && (
                   <div className="border-b border-border/40 bg-muted/20 overflow-y-auto" style={{ maxHeight: '50%' }}>
                     <div className="flex items-center justify-between px-3 py-1.5 border-b border-border/30">
-                      <span className="text-[10px] font-medium text-muted-foreground">Importer un projet</span>
+                      <span className="text-[10px] font-medium text-muted-foreground">{t("pe_import_project")}</span>
                       <button onClick={() => setShowImport(false)} className="text-[10px] text-muted-foreground hover:text-foreground">✕</button>
                     </div>
                     <ImportProjectPanel
@@ -2227,12 +2226,12 @@ ${jsCode}`;
                     <div className="p-2">
                       <div className="flex items-center justify-between mb-2">
                         <span className="text-[10px] font-medium text-muted-foreground flex items-center gap-1.5">
-                          <Plug className="w-3 h-3" /> Intégrations API
+                          <Plug className="w-3 h-3" /> {t("pe_integrations_api")}
                         </span>
                         <button onClick={() => setShowIntegrationsPanel(false)} className="text-[10px] text-muted-foreground hover:text-foreground">✕</button>
                       </div>
                       <p className="text-[10px] text-muted-foreground/60 mb-2 leading-relaxed">
-                        Vos clés sont chiffrées. Le code généré appelle <code className="bg-white/10 px-1 rounded">/api/proxy/call</code> — la vraie clé ne sera jamais exposée.
+                        {t("pe_integrations_desc_1")}<code className="bg-white/10 px-1 rounded">/api/proxy/call</code>{t("pe_integrations_desc_2")}
                       </p>
 
                       {/* Existing integrations */}
@@ -2248,7 +2247,7 @@ ${jsCode}`;
                               <button
                                 onClick={() => deleteIntegration.mutate({ id: intg.id })}
                                 className="text-[10px] text-muted-foreground hover:text-destructive p-1 rounded"
-                                title="Supprimer"
+                                title={t("pe_delete")}
                               >
                                 <Trash2 className="w-3 h-3" />
                               </button>
@@ -2272,7 +2271,7 @@ ${jsCode}`;
                   <div className="border-b border-border/40 bg-muted/20 overflow-y-auto" style={{ maxHeight: '50%' }}>
                     <div className="p-2">
                       <div className="flex items-center justify-between mb-2">
-                        <span className="text-[10px] font-medium text-muted-foreground">Déploiement</span>
+                        <span className="text-[10px] font-medium text-muted-foreground">{t("pe_deployment")}</span>
                         <button onClick={() => setSidebarOpen(false)} className="text-[10px] text-muted-foreground hover:text-foreground">✕</button>
                       </div>
                       <DeployPanel projectId={projectId} hasCode={hasCode} />
@@ -2284,7 +2283,7 @@ ${jsCode}`;
                 {showVersions && (
                   <div className="border-b border-border/40 bg-muted/20 overflow-y-auto" style={{ maxHeight: '45%' }}>
                     <div className="p-2 space-y-1.5">
-                      <p className="text-[10px] text-muted-foreground font-medium px-1">{versions?.length || 0} version(s)</p>
+                      <p className="text-[10px] text-muted-foreground font-medium px-1">{versions?.length || 0} {t("pe_versions_count")}</p>
                       {versions?.map((v: any) => {
                         const isActive = v.id === project?.currentVersionId;
                         return (
@@ -2294,15 +2293,15 @@ ${jsCode}`;
                             <div className="flex items-center justify-between">
                               <span className="text-xs font-medium">v{v.versionNumber}</span>
                               {isActive
-                                ? <Badge className="text-[10px] h-4 px-1.5 bg-primary/20 text-primary border-0">Active</Badge>
+                                ? <Badge className="text-[10px] h-4 px-1.5 bg-primary/20 text-primary border-0">{t("pe_active")}</Badge>
                                 : <Button variant="ghost" size="sm" className="h-5 text-[10px] px-1.5 gap-1"
                                     onClick={(e) => { e.stopPropagation(); setRestoreTarget({ versionId: v.id, label: `v${v.versionNumber}` }); }}>
-                                    <RotateCcw className="w-2.5 h-2.5" /> Restaurer
+                                    <RotateCcw className="w-2.5 h-2.5" /> {t("pe_restore")}
                                   </Button>
                               }
                             </div>
                             <p className="text-[10px] text-muted-foreground/60 mt-0.5">
-                              {v.createdAt ? formatDistanceToNow(new Date(v.createdAt), { addSuffix: true, locale: fr }) : ""}
+                              {v.createdAt ? formatDistanceToNow(new Date(v.createdAt), { addSuffix: true, locale: dfLocale }) : ""}
                             </p>
                           </div>
                         );
@@ -2315,9 +2314,9 @@ ${jsCode}`;
                 <div className="flex-1 overflow-y-auto p-2 space-y-2">
                   {!chatMessages || chatMessages.length === 0 ? (
                     <div className="text-center py-3 space-y-2">
-                      <p className="text-xs text-muted-foreground">Posez une question ou demandez une modification…</p>
+                      <p className="text-xs text-muted-foreground">{t("pe_ask_or_modify")}</p>
                       <div className="flex flex-col gap-1">
-                        {["Change les couleurs en violet", "Ajoute une section FAQ", "Explique ce code"].map((s) => (
+                        {[t("pe_chip1"), t("pe_chip2"), t("pe_chip3")].map((s) => (
                           <button key={s} onClick={() => setChatMessage(s)}
                             className="text-[10px] px-2 py-1 rounded border border-border/40 text-muted-foreground hover:text-foreground hover:border-primary/30 hover:bg-primary/5 transition-all text-left">
                             {s}
@@ -2329,7 +2328,7 @@ ${jsCode}`;
                     chatMessages.map((msg: any) => {
                       const linkedVersion = msg.versionId && versions ? versions.find((v: any) => v.id === msg.versionId) : null;
                       const msgDate = msg.createdAt ? new Date(msg.createdAt) : null;
-                      const msgTime = msgDate ? msgDate.toLocaleString('fr-FR', { day:'2-digit', month:'2-digit', year:'2-digit', hour:'2-digit', minute:'2-digit' }) : '';
+                      const msgTime = msgDate ? msgDate.toLocaleString(lang === 'fr' ? 'fr-FR' : lang === 'es' ? 'es-ES' : 'en-US', { day:'2-digit', month:'2-digit', year:'2-digit', hour:'2-digit', minute:'2-digit' }) : '';
                       return (
                         <div key={msg.id} className={`flex gap-1.5 ${msg.role === "user" ? "flex-row-reverse" : "flex-row"}`}>
                           {msg.role === "assistant" && (
@@ -2347,7 +2346,7 @@ ${jsCode}`;
                             {linkedVersion && (
                               <button className="mt-0.5 flex items-center gap-1 text-[10px] text-primary hover:text-primary/80"
                                 onClick={() => setSelectedVersionId(linkedVersion.id)}>
-                                <Tag className="w-2 h-2" /> v{linkedVersion.versionNumber} — voir
+                                <Tag className="w-2 h-2" /> v{linkedVersion.versionNumber} — {t("pe_see")}
                               </button>
                             )}
                             {/* ── Notation 👍/👎 (réponses de l'IA uniquement) ── */}
@@ -2357,13 +2356,13 @@ ${jsCode}`;
                                 <div className="flex items-center gap-1 mt-0.5 px-1">
                                   <button
                                     onClick={() => rateMessage(msg.id, "up")}
-                                    title="Bonne réponse"
+                                    title={t("pe_good_answer")}
                                     className={`p-1 rounded-md transition-colors ${fb === "up" ? "text-emerald-500 bg-emerald-500/10" : "text-muted-foreground/50 hover:text-emerald-500 hover:bg-emerald-500/10"}`}>
                                     <ThumbsUp className="w-3 h-3" />
                                   </button>
                                   <button
                                     onClick={() => rateMessage(msg.id, "down")}
-                                    title="À améliorer"
+                                    title={t("pe_to_improve")}
                                     className={`p-1 rounded-md transition-colors ${fb === "down" ? "text-red-500 bg-red-500/10" : "text-muted-foreground/50 hover:text-red-500 hover:bg-red-500/10"}`}>
                                     <ThumbsDown className="w-3 h-3" />
                                   </button>
@@ -2373,11 +2372,11 @@ ${jsCode}`;
                             {/* ── 👎 → proposer une correction ── */}
                             {askModifyFor === msg.id && (
                               <div className="mt-1 rounded-lg border border-red-500/30 bg-red-500/5 px-2.5 py-2 max-w-[95%]">
-                                <p className="text-[11px] text-foreground mb-1.5">Souhaitez-vous que je modifie ?</p>
+                                <p className="text-[11px] text-foreground mb-1.5">{t("pe_want_modify")}</p>
                                 <div className="flex gap-1.5">
                                   <button
                                     onClick={() => {
-                                      setChatMessage("La réponse précédente ne me convient pas. Voici ce qu'il faut corriger : ");
+                                      setChatMessage(t("pe_modify_prefill"));
                                       setAskModifyFor(null);
                                       setTimeout(() => {
                                         const el = chatTextareaRef.current;
@@ -2385,12 +2384,12 @@ ${jsCode}`;
                                       }, 50);
                                     }}
                                     className="px-2 py-1 rounded-md text-[11px] font-medium bg-primary text-primary-foreground hover:bg-primary/90">
-                                    Oui, corriger
+                                    {t("pe_yes_correct")}
                                   </button>
                                   <button
                                     onClick={() => setAskModifyFor(null)}
                                     className="px-2 py-1 rounded-md text-[11px] text-muted-foreground hover:text-foreground border border-border/60">
-                                    Non, c'est bon
+                                    {t("pe_no_ok")}
                                   </button>
                                 </div>
                               </div>
@@ -2407,7 +2406,7 @@ ${jsCode}`;
                         <Sparkles className="w-2.5 h-2.5 text-primary/70" />
                       </div>
                       <div className="bg-primary/5 border border-primary/20 rounded-xl rounded-tl-sm px-2.5 py-1.5 max-w-[90%]">
-                        <p className="text-[10px] font-semibold text-primary mb-0.5">✓ Plan validé</p>
+                        <p className="text-[10px] font-semibold text-primary mb-0.5">{t("pe_plan_validated")}</p>
                         <p className="text-xs text-muted-foreground leading-relaxed">{item.summary}</p>
                       </div>
                     </div>
@@ -2421,14 +2420,14 @@ ${jsCode}`;
                       </div>
                       <div className="bg-card border border-emerald-500/30 rounded-xl rounded-tl-sm px-3 py-2.5 max-w-[92%] w-full">
                         <p className="text-[10px] font-semibold text-emerald-400 mb-1 flex items-center gap-1">
-                          <Plug className="w-3 h-3" /> Clé API requise — {pendingApiRequest.apiLabel}
+                          <Plug className="w-3 h-3" /> {t("pe_api_key_required")} {pendingApiRequest.apiLabel}
                         </p>
                         <p className="text-[11px] text-muted-foreground mb-2 leading-relaxed">{pendingApiRequest.message}</p>
                         <div className="flex gap-2">
                           <ApiKeyField
                             value={apiKeyInput}
                             onChange={setApiKeyInput}
-                            placeholder={`Clé ${pendingApiRequest.apiLabel}…`}
+                            placeholder={`${t("pe_key_ph_prefix")}${pendingApiRequest.apiLabel}…`}
                           />
                           <button
                             disabled={!apiKeyInput.trim() || apiKeySaving}
@@ -2456,7 +2455,7 @@ ${jsCode}`;
                                 });
                                 setPendingApiRequest(null);
                                 setApiKeyInput("");
-                                toast.success(`✅ ${pendingApiRequest.apiLabel} connecté — Maria peut maintenant l'utiliser`);
+                                toast.success(`✅ ${pendingApiRequest.apiLabel} ${t("pe_api_connected_suffix")}`);
                               } catch (e: any) {
                                 toast.error(e.message);
                               } finally {
@@ -2466,12 +2465,12 @@ ${jsCode}`;
                             className="flex-shrink-0 px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white text-[11px] font-semibold transition-colors flex items-center gap-1"
                           >
                             {apiKeySaving ? <Loader2 className="w-3 h-3 animate-spin" /> : <KeyRound className="w-3 h-3" />}
-                            {apiKeySaving ? "Sauvegarde…" : "Connecter"}
+                            {apiKeySaving ? t("pe_saving") : t("pe_connect")}
                           </button>
                           <button
                             onClick={() => { setPendingApiRequest(null); setApiKeyInput(""); }}
                             className="flex-shrink-0 p-1.5 rounded-lg hover:bg-white/10 text-muted-foreground text-[11px] transition-colors"
-                            title="Ignorer"
+                            title={t("pe_ignore")}
                           >
                             <XIcon className="w-3.5 h-3.5" />
                           </button>
@@ -2487,9 +2486,9 @@ ${jsCode}`;
                         <PharmacieCross className="w-2.5 h-2.5 text-amber-400" />
                       </div>
                       <div className="bg-card border border-amber-500/30 rounded-xl rounded-tl-sm px-2.5 py-1.5 max-w-[90%]">
-                        <p className="text-[10px] font-semibold text-amber-400 mb-1">Rapport de débogage</p>
+                        <p className="text-[10px] font-semibold text-amber-400 mb-1">{t("pe_debug_report")}</p>
                         <p className="text-xs text-foreground/80 whitespace-pre-wrap leading-relaxed">{debugReport}</p>
-                        <button onClick={() => setDebugReport(null)} className="mt-1.5 text-[10px] text-muted-foreground hover:text-foreground">Fermer</button>
+                        <button onClick={() => setDebugReport(null)} className="mt-1.5 text-[10px] text-muted-foreground hover:text-foreground">{t("pe_close")}</button>
                       </div>
                     </div>
                   )}
@@ -2502,7 +2501,7 @@ ${jsCode}`;
                       <div className="bg-card border border-amber-500/30 rounded-xl rounded-tl-sm px-2.5 py-1.5">
                         <div className="flex items-center gap-1.5">
                           <Loader2 className="w-3 h-3 animate-spin text-amber-400" />
-                          <span className="text-xs text-muted-foreground">Analyse et correction du code…</span>
+                          <span className="text-xs text-muted-foreground">{t("pe_analyzing_fixing")}</span>
                         </div>
                       </div>
                     </div>
@@ -2527,7 +2526,7 @@ ${jsCode}`;
                       </div>
                       <div className="bg-card border border-primary/20 rounded-xl rounded-tl-sm px-2.5 py-1.5 max-w-[85%]">
                         <div className="flex items-center gap-1.5">
-                          <span className="text-[10px] font-semibold text-primary">Réflexion</span>
+                          <span className="text-[10px] font-semibold text-primary">{t("pe_reflection")}</span>
                           <span className="flex gap-0.5">
                             <span className="w-1 h-1 rounded-full bg-primary/60 animate-bounce" style={{ animationDelay: "0ms" }} />
                             <span className="w-1 h-1 rounded-full bg-primary/60 animate-bounce" style={{ animationDelay: "150ms" }} />
@@ -2581,7 +2580,7 @@ ${jsCode}`;
                       <div className="flex items-start gap-2">
                         <Sparkles className="w-3.5 h-3.5 text-primary mt-0.5 flex-shrink-0" />
                         <div className="flex-1 min-w-0">
-                          <p className="text-xs font-semibold text-foreground mb-1">Mar-ia a compris ta demande :</p>
+                          <p className="text-xs font-semibold text-foreground mb-1">{t("pe_maria_understood")}</p>
                           {isSummaryEditing ? (
                             <textarea
                               className="w-full text-xs bg-background border border-border/60 rounded-lg px-2 py-1.5 resize-none text-foreground leading-relaxed focus:outline-none focus:border-primary/60"
@@ -2603,15 +2602,15 @@ ${jsCode}`;
                             setIsSummaryEditing(false);
                             executeChatStream(pendingOriginalMsg, validated);
                           }}>
-                          ✓ Valider
+                          {t("pe_validate")}
                         </Button>
                         <Button size="sm" variant="outline" className="h-7 text-xs border-border/50 flex-1"
                           onClick={() => { setIsSummaryEditing(v => !v); setSummaryEdit(pendingSummary); }}>
-                          {isSummaryEditing ? "✓ Ok" : "✎ Modifier"}
+                          {isSummaryEditing ? t("pe_ok") : t("pe_modify")}
                         </Button>
                         <Button size="sm" variant="ghost" className="h-7 text-xs text-muted-foreground flex-1"
                           onClick={() => { setChatPhase("idle"); setIsSummaryEditing(false); }}>
-                          ✕ Annuler
+                          {t("pe_cancel_x")}
                         </Button>
                       </div>
                     </div>
@@ -2626,18 +2625,18 @@ ${jsCode}`;
                     <div className="flex items-start gap-2">
                       <Sparkles className="w-3.5 h-3.5 text-amber-400 mt-0.5 flex-shrink-0" />
                       <div>
-                        <p className="text-xs font-semibold text-foreground mb-0.5">Confirmer l'action</p>
+                        <p className="text-xs font-semibold text-foreground mb-0.5">{t("pe_confirm_action")}</p>
                         <p className="text-xs text-muted-foreground leading-relaxed">{pendingAction.summary}</p>
                       </div>
                     </div>
                     <div className="flex gap-1.5">
                       <Button size="sm" className="h-7 text-xs bg-amber-500 hover:bg-amber-500/90 flex-1 gap-1"
                         onClick={() => { pendingAction.action(); setPendingAction(null); }}>
-                        ✓ Confirmer
+                        {t("pe_confirm")}
                       </Button>
                       <Button size="sm" variant="ghost" className="h-7 text-xs text-muted-foreground flex-1"
                         onClick={() => setPendingAction(null)}>
-                        ✕ Annuler
+                        {t("pe_cancel_x")}
                       </Button>
                     </div>
                   </div>
@@ -2665,8 +2664,8 @@ ${jsCode}`;
                   {discussionMode && (
                     <div className="flex items-center gap-1.5 mb-1.5 px-1 py-1 rounded-lg bg-sky-500/10 border border-sky-500/20 text-sky-400 text-[10px]">
                       <Brain className="w-3 h-3 flex-shrink-0" />
-                      <span className="font-medium">Mode Réflexion</span>
-                      <span className="text-sky-400/60">— Discutons du projet, sans modifier le code</span>
+                      <span className="font-medium">{t("pe_discussion_mode")}</span>
+                      <span className="text-sky-400/60">{t("pe_discussion_banner_suffix")}</span>
                     </div>
                   )}
                   {/* Input pill */}
@@ -2675,21 +2674,21 @@ ${jsCode}`;
                     <button
                       onClick={toggleDictation}
                       className={`p-1.5 rounded-full transition-colors flex-shrink-0 ${isRecording ? "text-red-400 bg-red-400/20 animate-pulse" : "text-[#6b7280] hover:text-white hover:bg-white/10"}`}
-                      title={isRecording ? "Arrêter la dictée" : "Dicter un message"}>
+                      title={isRecording ? t("pe_stop_dictation") : t("pe_dictate")}>
                       {isRecording ? <MicOff className="w-3.5 h-3.5" /> : <Mic className="w-3.5 h-3.5" />}
                     </button>
                     {/* Paperclip — attach file */}
                     <button
                       onClick={() => { if (attachInputRef.current) { attachInputRef.current.removeAttribute("capture"); attachInputRef.current.accept = "image/*"; attachInputRef.current.click(); } }}
                       className="p-1.5 rounded-full text-[#6b7280] hover:text-white hover:bg-white/10 transition-colors flex-shrink-0"
-                      title="Joindre une image">
+                      title={t("pe_attach_image")}>
                       <Paperclip className="w-3.5 h-3.5" />
                     </button>
                     {/* Textarea input */}
                     <textarea
                       ref={chatTextareaRef}
                       rows={2}
-                      placeholder={isRecording ? "🎤 Dictée en cours…" : discussionMode ? "Réfléchissons ensemble au projet…" : "Parlez à Mar-ia…"}
+                      placeholder={isRecording ? t("pe_ph_recording") : discussionMode ? t("pe_ph_discussion") : t("pe_ph_default")}
                       value={chatMessage}
                       onChange={(e) => {
                         setChatMessage(e.target.value);
@@ -2745,7 +2744,7 @@ ${jsCode}`;
                     variant="ghost" size="icon"
                     className="w-7 h-7 text-muted-foreground hover:text-foreground"
                     onClick={() => setEditorCollapsed(v => !v)}
-                    title={editorCollapsed ? "Ouvrir l'éditeur" : "Réduire l'éditeur"}
+                    title={editorCollapsed ? t("pe_open_editor") : t("pe_collapse_editor")}
                   >
                     {editorCollapsed
                       ? <PanelLeftOpen className="w-3.5 h-3.5" />
@@ -2753,16 +2752,16 @@ ${jsCode}`;
                     }
                   </Button>
                   <Eye className="w-3.5 h-3.5 text-muted-foreground" />
-                  <span className="text-xs text-muted-foreground">Prévisualisation live</span>
+                  <span className="text-xs text-muted-foreground">{t("pe_live_preview")}</span>
                   <span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse ml-1" />
                   {consoleErrors.length > 0 && (
                     <button
-                      title={`${consoleErrors.length} erreur(s) JS détectée(s) :\n${consoleErrors.join('\n')}\n\nCes erreurs sont transmises au LLM lors du prochain message.\nCliquer pour effacer.`}
+                      title={`${consoleErrors.length}${t("pe_errors_detected")}\n${consoleErrors.join('\n')}\n\n${t("pe_errors_hint")}`}
                       className="flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] bg-red-500/20 text-red-400 hover:bg-red-500/30 transition-colors ml-1"
                       onClick={() => setConsoleErrors([])}
                     >
                       <PharmacieCross className="w-3 h-3" />
-                      {consoleErrors.length} erreur{consoleErrors.length > 1 ? "s" : ""}
+                      {consoleErrors.length} {t("pe_error_word")}{consoleErrors.length > 1 ? t("pe_error_plural") : ""}
                     </button>
                   )}
                 </div>
@@ -2772,7 +2771,7 @@ ${jsCode}`;
                     variant="ghost" size="icon"
                     className="w-7 h-7 text-muted-foreground hover:text-foreground"
                     onClick={refreshPreview}
-                    title="Actualiser l'aperçu"
+                    title={t("pe_refresh_preview")}
                   >
                     <RotateCcw className="w-3.5 h-3.5" />
                   </Button>
@@ -2781,7 +2780,7 @@ ${jsCode}`;
                     variant="ghost" size="icon"
                     className="w-7 h-7 text-muted-foreground hover:text-foreground"
                     onClick={openPreviewInNewTab}
-                    title="Ouvrir la page dans un nouvel onglet"
+                    title={t("pe_open_new_tab")}
                   >
                     <ExternalLink className="w-3.5 h-3.5" />
                   </Button>
@@ -2805,7 +2804,7 @@ ${jsCode}`;
               {visualEditMode && (
                 <div className="bg-violet-600 text-white text-[10px] text-center py-1 flex items-center justify-center gap-1.5 flex-shrink-0">
                   <PencilRuler className="w-3 h-3" />
-                  Mode édition visuelle — Cliquez sur un élément pour le modifier
+                  {t("pe_ve_banner")}
                 </div>
               )}
 
@@ -2816,22 +2815,22 @@ ${jsCode}`;
                   {/* Row 1: style controls */}
                   <div className="flex items-center gap-1 flex-wrap">
                     {veSelection?.isText && <>
-                      <button title="Gras" onClick={() => sendToIframe({ type: 'VE_STYLE', prop: 'fontWeight', value: veSelection.fontWeight === 'bold' || veSelection.fontWeight === '700' ? 'normal' : 'bold' })}
+                      <button title={t("pe_bold")} onClick={() => sendToIframe({ type: 'VE_STYLE', prop: 'fontWeight', value: veSelection.fontWeight === 'bold' || veSelection.fontWeight === '700' ? 'normal' : 'bold' })}
                         className={`w-7 h-7 rounded flex items-center justify-center text-xs font-bold ${veSelection.fontWeight === 'bold' || veSelection.fontWeight === '700' ? 'bg-white/20 text-white' : 'hover:bg-white/10 text-white/70'}`}>B</button>
-                      <button title="Italique" onClick={() => sendToIframe({ type: 'VE_STYLE', prop: 'fontStyle', value: 'italic' })}
+                      <button title={t("pe_italic")} onClick={() => sendToIframe({ type: 'VE_STYLE', prop: 'fontStyle', value: 'italic' })}
                         className="w-7 h-7 rounded hover:bg-white/10 flex items-center justify-center text-white/70 text-xs italic">I</button>
                       <input type="number" min="8" max="120" defaultValue={parseInt(veSelection.fontSize) || 16}
                         key={`fs-${veSelection.tag}-${veSelection.rect.top}`}
                         className="w-14 h-7 bg-white/10 border border-white/20 rounded px-1 text-white text-xs text-center"
                         onChange={e => sendToIframe({ type: 'VE_STYLE', prop: 'fontSize', value: e.target.value + 'px' })} />
                       {(['left', 'center', 'right'] as const).map(align => (
-                        <button key={align} title={`Aligner ${align}`} onClick={() => sendToIframe({ type: 'VE_STYLE', prop: 'textAlign', value: align })}
+                        <button key={align} title={`${t("pe_align")} ${align}`} onClick={() => sendToIframe({ type: 'VE_STYLE', prop: 'textAlign', value: align })}
                           className={`w-7 h-7 rounded flex items-center justify-center text-[11px] ${veSelection.textAlign === align ? 'bg-primary/40 text-primary' : 'hover:bg-white/10 text-white/60'}`}>
                           {align === 'left' ? '≡' : align === 'center' ? '☰' : '≡'}
                         </button>
                       ))}
                       <div className="w-px h-5 bg-white/20" />
-                      <label title="Couleur texte" className="flex items-center gap-1 cursor-pointer">
+                      <label title={t("pe_text_color")} className="flex items-center gap-1 cursor-pointer">
                         <span className="text-[10px] text-white/60">A</span>
                         <input type="color" className="w-5 h-5 rounded cursor-pointer border-0 bg-transparent"
                           defaultValue="#000000" onChange={e => sendToIframe({ type: 'VE_STYLE', prop: 'color', value: e.target.value })} />
@@ -2839,7 +2838,7 @@ ${jsCode}`;
                     </>}
 
                     {veSelection && !veSelection.isImage && <>
-                      <label title="Couleur de fond" className="flex items-center gap-1 cursor-pointer">
+                      <label title={t("pe_bg_color")} className="flex items-center gap-1 cursor-pointer">
                         <span className="text-[10px] text-white/60">BG</span>
                         <input type="color" className="w-5 h-5 rounded cursor-pointer border-0 bg-transparent"
                           defaultValue="#ffffff" onChange={e => sendToIframe({ type: 'VE_STYLE', prop: 'backgroundColor', value: e.target.value })} />
@@ -2860,9 +2859,9 @@ ${jsCode}`;
                     {/* Move up/down */}
                     {veSelection?.canMove && <>
                       <div className="w-px h-5 bg-white/20" />
-                      <button title="Monter le bloc" onClick={() => sendToIframe({ type: 'VE_MOVE_UP' })}
+                      <button title={t("pe_move_up")} onClick={() => sendToIframe({ type: 'VE_MOVE_UP' })}
                         className="w-7 h-7 rounded hover:bg-white/10 flex items-center justify-center text-white/70 text-sm">▲</button>
-                      <button title="Descendre le bloc" onClick={() => sendToIframe({ type: 'VE_MOVE_DOWN' })}
+                      <button title={t("pe_move_down")} onClick={() => sendToIframe({ type: 'VE_MOVE_DOWN' })}
                         className="w-7 h-7 rounded hover:bg-white/10 flex items-center justify-center text-white/70 text-sm">▼</button>
                     </>}
 
@@ -2871,30 +2870,30 @@ ${jsCode}`;
                       <div className="w-px h-5 bg-white/20" />
                       {veDeleteConfirm ? (
                         <div className="flex items-center gap-1">
-                          <span className="text-[10px] text-red-400">Supprimer ?</span>
+                          <span className="text-[10px] text-red-400">{t("pe_delete_q")}</span>
                           <button
-                            title="Confirmer la suppression"
+                            title={t("pe_confirm_delete")}
                             onClick={() => {
                               sendToIframe({ type: 'VE_DELETE' });
                               setVeDeleteConfirm(false);
                               setVeSelection(null);
                             }}
                             className="px-2 h-7 rounded bg-red-500/80 hover:bg-red-500 text-white text-[11px] font-medium transition-colors">
-                            Oui
+                            {t("pe_yes")}
                           </button>
                           <button
-                            title="Annuler"
+                            title={t("common_cancel")}
                             onClick={() => setVeDeleteConfirm(false)}
                             className="px-2 h-7 rounded hover:bg-white/10 text-white/60 text-[11px]">
-                            Non
+                            {t("pe_no")}
                           </button>
                         </div>
                       ) : (
                         <button
-                          title="Supprimer cet élément (Delete)"
+                          title={t("pe_delete_element")}
                           onClick={() => setVeDeleteConfirm(true)}
                           className="flex items-center gap-1 px-2 h-7 rounded hover:bg-red-500/20 text-white/50 hover:text-red-400 transition-colors text-[11px]">
-                          <Trash2 className="w-3 h-3" /> Supprimer
+                          <Trash2 className="w-3 h-3" /> {t("pe_delete")}
                         </button>
                       )}
                     </>}
@@ -2903,19 +2902,19 @@ ${jsCode}`;
                     {veSelection && <>
                       <div className="w-px h-5 bg-white/20" />
                       <span className="text-[10px] text-white/40">z:{veSelection.zIndex}</span>
-                      <button title="Premier plan" onClick={() => sendToIframe({ type: 'VE_LAYER_FRONT' })}
+                      <button title={t("pe_layer_front")} onClick={() => sendToIframe({ type: 'VE_LAYER_FRONT' })}
                         className="px-1.5 h-7 rounded hover:bg-white/10 text-white/60 text-[11px]">⬆</button>
-                      <button title="Avancer d'un niveau" onClick={() => sendToIframe({ type: 'VE_LAYER_UP' })}
+                      <button title={t("pe_layer_up")} onClick={() => sendToIframe({ type: 'VE_LAYER_UP' })}
                         className="px-1.5 h-7 rounded hover:bg-white/10 text-white/60 text-[11px]">+z</button>
-                      <button title="Reculer d'un niveau" onClick={() => sendToIframe({ type: 'VE_LAYER_DOWN' })}
+                      <button title={t("pe_layer_down")} onClick={() => sendToIframe({ type: 'VE_LAYER_DOWN' })}
                         className="px-1.5 h-7 rounded hover:bg-white/10 text-white/60 text-[11px]">-z</button>
-                      <button title="Arrière plan" onClick={() => sendToIframe({ type: 'VE_LAYER_BACK' })}
+                      <button title={t("pe_layer_back")} onClick={() => sendToIframe({ type: 'VE_LAYER_BACK' })}
                         className="px-1.5 h-7 rounded hover:bg-white/10 text-white/60 text-[11px]">⬇</button>
                     </>}
 
                     {/* Insert image */}
                     <div className="w-px h-5 bg-white/20" />
-                    <button title="Insérer une image" onClick={() => imageInsertRef.current?.click()}
+                    <button title={t("pe_insert_image")} onClick={() => imageInsertRef.current?.click()}
                       className="flex items-center gap-1 px-2 h-7 rounded hover:bg-white/10 text-white/70 text-[11px]">
                       <Upload className="w-3 h-3" /> Img+
                     </button>
@@ -2925,7 +2924,7 @@ ${jsCode}`;
                     <button
                       onClick={() => { setShowLayers(v => !v); if (!showLayers) setShowBlocksPalette(false); sendToIframe({ type: 'VE_GET_LAYERS' }); }}
                       className={`flex items-center gap-1 px-2 h-7 rounded text-[11px] transition-colors ${showLayers ? 'bg-primary/30 text-primary' : 'hover:bg-white/10 text-white/60'}`}>
-                      Calques
+                      {t("pe_layers")}
                     </button>
 
                     {/* Blocks palette toggle */}
@@ -2933,7 +2932,7 @@ ${jsCode}`;
                     <button
                       onClick={() => { setShowBlocksPalette(v => !v); if (!showBlocksPalette) setShowLayers(false); }}
                       className={`flex items-center gap-1 px-2 h-7 rounded text-[11px] transition-colors ${showBlocksPalette ? 'bg-emerald-500/30 text-emerald-300' : 'hover:bg-white/10 text-white/60'}`}>
-                      <Plus className="w-3 h-3" /> Blocs
+                      <Plus className="w-3 h-3" /> {t("pe_blocks")}
                     </button>
 
                     {/* Dimensions display */}
@@ -2952,7 +2951,7 @@ ${jsCode}`;
                           </span>
                           {/* Copy Unsplash URL */}
                           <button
-                            title={`Copier l'URL Unsplash à ${w}×${h}px\n${unsplashUrl}`}
+                            title={`${t("pe_copy_unsplash_title")}${w}×${h}px\n${unsplashUrl}`}
                             className={`flex items-center gap-1 px-2 h-6 rounded text-[10px] transition-colors ${dimCopied ? 'bg-emerald-500/30 text-emerald-300' : 'bg-white/10 hover:bg-violet-500/30 text-white/60 hover:text-violet-300'}`}
                             onClick={() => {
                               navigator.clipboard.writeText(unsplashUrl).catch(() => {});
@@ -2960,18 +2959,18 @@ ${jsCode}`;
                               setTimeout(() => setDimCopied(false), 2000);
                             }}>
                             {dimCopied ? <Check className="w-3 h-3" /> : <ImageIcon className="w-3 h-3" />}
-                            {dimCopied ? 'Copié !' : `Unsplash ${w}×${h}`}
+                            {dimCopied ? t("pe_copied") : `Unsplash ${w}×${h}`}
                           </button>
                         </div>
                       );
                     })()}
-                    {!veSelection && <div className="ml-auto text-[10px] text-white/40 px-1">Survolez pour voir les dimensions — cliquez pour sélectionner</div>}
+                    {!veSelection && <div className="ml-auto text-[10px] text-white/40 px-1">{t("pe_hover_hint")}</div>}
                   </div>
 
                   {/* Row 2: text input (texte sélectionné) */}
                   {veSelection?.isText && (
                     <div className="flex items-center gap-2">
-                      <span className="text-[10px] text-white/50 flex-shrink-0">Texte</span>
+                      <span className="text-[10px] text-white/50 flex-shrink-0">{t("pe_text_label")}</span>
                       <input
                         type="text"
                         value={veTextInput}
@@ -2980,7 +2979,7 @@ ${jsCode}`;
                           sendToIframe({ type: 'VE_TEXT', value: e.target.value });
                         }}
                         className="flex-1 h-7 bg-white/10 border border-white/20 rounded px-2 text-white text-xs placeholder:text-white/30 focus:outline-none focus:border-primary/60"
-                        placeholder="Contenu du texte…"
+                        placeholder={t("pe_text_content_ph")}
                       />
                     </div>
                   )}
@@ -2989,9 +2988,9 @@ ${jsCode}`;
                   {veSelection?.isImage && (
                     <div className="flex flex-col gap-1.5">
                       <div className="flex items-center gap-3 flex-wrap">
-                        <span className="text-[10px] text-white/50">Image</span>
+                        <span className="text-[10px] text-white/50">{t("pe_image_label")}</span>
                         {veSelection.imgW > 0 && (
-                          <span className="text-[10px] text-white/40">{veSelection.imgW}×{veSelection.imgH}px (naturel)</span>
+                          <span className="text-[10px] text-white/40">{veSelection.imgW}×{veSelection.imgH}px {t("pe_natural")}</span>
                         )}
                         <label className="flex items-center gap-1">
                           <span className="text-[10px] text-white/60">W</span>
@@ -3007,7 +3006,7 @@ ${jsCode}`;
                             className="w-16 h-6 bg-white/10 border border-white/20 rounded px-1 text-white text-xs"
                             onBlur={e => { if (e.target.value) sendToIframe({ type: 'VE_STYLE', prop: 'height', value: e.target.value + (isNaN(Number(e.target.value)) ? '' : 'px') }); }} />
                         </label>
-                        <label title="Couleur de fond" className="flex items-center gap-1 cursor-pointer">
+                        <label title={t("pe_bg_color")} className="flex items-center gap-1 cursor-pointer">
                           <span className="text-[10px] text-white/60">BG</span>
                           <input type="color" className="w-5 h-5 rounded cursor-pointer border-0 bg-transparent"
                             defaultValue="#ffffff" onChange={e => sendToIframe({ type: 'VE_STYLE', prop: 'backgroundColor', value: e.target.value })} />
@@ -3019,8 +3018,8 @@ ${jsCode}`;
                       >
                         <Upload className="w-4 h-4 text-violet-400 flex-shrink-0" />
                         <div className="flex-1 min-w-0">
-                          <div className="text-xs text-violet-300 font-medium">Remplacer l'image</div>
-                          <div className="text-[10px] text-white/40 truncate">Cliquez pour importer JPG, PNG, WebP, SVG…</div>
+                          <div className="text-xs text-violet-300 font-medium">{t("pe_replace_image")}</div>
+                          <div className="text-[10px] text-white/40 truncate">{t("pe_replace_image_hint")}</div>
                         </div>
                       </div>
                     </div>
@@ -3029,7 +3028,7 @@ ${jsCode}`;
                   {/* Save / Cancel bar */}
                   {veDirty && (
                     <div className="flex items-center gap-2 bg-emerald-900/50 border border-emerald-500/30 rounded-lg px-3 py-1.5">
-                      <span className="text-xs text-emerald-300 flex-1">Modifications non sauvegardées</span>
+                      <span className="text-xs text-emerald-300 flex-1">{t("pe_unsaved_changes")}</span>
                       <button onClick={() => {
                         setHtmlCode(veOriginalHtmlRef.current);
                         setVeDirty(false);
@@ -3037,7 +3036,7 @@ ${jsCode}`;
                         setVisualEditMode(false);
                         buildPreview(veOriginalHtmlRef.current, cssCode, jsCode);
                       }} className="text-xs text-white/60 hover:text-white px-2 py-1 rounded hover:bg-white/10">
-                        Annuler
+                        {t("common_cancel")}
                       </button>
                       <button onClick={() => {
                         const fullHtml = veCurrentHtmlRef.current;
@@ -3049,9 +3048,9 @@ ${jsCode}`;
                         setVeSelection(null);
                         setVisualEditMode(false);
                         buildPreview(newHtml, cssCode, jsCode);
-                        toast.success("Modifications sauvegardées !");
+                        toast.success(t("pe_changes_saved"));
                       }} className="text-xs bg-emerald-600 hover:bg-emerald-500 text-white px-3 py-1 rounded font-medium">
-                        💾 Sauvegarder
+                        {t("pe_ve_save")}
                       </button>
                     </div>
                   )}
@@ -3061,10 +3060,10 @@ ${jsCode}`;
                     <div className="border border-emerald-500/20 rounded-lg overflow-hidden bg-black/30">
                       <div className="flex items-center justify-between px-2 py-1.5 bg-emerald-500/10 border-b border-emerald-500/15">
                         <span className="text-[10px] font-medium text-emerald-300 flex items-center gap-1.5">
-                          <Plus className="w-3 h-3" /> Insérer un bloc
+                          <Plus className="w-3 h-3" /> {t("pe_insert_block")}
                         </span>
                         <span className="text-[10px] text-white/30">
-                          {veSelection ? `après &lt;${veSelection.tag.toLowerCase()}&gt;` : "en fin de page"}
+                          {veSelection ? `${t("pe_after")} &lt;${veSelection.tag.toLowerCase()}&gt;` : t("pe_end_of_page")}
                         </span>
                       </div>
                       {/* Category tabs */}
@@ -3082,10 +3081,10 @@ ${jsCode}`;
                         {VE_BLOCKS.filter(b => b.category === blockCategory).map(block => (
                           <button
                             key={block.id}
-                            title={`Insérer : ${block.label}`}
+                            title={`${t("pe_insert_prefix")} ${block.label}`}
                             onClick={() => {
                               sendToIframe({ type: 'VE_INSERT_BLOCK', html: block.html });
-                              toast.success(`Bloc "${block.label}" inséré`);
+                              toast.success(`${t("pe_block")} "${block.label}" ${t("pe_inserted")}`);
                             }}
                             className="flex flex-col items-center gap-1 px-2 py-2.5 rounded-lg border border-white/10 hover:border-emerald-400/40 hover:bg-emerald-500/10 transition-all cursor-pointer group">
                             <span className="text-lg leading-none">{block.icon}</span>
@@ -3095,7 +3094,7 @@ ${jsCode}`;
                       </div>
                       <div className="px-2 pb-2 text-[9px] text-white/25 flex items-center gap-1">
                         <GripVertical className="w-2.5 h-2.5" />
-                        Après insertion, glissez l'élément pour le repositionner
+                        {t("pe_drag_hint")}
                       </div>
                     </div>
                   )}
@@ -3104,11 +3103,11 @@ ${jsCode}`;
                   {showLayers && (
                     <div className="border border-white/10 rounded-lg overflow-hidden">
                       <div className="text-[10px] text-white/40 px-2 py-1 bg-white/5 flex items-center justify-between">
-                        <span>Calques — corps de page</span>
-                        <span className="text-white/25">ordre visuel ↑ devant</span>
+                        <span>{t("pe_layers_body")}</span>
+                        <span className="text-white/25">{t("pe_visual_order")}</span>
                       </div>
                       {veLayers.length === 0 && (
-                        <div className="text-[10px] text-white/30 px-2 py-1.5">Cliquez un élément pour voir les calques</div>
+                        <div className="text-[10px] text-white/30 px-2 py-1.5">{t("pe_click_for_layers")}</div>
                       )}
                       {[...veLayers].reverse().map(layer => (
                         <div key={layer.idx}
@@ -3117,9 +3116,9 @@ ${jsCode}`;
                           <span className="font-mono text-[10px] text-white/40 w-14 flex-shrink-0">&lt;{layer.tag.toLowerCase()}&gt;</span>
                           <span className="flex-1 truncate text-[10px]">{layer.text || '—'}</span>
                           <span className={`text-[10px] w-10 text-right flex-shrink-0 ${layer.zIndex === 'auto' ? 'text-white/25' : 'text-violet-400'}`}>z:{layer.zIndex}</span>
-                          <button title="Avancer" onClick={e => { e.stopPropagation(); sendToIframe({ type: 'VE_LAYER_ZIDX', idx: layer.idx, delta: 1 }); }}
+                          <button title={t("pe_forward")} onClick={e => { e.stopPropagation(); sendToIframe({ type: 'VE_LAYER_ZIDX', idx: layer.idx, delta: 1 }); }}
                             className="w-5 h-5 rounded hover:bg-white/10 flex items-center justify-center text-white/40 hover:text-white text-[11px]">↑</button>
-                          <button title="Reculer" onClick={e => { e.stopPropagation(); sendToIframe({ type: 'VE_LAYER_ZIDX', idx: layer.idx, delta: -1 }); }}
+                          <button title={t("pe_backward")} onClick={e => { e.stopPropagation(); sendToIframe({ type: 'VE_LAYER_ZIDX', idx: layer.idx, delta: -1 }); }}
                             className="w-5 h-5 rounded hover:bg-white/10 flex items-center justify-center text-white/40 hover:text-white text-[11px]">↓</button>
                         </div>
                       ))}
@@ -3174,7 +3173,7 @@ ${jsCode}`;
                         {expoHtmlLoading && !expoHtmlPreview && (
                           <div className="flex flex-col items-center gap-3 text-muted-foreground mt-16">
                             <Loader2 className="w-8 h-8 animate-spin text-primary" />
-                            <span className="text-sm">Génération de l'aperçu…</span>
+                            <span className="text-sm">{t("pe_generating_preview")}</span>
                           </div>
                         )}
                         {!expoHtmlLoading && !expoHtmlPreview && (
@@ -3185,8 +3184,8 @@ ${jsCode}`;
                               className="flex flex-col items-center gap-3 px-8 py-6 rounded-2xl bg-primary/10 border border-primary/20 text-primary hover:bg-primary/20 transition-colors"
                             >
                               <span className="text-4xl">📱</span>
-                              <span className="text-sm font-medium">Générer l'aperçu</span>
-                              <span className="text-xs text-muted-foreground">Aperçu HTML de l'app</span>
+                              <span className="text-sm font-medium">{t("pe_generate_preview")}</span>
+                              <span className="text-xs text-muted-foreground">{t("pe_app_html_preview")}</span>
                             </button>
                           </div>
                         )}
@@ -3218,7 +3217,7 @@ ${jsCode}`;
                       disabled={expoHtmlLoading || !htmlCode}
                       className="flex items-center gap-1.5 px-2 py-1 rounded border border-border/50 text-xs text-muted-foreground hover:text-foreground disabled:opacity-40 transition-colors"
                     >
-                      {expoHtmlLoading ? <Loader2 className="w-3 h-3 animate-spin" /> : "🔄"} Régénérer
+                      {expoHtmlLoading ? <Loader2 className="w-3 h-3 animate-spin" /> : "🔄"} {t("pe_regenerate")}
                     </button>
                     <div className="w-px h-4 bg-border/40" />
                     <button
@@ -3227,7 +3226,7 @@ ${jsCode}`;
                       className="flex items-center gap-1.5 px-2 py-1 rounded border border-border/50 text-xs text-muted-foreground hover:text-foreground disabled:opacity-40 transition-colors"
                     >
                       {expoSnackLoading ? <Loader2 className="w-3 h-3 animate-spin" /> : <Smartphone className="w-3 h-3" />}
-                      {expoSnackLoading ? "…" : "QR Expo Go"}
+                      {expoSnackLoading ? "…" : t("pe_qr_expo")}
                     </button>
                     {activeSnackUrl && (() => {
                       const snackHash = activeSnackUrl.replace("https://snack.expo.dev/", "").replace(/[?#].*/, "");
@@ -3239,7 +3238,7 @@ ${jsCode}`;
                           <button
                             onClick={() => setShowQrModal(true)}
                             className="flex-shrink-0 cursor-pointer hover:opacity-80 transition-opacity"
-                            title="Agrandir le QR code"
+                            title={t("pe_enlarge_qr")}
                           >
                             <img
                               src={`https://api.qrserver.com/v1/create-qr-code/?size=360x360&data=${encodeURIComponent(snackUrl)}&bgcolor=ffffff&color=000000&margin=6`}
@@ -3257,7 +3256,7 @@ ${jsCode}`;
                                 className="bg-white rounded-2xl shadow-2xl p-6 flex flex-col items-center gap-4"
                                 onClick={e => e.stopPropagation()}
                               >
-                                <p className="text-sm font-semibold text-gray-700">Scanner avec Expo Go</p>
+                                <p className="text-sm font-semibold text-gray-700">{t("pe_scan_expo")}</p>
                                 <img
                                   src={`https://api.qrserver.com/v1/create-qr-code/?size=600x600&data=${encodeURIComponent(snackUrl)}&bgcolor=ffffff&color=000000&margin=16`}
                                   alt="QR Expo Go"
@@ -3270,7 +3269,7 @@ ${jsCode}`;
                                   onClick={() => setShowQrModal(false)}
                                   className="mt-1 px-5 py-2 rounded-full bg-gray-100 hover:bg-gray-200 text-sm text-gray-600 transition-colors"
                                 >
-                                  Fermer
+                                  {t("pe_close")}
                                 </button>
                               </div>
                             </div>
@@ -3284,19 +3283,19 @@ ${jsCode}`;
                           <button
                             onClick={() => {
                               navigator.clipboard.writeText(expUrl).then(() => {
-                                toast.success("Lien copié ! Collez-le dans Expo Go sur votre mobile.", { duration: 4000 });
+                                toast.success(t("pe_install_link_copied"), { duration: 4000 });
                               }).catch(() => {
                                 // Fallback: ouvrir une fenêtre avec le lien
                                 const w = window.open("", "_blank");
                                 if (w) {
-                                  w.document.write(`<pre style="font-size:18px;padding:20px;word-break:break-all">${expUrl}</pre><p style="padding:0 20px">Copiez ce lien et ouvrez-le dans <b>Expo Go</b> sur Android ou iOS.</p>`);
+                                  w.document.write(`<pre style="font-size:18px;padding:20px;word-break:break-all">${expUrl}</pre><p style="padding:0 20px">${t("pe_install_fallback_pre")}<b>Expo Go</b>${t("pe_install_fallback_post")}</p>`);
                                 }
                               });
                             }}
                             className="flex items-center gap-1 px-2 py-1 rounded border border-primary/40 text-xs text-primary hover:bg-primary/10 transition-colors"
-                            title="Copie le lien Expo Go pour tester sur votre mobile (Android ou iOS)"
+                            title={t("pe_install_title")}
                           >
-                            📲 Installer
+                            {t("pe_install")}
                           </button>
                         </>
                       );
@@ -3328,11 +3327,11 @@ ${jsCode}`;
                           const url = URL.createObjectURL(blob);
                           const a = document.createElement("a"); a.href = url; a.download = `${project?.name || "app"}-expo.txt`; a.click();
                           URL.revokeObjectURL(url);
-                          toast.success("Projet exporté !");
+                          toast.success(t("pe_project_exported"));
                         }}
                         className="flex items-center gap-1 px-2 py-1 rounded border border-emerald-500/40 text-xs text-emerald-400 hover:bg-emerald-500/10 transition-colors"
                       >
-                        <Download className="w-3 h-3" /> Exporter
+                        <Download className="w-3 h-3" /> {t("pe_export")}
                       </button>
                     </div>
                   </div>
@@ -3370,26 +3369,26 @@ ${jsCode}`;
                   <Database className="w-5 h-5 text-primary" />
                 </div>
                 <div>
-                  <h2 className="font-semibold text-foreground text-sm">Base de données</h2>
-                  <p className="text-[10px] text-muted-foreground">Stockage & API de données</p>
+                  <h2 className="font-semibold text-foreground text-sm">{t("pe_db_title")}</h2>
+                  <p className="text-[10px] text-muted-foreground">{t("pe_db_subtitle")}</p>
                 </div>
               </div>
               <button onClick={() => setShowDbPanel(false)} className="text-muted-foreground hover:text-foreground transition-colors"><XIcon className="w-4 h-4" /></button>
             </div>
             <div className="rounded-xl bg-primary/5 border border-primary/20 p-4 text-center space-y-2">
               <div className="text-2xl">🗄️</div>
-              <p className="text-sm font-medium text-foreground">Bientôt disponible</p>
-              <p className="text-xs text-muted-foreground leading-relaxed">Connectez une base de données à votre site : stockage de formulaires, liste d'abonnés, catalogue produits — sans backend à gérer.</p>
+              <p className="text-sm font-medium text-foreground">{t("pe_coming_soon")}</p>
+              <p className="text-xs text-muted-foreground leading-relaxed">{t("pe_db_desc")}</p>
             </div>
             <div className="grid grid-cols-2 gap-3">
-              {[["Formulaires", "Stockez les soumissions de vos formulaires contact"], ["Abonnés", "Gérez une liste d'emails ou de membres"], ["Catalogue", "Produits, articles, portfolio dynamique"], ["Analytics", "Compteur de vues et événements personnalisés"]].map(([t, d]) => (
-                <div key={t} className="rounded-lg border border-border/40 p-3 opacity-50 cursor-not-allowed">
-                  <p className="text-xs font-medium text-foreground">{t}</p>
+              {[[t("pe_db_forms"), t("pe_db_forms_d")], [t("pe_db_subs"), t("pe_db_subs_d")], [t("pe_db_catalog"), t("pe_db_catalog_d")], [t("pe_db_analytics"), t("pe_db_analytics_d")]].map(([label, d]) => (
+                <div key={label} className="rounded-lg border border-border/40 p-3 opacity-50 cursor-not-allowed">
+                  <p className="text-xs font-medium text-foreground">{label}</p>
                   <p className="text-[10px] text-muted-foreground mt-0.5">{d}</p>
                 </div>
               ))}
             </div>
-            <button onClick={() => setShowDbPanel(false)} className="w-full py-2 rounded-xl bg-primary/10 hover:bg-primary/20 text-primary text-sm font-medium transition-colors">Fermer</button>
+            <button onClick={() => setShowDbPanel(false)} className="w-full py-2 rounded-xl bg-primary/10 hover:bg-primary/20 text-primary text-sm font-medium transition-colors">{t("pe_close")}</button>
           </div>
         </div>
       )}
@@ -3404,8 +3403,8 @@ ${jsCode}`;
                   <Link2 className="w-5 h-5 text-primary" />
                 </div>
                 <div>
-                  <h2 className="font-semibold text-foreground text-sm">Domaine & DNS</h2>
-                  <p className="text-[10px] text-muted-foreground">Liez votre nom de domaine</p>
+                  <h2 className="font-semibold text-foreground text-sm">{t("pe_domain_title")}</h2>
+                  <p className="text-[10px] text-muted-foreground">{t("pe_domain_subtitle")}</p>
                 </div>
               </div>
               <button onClick={() => setShowDomainPanel(false)} className="text-muted-foreground hover:text-foreground transition-colors"><XIcon className="w-4 h-4" /></button>
@@ -3414,24 +3413,24 @@ ${jsCode}`;
               <div className="rounded-xl bg-emerald-500/10 border border-emerald-500/20 p-3 flex items-center gap-2">
                 <Globe className="w-4 h-4 text-emerald-400 flex-shrink-0" />
                 <div className="min-w-0 flex-1">
-                  <p className="text-[10px] text-muted-foreground">URL publié</p>
+                  <p className="text-[10px] text-muted-foreground">{t("pe_published_url")}</p>
                   <p className="text-xs font-mono text-emerald-400 truncate">{project.slug}.mar-ia.app</p>
                 </div>
-                <button onClick={() => { navigator.clipboard.writeText(`https://${project!.slug}.mar-ia.app`); toast.success("Copié !"); }} className="text-muted-foreground hover:text-foreground flex-shrink-0"><Copy className="w-3 h-3" /></button>
+                <button onClick={() => { navigator.clipboard.writeText(`https://${project!.slug}.mar-ia.app`); toast.success(t("pe_copied")); }} className="text-muted-foreground hover:text-foreground flex-shrink-0"><Copy className="w-3 h-3" /></button>
               </div>
             )}
             <div className="space-y-2">
-              <label className="text-xs font-medium text-foreground">Domaine personnalisé</label>
+              <label className="text-xs font-medium text-foreground">{t("pe_custom_domain")}</label>
               <Input
-                placeholder="ex : monsite.com"
+                placeholder={t("pe_domain_ph")}
                 value={domainInput}
                 onChange={e => setDomainInput(e.target.value)}
                 className="bg-input border-border/60 text-sm h-9 font-mono"
               />
-              <p className="text-[10px] text-muted-foreground">Entrez uniquement le domaine sans <span className="font-mono">https://</span></p>
+              <p className="text-[10px] text-muted-foreground">{t("pe_domain_hint_1")}<span className="font-mono">https://</span></p>
             </div>
             <div className="rounded-xl bg-[#111] border border-border/30 p-3 space-y-2">
-              <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">Configuration DNS requise</p>
+              <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">{t("pe_dns_required")}</p>
               {[
                 { type: "A", name: "@", value: "76.76.21.21" },
                 { type: "CNAME", name: "www", value: "cname.mar-ia.app" },
@@ -3440,7 +3439,7 @@ ${jsCode}`;
                   <span className="w-14 px-1.5 py-0.5 rounded bg-primary/10 text-primary text-center">{r.type}</span>
                   <span className="text-muted-foreground w-10">{r.name}</span>
                   <span className="text-foreground flex-1 truncate">{r.value}</span>
-                  <button onClick={() => { navigator.clipboard.writeText(r.value); toast.success("Copié !"); }} className="text-muted-foreground hover:text-foreground"><Copy className="w-3 h-3" /></button>
+                  <button onClick={() => { navigator.clipboard.writeText(r.value); toast.success(t("pe_copied")); }} className="text-muted-foreground hover:text-foreground"><Copy className="w-3 h-3" /></button>
                 </div>
               ))}
             </div>
@@ -3449,9 +3448,9 @@ ${jsCode}`;
               onClick={() => {
                 updateProject.mutate({ id: projectId, customDomain: domainInput.trim() || undefined });
                 setShowDomainPanel(false);
-                toast.success("Domaine enregistré !");
+                toast.success(t("pe_domain_saved"));
               }}>
-              <Save className="w-3.5 h-3.5 mr-1.5" /> Enregistrer le domaine
+              <Save className="w-3.5 h-3.5 mr-1.5" /> {t("pe_save_domain")}
             </Button>
           </div>
         </div>
@@ -3467,8 +3466,8 @@ ${jsCode}`;
                   <TrendingUp className="w-5 h-5 text-primary" />
                 </div>
                 <div>
-                  <h2 className="font-semibold text-foreground text-sm">SEO</h2>
-                  <p className="text-[10px] text-muted-foreground">Titre, description, Open Graph</p>
+                  <h2 className="font-semibold text-foreground text-sm">{t("pe_seo")}</h2>
+                  <p className="text-[10px] text-muted-foreground">{t("pe_seo_subtitle")}</p>
                 </div>
               </div>
               <button onClick={() => setShowSeoPanel(false)} className="text-muted-foreground hover:text-foreground transition-colors"><XIcon className="w-4 h-4" /></button>
@@ -3476,11 +3475,11 @@ ${jsCode}`;
             {/* Fields */}
             <div className="space-y-3">
               {([
-                { label: "Titre de la page", key: "title", value: seoTitle, set: setSeoTitle, placeholder: "Mon site — Description courte", hint: "55-60 caractères recommandés", max: 60 },
-                { label: "Meta description", key: "desc", value: seoDesc, set: setSeoDesc, placeholder: "Description de votre site visible dans Google…", hint: "150-160 caractères recommandés", max: 160 },
-                { label: "Mots-clés", key: "kw", value: seoKeywords, set: setSeoKeywords, placeholder: "mot-clé 1, mot-clé 2, …", hint: "Séparés par des virgules", max: 255 },
-                { label: "og:title (réseaux sociaux)", key: "ogt", value: seoOgTitle, set: setSeoOgTitle, placeholder: "Titre pour Facebook, Twitter…", hint: "", max: 95 },
-                { label: "og:description", key: "ogd", value: seoOgDesc, set: setSeoOgDesc, placeholder: "Description pour le partage social…", hint: "", max: 200 },
+                { label: t("pe_seo_title_label"), key: "title", value: seoTitle, set: setSeoTitle, placeholder: t("pe_seo_title_ph"), hint: t("pe_seo_title_hint"), max: 60 },
+                { label: t("pe_seo_desc_label"), key: "desc", value: seoDesc, set: setSeoDesc, placeholder: t("pe_seo_desc_ph"), hint: t("pe_seo_desc_hint"), max: 160 },
+                { label: t("pe_seo_kw_label"), key: "kw", value: seoKeywords, set: setSeoKeywords, placeholder: t("pe_seo_kw_ph"), hint: t("pe_seo_kw_hint"), max: 255 },
+                { label: t("pe_seo_ogt_label"), key: "ogt", value: seoOgTitle, set: setSeoOgTitle, placeholder: t("pe_seo_ogt_ph"), hint: "", max: 95 },
+                { label: t("pe_seo_ogd_label"), key: "ogd", value: seoOgDesc, set: setSeoOgDesc, placeholder: t("pe_seo_ogd_ph"), hint: "", max: 200 },
               ] as { label:string; key:string; value:string; set:(v:string)=>void; placeholder:string; hint:string; max:number }[]).map(f => (
                 <div key={f.key} className="space-y-1">
                   <div className="flex items-center justify-between">
@@ -3510,10 +3509,10 @@ ${jsCode}`;
                   const combined = `<!-- HTML -->\n${code}\n<!-- CSS -->\n${cssCode}\n<!-- JS -->\n${jsCode}`;
                   updateCode.mutate({ versionId: selectedVersionId, code: combined });
                 }
-                toast.success("SEO mis à jour et sauvegardé !");
+                toast.success(t("pe_seo_saved"));
                 setShowSeoPanel(false);
               }}>
-              <Save className="w-3.5 h-3.5 mr-1.5" /> Appliquer & Sauvegarder
+              <Save className="w-3.5 h-3.5 mr-1.5" /> {t("pe_apply_save")}
             </Button>
           </div>
         </div>
@@ -3530,8 +3529,8 @@ ${jsCode}`;
                   <HardDrive className="w-5 h-5 text-primary" />
                 </div>
                 <div>
-                  <h2 className="font-semibold text-foreground text-sm">Storage</h2>
-                  <p className="text-[10px] text-muted-foreground">Bibliothèque d'images & de contenu — modifiez tout facilement</p>
+                  <h2 className="font-semibold text-foreground text-sm">{t("pe_storage")}</h2>
+                  <p className="text-[10px] text-muted-foreground">{t("pe_storage_subtitle")}</p>
                 </div>
               </div>
               <button onClick={() => setShowStoragePanel(false)} className="text-muted-foreground hover:text-foreground transition-colors"><XIcon className="w-4 h-4" /></button>
@@ -3540,18 +3539,18 @@ ${jsCode}`;
             <div className="flex gap-1 px-5 pt-3">
               <button onClick={() => setStorageTab("images")}
                 className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${storageTab === "images" ? "bg-primary/15 text-primary" : "text-muted-foreground hover:text-foreground hover:bg-white/5"}`}>
-                <ImageIcon className="w-3.5 h-3.5" /> Images <span className="opacity-60">({storageImages.length})</span>
+                <ImageIcon className="w-3.5 h-3.5" /> {t("pe_images")} <span className="opacity-60">({storageImages.length})</span>
               </button>
               <button onClick={() => setStorageTab("content")}
                 className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${storageTab === "content" ? "bg-primary/15 text-primary" : "text-muted-foreground hover:text-foreground hover:bg-white/5"}`}>
-                <TypeIcon className="w-3.5 h-3.5" /> Contenu <span className="opacity-60">({storageTexts.length})</span>
+                <TypeIcon className="w-3.5 h-3.5" /> {t("pe_content")} <span className="opacity-60">({storageTexts.length})</span>
               </button>
             </div>
             {/* Body */}
             <div className="flex-1 overflow-y-auto p-5 space-y-3">
               {storageTab === "images" && (
                 storageImages.length === 0 ? (
-                  <p className="text-xs text-muted-foreground text-center py-8">Aucune image détectée dans ce site.</p>
+                  <p className="text-xs text-muted-foreground text-center py-8">{t("pe_no_images")}</p>
                 ) : (
                   storageImages.map((src) => {
                     const current = imgEdits[src] ?? src;
@@ -3563,11 +3562,11 @@ ${jsCode}`;
                         </div>
                         <div className="flex-1 min-w-0 space-y-1.5">
                           <p className="text-[10px] font-mono text-muted-foreground truncate" title={current}>
-                            {current.startsWith("data:") ? `${current.slice(0, 40)}… (image intégrée)` : current}
-                            {imgEdits[src] && <span className="text-emerald-400 ml-1">• modifiée</span>}
+                            {current.startsWith("data:") ? `${current.slice(0, 40)}… ${t("pe_embedded_image")}` : current}
+                            {imgEdits[src] && <span className="text-emerald-400 ml-1">{t("pe_modified_f")}</span>}
                           </p>
                           <Input
-                            placeholder="Coller une nouvelle URL d'image…"
+                            placeholder={t("pe_new_img_url_ph")}
                             defaultValue={src.startsWith("data:") ? "" : src}
                             onChange={e => setImgEdits(prev => ({ ...prev, [src]: e.target.value }))}
                             className="bg-input border-border/60 text-[11px] h-7 font-mono"
@@ -3576,7 +3575,7 @@ ${jsCode}`;
                         <button
                           onClick={() => { storageUploadTargetRef.current = src; storageImgUploadRef.current?.click(); }}
                           className="flex-shrink-0 flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-primary/10 hover:bg-primary/20 text-primary text-[11px] font-medium transition-colors"
-                          title="Uploader une image depuis votre ordinateur">
+                          title={t("pe_upload_title")}>
                           <Upload className="w-3.5 h-3.5" /> Upload
                         </button>
                       </div>
@@ -3586,18 +3585,18 @@ ${jsCode}`;
               )}
               {storageTab === "content" && (
                 storageTexts.length === 0 ? (
-                  <p className="text-xs text-muted-foreground text-center py-8">Aucun texte éditable détecté.</p>
+                  <p className="text-xs text-muted-foreground text-center py-8">{t("pe_no_text")}</p>
                 ) : (
-                  storageTexts.map((t) => (
-                    <div key={t.idx} className="rounded-xl bg-[#111] border border-border/30 p-2.5 space-y-1.5">
+                  storageTexts.map((txt) => (
+                    <div key={txt.idx} className="rounded-xl bg-[#111] border border-border/30 p-2.5 space-y-1.5">
                       <div className="flex items-center gap-1.5">
-                        <span className="px-1.5 py-0.5 rounded bg-primary/10 text-primary text-[9px] font-mono uppercase">{t.tag}</span>
-                        {textEdits[t.idx] !== undefined && textEdits[t.idx] !== t.text && <span className="text-[9px] text-emerald-400">• modifié</span>}
+                        <span className="px-1.5 py-0.5 rounded bg-primary/10 text-primary text-[9px] font-mono uppercase">{txt.tag}</span>
+                        {textEdits[txt.idx] !== undefined && textEdits[txt.idx] !== txt.text && <span className="text-[9px] text-emerald-400">{t("pe_modified_m")}</span>}
                       </div>
                       <Textarea
-                        defaultValue={t.text}
-                        onChange={e => setTextEdits(prev => ({ ...prev, [t.idx]: e.target.value }))}
-                        rows={t.text.length > 80 ? 3 : 1}
+                        defaultValue={txt.text}
+                        onChange={e => setTextEdits(prev => ({ ...prev, [txt.idx]: e.target.value }))}
+                        rows={txt.text.length > 80 ? 3 : 1}
                         className="bg-input border-border/60 text-xs resize-y min-h-0 py-1.5"
                       />
                     </div>
@@ -3608,9 +3607,9 @@ ${jsCode}`;
             {/* Footer */}
             <div className="flex items-center gap-2 p-4 border-t border-border/30">
               <p className="text-[10px] text-muted-foreground flex-1">
-                Les modifications sont appliquées au code du site et sauvegardées.
+                {t("pe_storage_footer")}
               </p>
-              <Button variant="ghost" className="h-9 text-xs text-muted-foreground" onClick={() => setShowStoragePanel(false)}>Fermer</Button>
+              <Button variant="ghost" className="h-9 text-xs text-muted-foreground" onClick={() => setShowStoragePanel(false)}>{t("pe_close")}</Button>
               <Button className="h-9 text-xs bg-primary hover:bg-primary/90 text-primary-foreground"
                 onClick={() => {
                   let newHtml = htmlCode;
@@ -3631,10 +3630,10 @@ ${jsCode}`;
                     updateCode.mutate({ versionId: vId, code: combined });
                   }
                   buildPreview(newHtml, newCss, jsCode);
-                  toast.success("Bibliothèque mise à jour et sauvegardée !");
+                  toast.success(t("pe_library_saved"));
                   setShowStoragePanel(false);
                 }}>
-                <Save className="w-3.5 h-3.5 mr-1.5" /> Appliquer & Sauvegarder
+                <Save className="w-3.5 h-3.5 mr-1.5" /> {t("pe_apply_save")}
               </Button>
             </div>
           </div>
@@ -3647,7 +3646,7 @@ ${jsCode}`;
               const reader = new FileReader();
               reader.onload = ev => {
                 setImgEdits(prev => ({ ...prev, [target]: ev.target?.result as string }));
-                toast.success("Image importée — cliquez sur Appliquer pour sauvegarder");
+                toast.success(t("pe_image_imported"));
               };
               reader.readAsDataURL(file);
               e.target.value = "";
@@ -3660,17 +3659,17 @@ ${jsCode}`;
       <AlertDialog open={!!restoreTarget} onOpenChange={() => setRestoreTarget(null)}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Restaurer cette version ?</AlertDialogTitle>
+            <AlertDialogTitle>{t("pe_restore_q")}</AlertDialogTitle>
             <AlertDialogDescription>
-              Vous allez restaurer <strong>{restoreTarget?.label}</strong>.<br />
-              La version active sera remplacée. Cette action est réversible depuis l'onglet Versions.
+              {t("pe_restore_pre")}<strong>{restoreTarget?.label}</strong>.<br />
+              {t("pe_restore_post")}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Annuler</AlertDialogCancel>
+            <AlertDialogCancel>{t("common_cancel")}</AlertDialogCancel>
             <AlertDialogAction className="bg-primary hover:bg-primary/90 text-primary-foreground"
               onClick={() => { if (restoreTarget) restoreVersion.mutate({ projectId, versionId: restoreTarget.versionId }); }}>
-              {restoreVersion.isPending ? <><Loader2 className="w-4 h-4 animate-spin mr-2" />Restauration…</> : <><RotateCcw className="w-4 h-4 mr-2" />Restaurer</>}
+              {restoreVersion.isPending ? <><Loader2 className="w-4 h-4 animate-spin mr-2" />{t("pe_restoring")}</> : <><RotateCcw className="w-4 h-4 mr-2" />{t("pe_restore")}</>}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
