@@ -158,6 +158,7 @@ export const deployRouter = router({
       await db.update(projects).set({
         currentVersionId: versionId,
         status: "ready",
+        updatedAt: new Date(),
       }).where(eq(projects.id, input.projectId));
 
       return { versionId, versionNumber: nextVersionNumber };

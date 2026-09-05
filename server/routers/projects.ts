@@ -312,6 +312,7 @@ Retourne UNIQUEMENT le code HTML complet, sans explication, sans markdown, sans 
           style: input.style,
           language: input.language,
           colorPalette: input.colorPalette,
+          updatedAt: new Date(),
         }).where(eq(projects.id, input.projectId));
 
         // Increment usage
@@ -509,7 +510,7 @@ RÈGLES CODE (à respecter pour chaque modification):
           status: "ready",
         }).returning({ id: versions.id });
         versionId = versionResult.id;
-        await db.update(projects).set({ currentVersionId: versionId }).where(eq(projects.id, input.projectId));
+        await db.update(projects).set({ currentVersionId: versionId, updatedAt: new Date() }).where(eq(projects.id, input.projectId));
       }
 
       // Save assistant reply (the natural language reply, not the code)
@@ -562,7 +563,7 @@ RÈGLES CODE (à respecter pour chaque modification):
         .limit(1);
       if (!v[0]) throw new Error("Version introuvable");
       await db.update(projects)
-        .set({ currentVersionId: input.versionId })
+        .set({ currentVersionId: input.versionId, updatedAt: new Date() })
         .where(and(eq(projects.id, input.projectId), eq(projects.userId, ctx.user.id)));
       return { success: true };
     }),
@@ -619,6 +620,11 @@ RÈGLES CODE (à respecter pour chaque modification):
       if (!db) throw new Error("DB unavailable");
       await assertOwnedVersion(db, input.versionId, ctx.user.id); // anti-IDOR
       await db.update(versions).set({ generatedCode: input.code }).where(eq(versions.id, input.versionId));
+      const v = await db.select({ projectId: versions.projectId }).from(versions)
+        .where(eq(versions.id, input.versionId)).limit(1);
+      if (v[0]) {
+        await db.update(projects).set({ updatedAt: new Date() }).where(eq(projects.id, v[0].projectId));
+      }
       return { success: true };
     }),
 
@@ -759,6 +765,7 @@ Réponds UNIQUEMENT avec ce JSON (code HTML complet corrigé):
       await db.update(projects).set({
         currentVersionId: versionResult.id,
         status: "ready",
+        updatedAt: new Date(),
       }).where(eq(projects.id, input.projectId));
 
       // Log

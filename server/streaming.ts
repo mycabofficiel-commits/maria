@@ -1159,6 +1159,7 @@ Retourne UNIQUEMENT le code JavaScript complet, sans explication, sans markdown,
       language: language || "fr",
       colorPalette,
       previewUrl: snackUrl || undefined,
+      updatedAt: new Date(),
     }).where(eq(projects.id, projectId));
 
     await db.update(users)
@@ -1844,6 +1845,7 @@ Retourne UNIQUEMENT le code HTML, sans explication, sans markdown, sans backtick
         style,
         language: language || "fr",
         colorPalette,
+        updatedAt: new Date(),
       }).where(eq(projects.id, projectId));
 
       await db.update(users).set({ generationsUsed: (u?.generationsUsed || 0) + 1 }).where(eq(users.id, user.id));
@@ -3052,24 +3054,24 @@ RAPPEL ICÔNES : uniquement des emojis`;
                 const newSnackId = snackData.hashId || snackData.id || "";
                 if (newSnackId) {
                   const newSnackUrl = `https://snack.expo.dev/${newSnackId}`;
-                  await db.update(projects).set({ currentVersionId: versionId, previewUrl: newSnackUrl }).where(eq(projects.id, projectId));
+                  await db.update(projects).set({ currentVersionId: versionId, previewUrl: newSnackUrl, updatedAt: new Date() }).where(eq(projects.id, projectId));
                   pipelineLog("expo:snack:updated", { snackId: newSnackId });
                   // Inject snackUrl into the done event so client refreshes the QR
                   (agentResponse as any)._snackUrl = newSnackUrl;
                   (agentResponse as any)._snackId = newSnackId;
                 } else {
-                  await db.update(projects).set({ currentVersionId: versionId }).where(eq(projects.id, projectId));
+                  await db.update(projects).set({ currentVersionId: versionId, updatedAt: new Date() }).where(eq(projects.id, projectId));
                 }
               } else {
                 pipelineLog("expo:snack:update-failed", { status: snackSaveRes.status });
-                await db.update(projects).set({ currentVersionId: versionId }).where(eq(projects.id, projectId));
+                await db.update(projects).set({ currentVersionId: versionId, updatedAt: new Date() }).where(eq(projects.id, projectId));
               }
             } catch (snackErr: any) {
               pipelineLog("expo:snack:update-error", { error: snackErr?.message });
-              await db.update(projects).set({ currentVersionId: versionId }).where(eq(projects.id, projectId));
+              await db.update(projects).set({ currentVersionId: versionId, updatedAt: new Date() }).where(eq(projects.id, projectId));
             }
           } else {
-            await db.update(projects).set({ currentVersionId: versionId }).where(eq(projects.id, projectId));
+            await db.update(projects).set({ currentVersionId: versionId, updatedAt: new Date() }).where(eq(projects.id, projectId));
           }
         }
 
@@ -3427,7 +3429,7 @@ Retourne UNIQUEMENT ce JSON brut (pas de markdown, pas de \`\`\`):
         status: "ready",
       }).returning({ id: versions.id });
 
-      await db.update(projects).set({ currentVersionId: versionResult.id, status: "ready" }).where(eq(projects.id, projectId));
+      await db.update(projects).set({ currentVersionId: versionResult.id, status: "ready", updatedAt: new Date() }).where(eq(projects.id, projectId));
 
       await db.insert(usageLogs).values({
         userId: user.id, projectId, action: "debug", model: execModel,
