@@ -187,7 +187,7 @@ export default function Projects() {
     description: "",
     siteType: "Landing page",
     style: "Moderne",
-    languages: ["fr"] as string[],
+    languages: ["en"] as string[],
     colorPalette: "Bleu/Violet",
     customColors: ["#6366f1", "#8b5cf6", "#a78bfa"] as string[],
     useCustomColors: false,
@@ -230,7 +230,7 @@ export default function Projects() {
     setSelectedTpl(null);
     setTplProjectName("");
     setActiveCategory("Tous");
-    setForm({ name: "", description: "", siteType: "Landing page", style: "Moderne", languages: ["fr"], colorPalette: "Bleu/Violet", customColors: ["#6366f1", "#8b5cf6", "#a78bfa"], useCustomColors: false, inspirationUrls: [""], framework: "html" });
+    setForm({ name: "", description: "", siteType: "Landing page", style: "Moderne", languages: ["en"], colorPalette: "Bleu/Violet", customColors: ["#6366f1", "#8b5cf6", "#a78bfa"], useCustomColors: false, inspirationUrls: [""], framework: "html" });
     setExtras(EXTRA_OPTIONS.filter(o => o.def).map(o => o.id));
     setExpanded([]);
     setSocialNets([]); setSocialUrls({}); setMapsAddress(""); setSeoKeywords("");
@@ -506,7 +506,7 @@ export default function Projects() {
     setTplPrompt(tpl.prompt);
     setTplColorPreset(0);
     setTplAuthMethods(["none"]);
-    setTplLangs([tpl.language || "fr"]);
+    setTplLangs([tpl.language || "en"]);
     setTplDarkMode(["violet","indigo","orange","monochrome"].includes(tpl.colorPalette));
     setTab("tpl-confirm");
   };
@@ -569,7 +569,7 @@ export default function Projects() {
       siteType: selectedTpl.siteType,
       style: selectedTpl.style,
       colorPalette: preset.p,
-      language: tplLangs[0] ?? "fr",
+      language: tplLangs[0] ?? "en",
       framework: selectedTpl.framework,
     });
   };

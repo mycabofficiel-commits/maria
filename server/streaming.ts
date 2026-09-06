@@ -1008,7 +1008,7 @@ Si l'app inclut un système d'authentification (login, connexion, compte, profil
 • Photos : Image source={{uri:'https://images.unsplash.com/photo-ID?w=400&q=80'}}
 • Contenu spécifique au domaine demandé
 
-SDK: Expo 54 / React Native 0.76.7 | TYPE APP: ${siteType || "application mobile"} | STYLE: ${style || "moderne"} | LANGUE: ${language || "fr"} | PALETTE: ${colorPalette || "bleu/violet"}`;
+SDK: Expo 54 / React Native 0.76.7 | TYPE APP: ${siteType || "application mobile"} | STYLE: ${style || "moderne"} | LANGUE: ${language || "en"} | PALETTE: ${colorPalette || "bleu/violet"}`;
 
     const userMessage = `Crée une application mobile React Native COMPLÈTE et PREMIUM pour : ${prompt}
 
@@ -1156,7 +1156,7 @@ Retourne UNIQUEMENT le code JavaScript complet, sans explication, sans markdown,
       currentVersionId: versionId,
       siteType,
       style,
-      language: language || "fr",
+      language: language || "en",
       colorPalette,
       previewUrl: snackUrl || undefined,
       updatedAt: new Date(),
@@ -1455,7 +1455,7 @@ Si l'app a des onglets (TabBar, BottomTabNavigator, ou navigation bas) :
       enrichedPrompt = await orchestrateGenerate(
         res, db, user.id, projectId, userPlan, prompt,
         siteType || "landing page", style || "moderne",
-        language || "fr", colorPalette || "bleu/violet moderne"
+        language || "en", colorPalette || "bleu/violet moderne"
       );
     } catch { /* orchestration failed — continue with original prompt */ }
 
@@ -1527,7 +1527,7 @@ Minimum 4 écrans complets avec du VRAI contenu (pas lorem ipsum) :
 • ❌ JAMAIS vrai téléphone/email/adresse de personne réelle
 • ✅ "+33 6 00 00 00 00", "user@example.fr", données fictives cohérentes
 
-TYPE APP: ${siteType} | STYLE: ${style || "moderne"} | LANGUE: ${language || "fr"} | PALETTE: ${colorPalette || "bleu/violet moderne"}${inspirationCtx}`
+TYPE APP: ${siteType} | STYLE: ${style || "moderne"} | LANGUE: ${language || "en"} | PALETTE: ${colorPalette || "bleu/violet moderne"}${inspirationCtx}`
       : `Tu es Mar-ia, créatrice de sites web premium. Tu génères du HTML/CSS/JS complet, visuellement SPECTACULAIRE, moderne, professionnel et 100% fonctionnel. Qualité Dribbble / Awwwards.
 
 ══ ARCHITECTURE ══
@@ -1623,7 +1623,7 @@ Adapte le thème à la demande. Portrait carré : w=400&h=400
 • Stats : UNIQUEMENT si fournies par l'utilisateur. Sinon → PAS de statistiques.
 • Prix : uniquement si précisés — sinon "Sur devis" ou "À partir de X€"
 
-TYPE: ${siteType || "landing page"} | STYLE: ${style || "moderne"} | LANGUE: ${language || "fr"} | PALETTE: ${colorPalette || "bleu/violet moderne"}${inspirationCtx}`;
+TYPE: ${siteType || "landing page"} | STYLE: ${style || "moderne"} | LANGUE: ${language || "en"} | PALETTE: ${colorPalette || "bleu/violet moderne"}${inspirationCtx}`;
 
     const userMessage = isMobileApp
       ? `Crée un prototype d'application mobile COMPLET et RÉALISTE dans un cadre téléphone pour : ${finalPrompt}
@@ -1681,7 +1681,7 @@ QUALITÉ ATTENDUE :
 • COPYRIGHT : utilise TOUJOURS l'année en cours = ${new Date().getFullYear()}. JAMAIS une année passée.
 • CRÉDIT OBLIGATOIRE : ajoute TOUJOURS tout en bas du footer le crédit « Créé avec <a href="https://mar-ia.net" target="_blank" rel="noopener">Mar-ia.net</a> ». Ne l'omets sous aucun prétexte.
 • RÉSEAUX SOCIAUX : chaque icône = un <svg viewBox="0 0 24 24"> INLINE avec le vrai <path> de la marque (Instagram, Facebook, X, LinkedIn, TikTok, YouTube…), 20-24px, fill="currentColor". INTERDIT : <i class="fa-…"> (pas de CDN chargé), emojis en guise de logo, ou <img src> externe susceptible de renvoyer 404. Les logos DOIVENT s'afficher sans dépendance externe.
-• LANGUES : LANGUE demandée = « ${language || "fr"} ». Si PLUSIEURS langues sont listées, ajoute un sélecteur de langue RÉELLEMENT FONCTIONNEL dans le header (boutons FR/EN/ES…) qui bascule TOUT le texte du site via JS — méthode : attributs data-i18n + objet JS de traductions, OU blocs .lang-xx affichés/masqués. Traduis l'intégralité du contenu (pas seulement le menu), langue par défaut = la première listée.
+• LANGUES : LANGUE demandée = « ${language || "en"} ». Si PLUSIEURS langues sont listées, ajoute un sélecteur de langue RÉELLEMENT FONCTIONNEL dans le header (boutons FR/EN/ES…) qui bascule TOUT le texte du site via JS — méthode : attributs data-i18n + objet JS de traductions, OU blocs .lang-xx affichés/masqués. Traduis l'intégralité du contenu (pas seulement le menu), langue par défaut = la première listée.
 • BOUTON WHATSAPP (s'il y en a un) : le lien DOIT être <a href="https://wa.me/NUMERO" target="_blank" rel="noopener"> où NUMERO = numéro au format international avec UNIQUEMENT des chiffres — SANS "+", SANS espaces, SANS points, SANS parenthèses, SANS tirets (ex : +33 6 12 34 56 78 → "33612345678"). JAMAIS href="#", JAMAIS tel:, JAMAIS de numéro fictif type 00 00 00 00. Message pré-rempli possible : https://wa.me/NUMERO?text=Bonjour... (texte URL-encodé). Si aucun numéro réel n'est fourni, NE mets PAS de faux numéro : laisse un commentaire <!-- WHATSAPP_NUMERO_A_RENSEIGNER --> et garde le bouton prêt.
 
 Retourne UNIQUEMENT le code HTML complet, sans explication, sans markdown, sans backticks.`;
@@ -1843,7 +1843,7 @@ Retourne UNIQUEMENT le code HTML, sans explication, sans markdown, sans backtick
         currentVersionId: versionId,
         siteType,
         style,
-        language: language || "fr",
+        language: language || "en",
         colorPalette,
         updatedAt: new Date(),
       }).where(eq(projects.id, projectId));

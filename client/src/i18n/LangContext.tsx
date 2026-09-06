@@ -8,7 +8,7 @@ interface LangContextType {
 }
 
 const LangContext = createContext<LangContextType>({
-  lang: "fr",
+  lang: "en",
   setLang: () => {},
   t: (key) => key,
 });
@@ -21,15 +21,14 @@ function detectLang(): Lang {
     if (saved && ["fr", "en", "es"].includes(saved)) return saved;
     const browser = navigator.language.slice(0, 2).toLowerCase();
     if (browser === "es") return "es";
-    if (browser === "fr") return "fr";
     return "en";
   } catch {
-    return "fr";
+    return "en";
   }
 }
 
 export function LangProvider({ children }: { children: ReactNode }) {
-  const [lang, setLangState] = useState<Lang>("fr");
+  const [lang, setLangState] = useState<Lang>("en");
 
   useEffect(() => {
     setLangState(detectLang());

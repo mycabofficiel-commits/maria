@@ -595,7 +595,7 @@ export default function ProjectEditor() {
   const [selectedVersionId, setSelectedVersionId] = useState<number | null>(null);
   const [siteType, setSiteType] = useState("Landing page");
   const [style, setStyle] = useState("Moderne");
-  const [language, setLanguage] = useState("fr");
+  const [language, setLanguage] = useState("en");
   const [colorPalette, setColorPalette] = useState("Bleu/Violet");
   const [restoreTarget, setRestoreTarget] = useState<{ versionId: number; label: string } | null>(null);
   const [codeTab, setCodeTab] = useState<CodeTab>("html");
@@ -1907,9 +1907,9 @@ export default function ProjectEditor() {
                   <Select value={language} onValueChange={setLanguage}>
                     <SelectTrigger className="h-9 text-xs bg-input border-border/60"><SelectValue /></SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="fr" className="text-xs">Français</SelectItem>
-                      <SelectItem value="en" className="text-xs">English</SelectItem>
-                      <SelectItem value="es" className="text-xs">Español</SelectItem>
+                      <SelectItem value="fr" className="text-xs">🇫🇷 Français</SelectItem>
+                      <SelectItem value="en" className="text-xs">🇬🇧 English</SelectItem>
+                      <SelectItem value="es" className="text-xs">🇪🇸 Español</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
