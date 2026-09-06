@@ -7,10 +7,11 @@ import LogoBrand from "@/components/LogoBrand";
 import { useState } from "react";
 import { useLang } from "@/i18n/LangContext";
 import type { Lang } from "@/i18n/translations";
+import FlagIcon from "@/components/FlagIcon";
 
 const LANGS: { code: Lang; flag: string; label: string }[] = [
-  { code: "fr", flag: "🇫🇷", label: "FR" },
   { code: "en", flag: "🇬🇧", label: "EN" },
+  { code: "fr", flag: "🇫🇷", label: "FR" },
   { code: "es", flag: "🇪🇸", label: "ES" },
 ];
 
@@ -58,6 +59,7 @@ export default function PublicNav() {
               className="flex items-center gap-1.5 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors px-2 py-1 rounded-md hover:bg-muted/50"
             >
               <Globe className="w-3.5 h-3.5" />
+              <FlagIcon code={lang} className="w-4 h-3" />
               {lang.toUpperCase()}
             </button>
             {langOpen && (
@@ -68,6 +70,7 @@ export default function PublicNav() {
                     onClick={() => { setLang(l.code); setLangOpen(false); }}
                     className={`w-full flex items-center gap-2 px-3 py-2 text-sm hover:bg-muted/50 transition-colors ${lang === l.code ? "text-primary font-medium" : "text-muted-foreground"}`}
                   >
+                    <FlagIcon code={l.code} className="w-4 h-3" />
                     {l.label}
                   </button>
                 ))}

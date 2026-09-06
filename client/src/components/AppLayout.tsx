@@ -31,9 +31,11 @@ const NAV_ITEMS_ADMIN: { href: string; labelKey: TranslationKey; icon: any }[] =
   { href: "/api-keys", labelKey: "app_nav_apikeys", icon: Key },
 ];
 
+import FlagIcon from "@/components/FlagIcon";
+
 const APP_LANGS: { code: Lang; flag: string; label: string }[] = [
-  { code: "fr", flag: "🇫🇷", label: "FR" },
   { code: "en", flag: "🇬🇧", label: "EN" },
+  { code: "fr", flag: "🇫🇷", label: "FR" },
   { code: "es", flag: "🇪🇸", label: "ES" },
 ];
 
@@ -239,6 +241,7 @@ export default function AppLayout({ children, title }: AppLayoutProps) {
                 className="flex items-center gap-1.5 px-2.5 h-8 rounded-lg text-sm text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
               >
                 <Globe className="w-4 h-4" />
+                <FlagIcon code={lang} className="w-4 h-3" />
                 <span className="font-medium">{APP_LANGS.find(l => l.code === lang)?.label ?? "FR"}</span>
               </button>
             </DropdownMenuTrigger>
@@ -249,7 +252,7 @@ export default function AppLayout({ children, title }: AppLayoutProps) {
                   onClick={() => setLang(l.code)}
                   className={`flex items-center gap-2 cursor-pointer ${lang === l.code ? "text-primary font-medium" : ""}`}
                 >
-                  <span>{l.flag}</span> {l.label}
+                  <FlagIcon code={l.code} /> {l.label}
                 </DropdownMenuItem>
               ))}
             </DropdownMenuContent>

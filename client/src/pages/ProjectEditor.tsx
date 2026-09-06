@@ -38,6 +38,7 @@ import { Streamdown } from "streamdown";
 import DeployPanel from "@/components/DeployPanel";
 import ImportProjectPanel from "@/components/ImportProjectPanel";
 import { useLang } from "@/i18n/LangContext";
+import FlagIcon from "@/components/FlagIcon";
 import { fr as dfFr, enUS as dfEnUS, es as dfEs } from "date-fns/locale";
 
 const PE_DF_LOCALE = { fr: dfFr, en: dfEnUS, es: dfEs } as const;
@@ -1907,9 +1908,9 @@ export default function ProjectEditor() {
                   <Select value={language} onValueChange={setLanguage}>
                     <SelectTrigger className="h-9 text-xs bg-input border-border/60"><SelectValue /></SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="fr" className="text-xs">🇫🇷 Français</SelectItem>
-                      <SelectItem value="en" className="text-xs">🇬🇧 English</SelectItem>
-                      <SelectItem value="es" className="text-xs">🇪🇸 Español</SelectItem>
+                      <SelectItem value="en" className="text-xs"><span className="inline-flex items-center gap-1.5"><FlagIcon code="en" /> English</span></SelectItem>
+                      <SelectItem value="fr" className="text-xs"><span className="inline-flex items-center gap-1.5"><FlagIcon code="fr" /> Français</span></SelectItem>
+                      <SelectItem value="es" className="text-xs"><span className="inline-flex items-center gap-1.5"><FlagIcon code="es" /> Español</span></SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
