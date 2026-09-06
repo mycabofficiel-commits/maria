@@ -944,6 +944,7 @@ async function generateExpoApp(
 • SEULS imports autorisés :
     - React Native built-ins : View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput, Image, SafeAreaView, StatusBar, FlatList, Modal, Alert, ActivityIndicator, Dimensions, Platform, Switch
     - Expo : import { LinearGradient } from 'expo-linear-gradient';
+    - Persistance : import AsyncStorage from '@react-native-async-storage/async-storage'; ← UNIQUEMENT si l'app a besoin de sauvegarder des données (session, préférences)
     - Carte/Map : const WebViewNative = Platform.OS !== 'web' ? require('react-native-webview').WebView : null;  ← chargement dynamique OBLIGATOIRE (pas d'import statique)
 • INTERDIT ABSOLUMENT : react-native-svg, react-navigation, @react-navigation, expo-router, @expo/vector-icons, react-native-vector-icons, react-native-maps, react-native-reanimated, toute lib non listée ci-dessus
 
@@ -974,7 +975,8 @@ Si l'app nécessite une carte (géolocalisation, VTC, livraison, trajets…) :
 • Icônes : UNIQUEMENT des emojis (✈️ 🏠 👤 ⚙️ ❤️ etc.) — jamais de composant Icon
 • Export default function App() { ... }
 • StyleSheet.create() pour TOUS les styles — 0 style inline sauf variables dynamiques
-• JAMAIS de DOM (document, window, innerHTML, querySelector)
+• JAMAIS de DOM ni d'APIs web (document, window, innerHTML, querySelector, localStorage, sessionStorage, alert(), fetch avec CORS navigateur) — elles n'existent PAS en React Native natif et font planter l'app sur Android/iOS (même si ça fonctionne dans la preview web Snack, qui tourne dans un navigateur)
+• Persistance de données (session, préférences, panier…) → UNIQUEMENT AsyncStorage : import AsyncStorage from '@react-native-async-storage/async-storage'; puis await AsyncStorage.setItem/getItem/removeItem (jamais localStorage.setItem/getItem)
 • Dimensions.get('window') pour les tailles adaptatives
 
 ══ ARCHITECTURE OBLIGATOIRE ══
@@ -1112,6 +1114,7 @@ Retourne UNIQUEMENT le code JavaScript complet, sans explication, sans markdown,
             "react-native": "0.76.7",
             "expo-linear-gradient": "~15.0.8",
             "react-native-webview": "13.10.5",
+            "@react-native-async-storage/async-storage": "1.23.1",
           },
         }),
         signal: AbortSignal.timeout(20000),
@@ -2474,7 +2477,8 @@ RÈGLE NAVIGATION : respecte le pattern du site. One-page → ancres href="#id" 
             ? `Tu es un développeur React Native expert. Génère les snippets précis à intégrer dans le code App.js existant.
 Pour chaque snippet : indique l'emplacement exact (dans quel composant, après quelle ligne).
 Réutilise les StyleSheet keys existants. N'utilise que des imports Expo SDK.
-Pas de bibliothèques tierces. Garde StyleSheet.create() pour tous les styles.`
+Pas de bibliothèques tierces. Garde StyleSheet.create() pour tous les styles.
+JAMAIS localStorage/window/document (n'existent pas en React Native) — utilise AsyncStorage pour toute persistance.`
             : `Tu es un développeur frontend expert. Génère les snippets précis à intégrer dans le code existant (pas le HTML complet).
 Pour chaque snippet : indique l'emplacement exact (après quelle balise / dans quelle classe CSS / dans quelle fonction JS).
 Réutilise les variables CSS et classes existantes. Respecte le style du code actuel.
@@ -2517,6 +2521,7 @@ N'ajoute rien de non demandé. N'efface rien qui fonctionne.
 ══ RÈGLE 3 — CODE EXPO VALIDE ══
 • N'utilise QUE des composants et APIs disponibles dans Expo SDK (react-native, expo, expo-status-bar, expo-linear-gradient, etc.)
 • PAS de bibliothèques tierces non disponibles dans Expo Snack (pas de react-navigation seul, pas de axios, etc.)
+• JAMAIS localStorage, sessionStorage, document, window, alert() natif du navigateur — ça n'existe pas en React Native et l'app crash sur Android/iOS (même si ça marche dans la preview web Snack). Pour toute persistance de données, utilise AsyncStorage : import AsyncStorage from '@react-native-async-storage/async-storage'; await AsyncStorage.setItem/getItem. Si tu vois du localStorage dans le code existant, remplace-le par AsyncStorage.
 • CARTE/MAP — chargement DYNAMIQUE OBLIGATOIRE (l'import statique crash la preview web Snack) :
   const WebViewNative = Platform.OS !== 'web' ? require('react-native-webview').WebView : null;
   Puis dans le composant : if (!WebViewNative) return <PlaceholderCarte/>; return <WebViewNative source={{html:mapHtml}} style={{flex:1}}/>;
@@ -3045,6 +3050,7 @@ RAPPEL ICÔNES : uniquement des emojis`;
                     "react-native": "0.76.7",
                     "expo-linear-gradient": "~15.0.8",
                     "react-native-webview": "13.10.5",
+                    "@react-native-async-storage/async-storage": "1.23.1",
                   },
                 }),
                 signal: AbortSignal.timeout(20000),
