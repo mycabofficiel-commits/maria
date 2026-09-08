@@ -2184,16 +2184,18 @@ Ces règles sont non-négociables — un écart = app qui crash dans Expo Snack 
 
 INTERDIT (crash Snack) → SOLUTION CORRECTE :
 • react-native-maps → ❌ CRASH → ✅ react-native-webview + Leaflet.js OSM (HTML inline)
+• import statique "import { WebView } from 'react-native-webview'" en haut du fichier → ❌ CRASH preview web Snack (ce module n'a pas d'implémentation web) → ✅ chargement DYNAMIQUE obligatoire : const WebViewNative = Platform.OS !== 'web' ? require('react-native-webview').WebView : null; puis if (!WebViewNative) return <Placeholder/>; return <WebViewNative .../>;
 • react-navigation / expo-router → ❌ CRASH → ✅ navigation via useState uniquement
 • @expo/vector-icons → ❌ CRASH → ✅ emojis uniquement comme icônes
 • axios / fetch vers API externe → ❌ CORS → ✅ fetch via proxy /api/proxy/call
 • TypeScript → ❌ INTERDIT → ✅ JavaScript pur uniquement
+• localStorage / window / document / sessionStorage → ❌ CRASH natif Android/iOS (n'existent pas en React Native, même si ça marche dans la preview web Snack) → ✅ AsyncStorage de @react-native-async-storage/async-storage
 
 PATTERNS CORRECTS à prescrire dans le plan :
-• Carte (OSM, Google Maps, géoloc) → WebView + Leaflet HTML inline + react-native-webview
+• Carte (OSM, Google Maps, géoloc) → WebView + Leaflet HTML inline + react-native-webview, TOUJOURS via le chargement dynamique Platform.OS ci-dessus — jamais d'import statique de react-native-webview en haut du fichier
 • Authentification → DEUX écrans : RegisterScreen (créer compte) + LoginScreen (se connecter) + navigation useState entre les deux
 • Notifications → Alert.alert() de React Native
-• Stockage local → AsyncStorage de @react-native-async-storage/async-storage (disponible Snack)
+• Stockage local → AsyncStorage de @react-native-async-storage/async-storage (disponible Snack), jamais localStorage
 • Animations → Animated de React Native, pas Reanimated
 
 ÉTAPE 1 — CLASSIFIE la demande :
@@ -2442,7 +2444,7 @@ SI UNE IMAGE EST JOINTE (priorité absolue) :
 ÉTAPE 3 — LISTE DE PRÉSERVATION :
 Ce qui ne doit PAS être touché : [liste les composants et styles existants à conserver]
 
-RÈGLES : N'utilise que les imports Expo SDK. Garde StyleSheet.create(). Pas de bibliothèques tierces.`
+RÈGLES : N'utilise que les imports Expo SDK. Garde StyleSheet.create(). Pas de bibliothèques tierces. Carte/WebView → chargement dynamique via Platform.OS obligatoire (jamais d'import statique de react-native-webview). Persistance → AsyncStorage, jamais localStorage.`
             : `Tu es un architecte web expert. Analyse le code et produis un plan d'intervention précis (200 mots max).
 
 ÉTAPE 1 — INVENTAIRE (lis le code et liste) :
