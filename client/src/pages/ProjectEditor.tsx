@@ -3316,13 +3316,17 @@ ${jsCode}`;
                       <button
                         onClick={async () => {
                           const code = htmlCode;
+                          const deps: Record<string, string> = { expo: "~54.0.0", react: "18.3.1", "react-native": "0.76.7" };
+                          if (code.includes("expo-linear-gradient")) deps["expo-linear-gradient"] = "~14.0.1";
+                          if (code.includes("react-native-webview")) deps["react-native-webview"] = "13.10.5";
+                          if (code.includes("@react-native-async-storage/async-storage")) deps["@react-native-async-storage/async-storage"] = "1.23.1";
                           const pkgJson = JSON.stringify({
                             name: "maria-app", version: "1.0.0", main: "App.js",
                             scripts: { start: "expo start", android: "expo run:android", ios: "expo run:ios" },
-                            dependencies: { expo: "~54.0.0", react: "18.3.1", "react-native": "0.76.7", "expo-linear-gradient": "~14.0.1" },
+                            dependencies: deps,
                             devDependencies: { "@babel/core": "^7.20.0" }
                           }, null, 2);
-                          const appConfig = `import { ExpoConfig } from 'expo/config';\nexport default ({ config }: { config: ExpoConfig }): ExpoConfig => ({\n  ...config,\n  name: '${project?.name || "App"}',\n  slug: '${(project?.name || "app").toLowerCase().replace(/\s+/g, "-")}',\n  version: '1.0.0',\n  orientation: 'portrait',\n  platforms: ['android', 'ios'],\n});\n`;
+                          const appConfig = `export default ({ config }) => ({\n  ...config,\n  name: '${project?.name || "App"}',\n  slug: '${(project?.name || "app").toLowerCase().replace(/\s+/g, "-")}',\n  version: '1.0.0',\n  orientation: 'portrait',\n  platforms: ['android', 'ios'],\n});\n`;
                           const zip = [`package.json\n${pkgJson}`, `App.js\n${code}`, `app.config.js\n${appConfig}`].join("\n---FILE---\n");
                           const blob = new Blob([zip], { type: "text/plain" });
                           const url = URL.createObjectURL(blob);
