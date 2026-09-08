@@ -3163,7 +3163,7 @@ ${jsCode}`;
                       >
                         <iframe
                           key="expo-snack-native-preview"
-                          src={`https://snack.expo.dev/embedded/${activeSnackUrl.replace("https://snack.expo.dev/", "").replace(/[?#].*/, "")}?platform=ios&preview=true&theme=dark`}
+                          src={`https://snack.expo.dev/embedded/${activeSnackUrl.replace("https://snack.expo.dev/", "").replace(/[?#].*/, "")}?platform=web&preview=true&theme=dark`}
                           className="w-full h-full border-0"
                           title="App Preview (Expo Snack natif)"
                           allow="geolocation; camera; microphone"
