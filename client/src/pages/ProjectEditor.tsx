@@ -623,7 +623,7 @@ export default function ProjectEditor() {
   const [showQrModal, setShowQrModal] = useState(false);
   const [expoHtmlPreview, setExpoHtmlPreview] = useState("");
   const [expoHtmlLoading, setExpoHtmlLoading] = useState(false);
-  const [expoZoom, setExpoZoom] = useState(0.9); // zoom de l'aperçu natif Expo recadré
+  const [expoZoom, setExpoZoom] = useState(0.66); // zoom de l'aperçu natif Expo recadré (défaut = app entière visible)
 
   const saveToExpoSnack = async (code: string, name: string) => {
     setExpoSnackLoading(true);
@@ -3162,8 +3162,8 @@ ${jsCode}`;
                          panneau aperçu — le téléphone, mesuré à x=535,y=48,285×676 pour une
                          largeur d'embed fixée à 820px. Fidèle au vrai rendu et tient dans le cadre. */
                       <div
-                        className="h-full overflow-hidden flex-shrink-0 relative"
-                        style={{ width: "285px", maxWidth: "100%", maxHeight: "676px", borderRadius: "1.8rem", background: "#000", boxShadow: "0 0 0 2px #1c1c2e, 0 18px 40px rgba(0,0,0,.45)", transform: `scale(${expoZoom})`, transformOrigin: "top center", transition: "transform .15s ease" }}
+                        className="overflow-hidden flex-shrink-0 relative"
+                        style={{ width: "285px", height: "676px", borderRadius: "1.8rem", background: "#000", boxShadow: "0 0 0 2px #1c1c2e, 0 18px 40px rgba(0,0,0,.45)", transform: `scale(${expoZoom})`, transformOrigin: "top center", transition: "transform .15s ease" }}
                       >
                         <iframe
                           key="expo-snack-clip"
@@ -3218,17 +3218,17 @@ ${jsCode}`;
                     {activeSnackUrl && (
                       <div className="absolute bottom-3 right-3 z-10 flex items-center gap-0.5 rounded-full bg-black/70 backdrop-blur border border-white/10 px-1 py-0.5">
                         <button
-                          onClick={() => setExpoZoom(z => Math.max(0.5, +(z - 0.1).toFixed(2)))}
+                          onClick={() => setExpoZoom(z => Math.max(0.35, +(z - 0.08).toFixed(2)))}
                           className="w-6 h-6 rounded-full flex items-center justify-center text-white/80 hover:bg-white/10 text-base leading-none"
                           title="Dézoomer"
                         >−</button>
                         <button
-                          onClick={() => setExpoZoom(0.9)}
+                          onClick={() => setExpoZoom(0.66)}
                           className="px-1.5 text-[10px] text-white/70 tabular-nums hover:text-white min-w-[34px] text-center"
                           title="Réinitialiser le zoom"
                         >{Math.round(expoZoom * 100)}%</button>
                         <button
-                          onClick={() => setExpoZoom(z => Math.min(1.5, +(z + 0.1).toFixed(2)))}
+                          onClick={() => setExpoZoom(z => Math.min(1.5, +(z + 0.08).toFixed(2)))}
                           className="w-6 h-6 rounded-full flex items-center justify-center text-white/80 hover:bg-white/10 text-base leading-none"
                           title="Zoomer"
                         >+</button>
