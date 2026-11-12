@@ -37,3 +37,4 @@
 | 2026-09-04 08:10 | v1.2.28 | 7b66c45 | i18n Phase 2d: Admin + UltraDashboard (FR/EN/ES) - fin de la traduction du SaaS |
 | 2026-11-12 22:41 | v1.2.29 | 398d0f1 | fix: complétion auto du code Expo tronqué (App.js) — génération + édition chat ; expo-linear-gradient 15.0.8 |
 | 2026-11-12 23:26 | v1.2.30 | 2e9e6f3 | fix: apercu Expo in-editeur = rendu HTML (tient dans le cadre) au lieu de l'embed Snack qui n'affiche que le code en petit; Snack gardé pour QR/plein écran |
+| 2026-11-12 23:38 | v1.2.31 | 245352a | fix: apercu Expo in-editeur = web-player Snack reel recadre sur le telephone (masque le code) au lieu de l'approximation HTML |

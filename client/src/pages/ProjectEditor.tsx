@@ -3155,11 +3155,24 @@ ${jsCode}`;
 
                   {/* Zone preview : même pattern que le preview web — items-start, h-full sur l'enfant */}
                   <div className="flex-1 flex items-start justify-center p-3 bg-[#0c0c14] overflow-hidden">
-                    {/* Aperçu in-éditeur = rendu HTML de l'app : il tient dans le cadre
-                        téléphone étroit (portrait ~172px), contrairement à l'embed Snack
-                        qui n'affiche que le code sous ~480px de large. Le vrai web-player
-                        Snack reste accessible en grand via « Expo Snack » + QR ci-dessous. */}
-                    {(
+                    {activeSnackUrl ? (
+                      /* Rendu NATIF réel via le web-player Snack. L'embed affiche code+aperçu
+                         côte à côte ; on recadre l'iframe (décalée) pour ne garder QUE le
+                         panneau aperçu — le téléphone, mesuré à x=535,y=48,285×676 pour une
+                         largeur d'embed fixée à 820px. Fidèle au vrai rendu et tient dans le cadre. */
+                      <div
+                        className="h-full overflow-hidden flex-shrink-0 relative"
+                        style={{ width: "285px", maxWidth: "100%", maxHeight: "676px", borderRadius: "1.8rem", background: "#000", boxShadow: "0 0 0 2px #1c1c2e, 0 18px 40px rgba(0,0,0,.45)" }}
+                      >
+                        <iframe
+                          key="expo-snack-clip"
+                          src={`https://snack.expo.dev/embedded/${activeSnackUrl.replace("https://snack.expo.dev/", "").replace(/[?#].*/, "")}?platform=web&preview=true&theme=dark`}
+                          title="App Preview"
+                          allow="geolocation; camera; microphone"
+                          style={{ position: "absolute", left: "-535px", top: "-48px", width: "820px", height: "760px", border: 0 }}
+                        />
+                      </div>
+                    ) : (
                       <>
                         {expoHtmlLoading && !expoHtmlPreview && (
                           <div className="flex flex-col items-center gap-3 text-muted-foreground mt-16">
