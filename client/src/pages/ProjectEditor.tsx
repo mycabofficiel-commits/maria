@@ -633,7 +633,7 @@ export default function ProjectEditor() {
         body: JSON.stringify({
           manifest: { name, description: `App générée par Mar-ia`, sdkVersion: "54.0.0" },
           code: { "App.js": { type: "CODE", contents: code } },
-          dependencies: { "expo": "~54.0.0", "react": "18.3.1", "react-native": "0.76.7", "expo-linear-gradient": "~14.0.1" },
+          dependencies: { "expo": "~54.0.0", "react": "18.3.1", "react-native": "0.76.7", "expo-linear-gradient": "~15.0.8" },
         }),
       });
       if (res.ok) {
@@ -3317,7 +3317,7 @@ ${jsCode}`;
                         onClick={async () => {
                           const code = htmlCode;
                           const deps: Record<string, string> = { expo: "~54.0.0", react: "18.3.1", "react-native": "0.76.7" };
-                          if (code.includes("expo-linear-gradient")) deps["expo-linear-gradient"] = "~14.0.1";
+                          if (code.includes("expo-linear-gradient")) deps["expo-linear-gradient"] = "~15.0.8";
                           if (code.includes("react-native-webview")) deps["react-native-webview"] = "13.10.5";
                           if (code.includes("@react-native-async-storage/async-storage")) deps["@react-native-async-storage/async-storage"] = "1.23.1";
                           const pkgJson = JSON.stringify({
