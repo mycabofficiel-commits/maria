@@ -632,7 +632,7 @@ export default function ProjectEditor() {
         body: JSON.stringify({
           manifest: { name, description: `App générée par Mar-ia`, sdkVersion: "54.0.0" },
           code: { "App.js": { type: "CODE", contents: code } },
-          dependencies: { "expo": "~54.0.0", "react": "18.3.1", "react-native": "0.76.7", "expo-linear-gradient": "~14.0.1" },
+          dependencies: { "expo": "~54.0.0", "react": "18.3.1", "react-native": "0.76.7", "expo-linear-gradient": "~15.0.8" },
         }),
       });
       if (res.ok) {
@@ -3318,7 +3318,7 @@ ${jsCode}`;
                           const pkgJson = JSON.stringify({
                             name: "maria-app", version: "1.0.0", main: "App.js",
                             scripts: { start: "expo start", android: "expo run:android", ios: "expo run:ios" },
-                            dependencies: { expo: "~54.0.0", react: "18.3.1", "react-native": "0.76.7", "expo-linear-gradient": "~14.0.1" },
+                            dependencies: { expo: "~54.0.0", react: "18.3.1", "react-native": "0.76.7", "expo-linear-gradient": "~15.0.8" },
                             devDependencies: { "@babel/core": "^7.20.0" }
                           }, null, 2);
                           const appConfig = `import { ExpoConfig } from 'expo/config';\nexport default ({ config }: { config: ExpoConfig }): ExpoConfig => ({\n  ...config,\n  name: '${project?.name || "App"}',\n  slug: '${(project?.name || "app").toLowerCase().replace(/\s+/g, "-")}',\n  version: '1.0.0',\n  orientation: 'portrait',\n  platforms: ['android', 'ios'],\n});\n`;

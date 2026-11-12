@@ -35,3 +35,4 @@
 | 2026-09-04 07:38 | v1.2.26 | 9492b24 | i18n Phase 2b: Templates + ShareProject (FR/EN/ES) |
 | 2026-09-04 08:01 | v1.2.27 | 449711f | i18n Phase 2c: ProjectEditor complet (editeur, chat, panneaux, VE, Expo, SEO, Storage) FR/EN/ES |
 | 2026-09-04 08:10 | v1.2.28 | 7b66c45 | i18n Phase 2d: Admin + UltraDashboard (FR/EN/ES) - fin de la traduction du SaaS |
+| 2026-11-12 22:41 | v1.2.29 | 398d0f1 | fix: complétion auto du code Expo tronqué (App.js) — génération + édition chat ; expo-linear-gradient 15.0.8 |

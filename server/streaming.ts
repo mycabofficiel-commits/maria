@@ -321,6 +321,93 @@ RÈGLES STRICTES :
   return isHtmlTruncated(full) ? ensureHtmlClosed(full) : full;
 }
 
+/** Heuristic: is this JS/JSX file (e.g. an Expo App.js) cut off mid-generation? */
+function isJsTruncated(code: string): boolean {
+  if (!code || code.length < 200) return false;
+  const t = code.trimEnd();
+  const last = t[t.length - 1];
+  if (!")}];".includes(last)) return true; // a complete file ends on a closer/terminator
+  let depth = 0, inStr = false, q = "", inLine = false, inBlock = false, esc = false;
+  for (let i = 0; i < t.length; i++) {
+    const c = t[i], n = t[i + 1];
+    if (inLine) { if (c === "\n") inLine = false; continue; }
+    if (inBlock) { if (c === "*" && n === "/") { inBlock = false; i++; } continue; }
+    if (inStr) {
+      if (esc) { esc = false; continue; }
+      if (c === "\\") { esc = true; continue; }
+      if (c === q) inStr = false;
+      continue;
+    }
+    if (c === "/" && n === "/") { inLine = true; i++; continue; }
+    if (c === "/" && n === "*") { inBlock = true; i++; continue; }
+    if (c === '"' || c === "'" || c === "`") { inStr = true; q = c; continue; }
+    if (c === "{" || c === "(" || c === "[") depth++;
+    else if (c === "}" || c === ")" || c === "]") depth--;
+  }
+  return inStr || depth > 0;
+}
+
+/** Last-resort: append the closers for any still-open brackets so the file parses. */
+function ensureJsClosed(code: string): string {
+  const stack: string[] = [];
+  let inStr = false, q = "", inLine = false, inBlock = false, esc = false;
+  for (let i = 0; i < code.length; i++) {
+    const c = code[i], n = code[i + 1];
+    if (inLine) { if (c === "\n") inLine = false; continue; }
+    if (inBlock) { if (c === "*" && n === "/") { inBlock = false; i++; } continue; }
+    if (inStr) {
+      if (esc) { esc = false; continue; }
+      if (c === "\\") { esc = true; continue; }
+      if (c === q) inStr = false;
+      continue;
+    }
+    if (c === "/" && n === "/") { inLine = true; i++; continue; }
+    if (c === "/" && n === "*") { inBlock = true; i++; continue; }
+    if (c === '"' || c === "'" || c === "`") { inStr = true; q = c; continue; }
+    if (c === "{" || c === "(" || c === "[") stack.push(c);
+    else if (c === "}" || c === ")" || c === "]") stack.pop();
+  }
+  let tail = "";
+  for (let i = stack.length - 1; i >= 0; i--) tail += stack[i] === "{" ? "}" : stack[i] === "(" ? ")" : "]";
+  return code + tail + "\n";
+}
+
+/**
+ * Repairs a TRUNCATED Expo/React-Native App.js by asking the LLM to CONTINUE
+ * from where it stopped. Regenerating the whole file re-hits the output ceiling
+ * and truncates again; continuation only emits the missing tail, so it finishes.
+ * Falls back to appending the missing brackets.
+ */
+async function completeTruncatedJs(
+  code: string,
+  allKeys: Partial<Record<Provider, string | null>>,
+  startFrom: Provider,
+  res: Response,
+  maxAttempts = 3,
+): Promise<string> {
+  let full = code;
+  for (let i = 0; i < maxAttempts && isJsTruncated(full); i++) {
+    const tail = full.slice(-1800);
+    const sys = `Tu COMPLÈTES un fichier App.js React Native (Expo) coupé en pleine génération (limite de tokens atteinte).
+RÈGLES STRICTES :
+• Reprends EXACTEMENT après le dernier caractère fourni — ne répète RIEN de ce qui précède.
+• Aucune explication, aucun markdown, aucun backtick.
+• Produis uniquement la SUITE du code jusqu'à fermer proprement le fichier : termine la propriété/objet en cours, puis ferme StyleSheet.create({ ... }) et TOUTES les accolades/parenthèses encore ouvertes.
+• Garde le même style et les mêmes noms (COLORS, styles, composants) que l'extrait.`;
+    const userMsg = `FIN DU CODE DÉJÀ GÉNÉRÉ (continue juste après, sans la répéter) :\n\n${tail}`;
+    const cont = await tryCallWithFallback(
+      allKeys, sys, userMsg, 8000, res, "Complétion du code tronqué…", "🧩", startFrom,
+    );
+    let piece = (cont?.text || "").trim();
+    if (!piece) break;
+    piece = piece.replace(/^```[a-z]*\n?/i, "").replace(/```\s*$/i, "").trim();
+    const before = full.length;
+    full = stitchHtml(full, piece); // generic overlap-aware concatenation
+    if (full.length - before < 10) break; // no real progress → stop
+  }
+  return isJsTruncated(full) ? ensureJsClosed(full) : full;
+}
+
 /**
  * Extracts the first well-balanced JSON object from a string.
  * Handles cases where the LLM wraps the JSON in markdown or adds trailing text.
@@ -1084,6 +1171,17 @@ Retourne UNIQUEMENT le code JavaScript complet, sans explication, sans markdown,
     const jsStart = fullCode.indexOf("import React");
     if (jsStart > 0) fullCode = fullCode.slice(jsStart);
     if (fullCode.endsWith("```")) fullCode = fullCode.slice(0, -3).trim();
+
+    // ── COMPLÉTION D'UN CODE JS TRONQUÉ (continuation, pas regénération) ─────
+    // DeepSeek plafonne sa sortie (~8K tokens) : une app longue est coupée en
+    // plein StyleSheet → App.js invalide → l'aperçu Snack affiche le code/erreur.
+    // On complète la fin manquante au lieu de livrer un fichier cassé.
+    if (isJsTruncated(fullCode)) {
+      const before = fullCode.length;
+      pipelineLog("expo:generate:truncated:detected", { len: before });
+      fullCode = await completeTruncatedJs(fullCode, { deepseek: deepseekKey }, "deepseek", res);
+      pipelineLog("expo:generate:truncated:completed", { before, after: fullCode.length, stillTruncated: isJsTruncated(fullCode) });
+    }
 
     const tokensUsed = inputTokens + outputTokens;
     const durationMs = Date.now() - startTime;
@@ -2809,6 +2907,13 @@ ${agentPlan ? `\n══ PLAN D'ACTION ══\n${agentPlan}` : ""}${qwenDraft ? `
           pipelineLog('execute:truncated:detected', { len: beforeLen });
           agentResponse.code = await completeTruncatedHtml(agentResponse.code!, allKeys, execLlm!.provider, res);
           pipelineLog('execute:truncated:completed', { before: beforeLen, after: agentResponse.code.length, closed: /<\/html>/i.test(agentResponse.code) });
+        }
+        // Expo/React Native : même complétion mais pour du JS (App.js n'a pas de </html>).
+        if (isExpo && agentResponse.action === "modify" && isJsTruncated(agentResponse.code || "")) {
+          const beforeLen = agentResponse.code!.length;
+          pipelineLog('execute:expo:truncated:detected', { len: beforeLen });
+          agentResponse.code = await completeTruncatedJs(agentResponse.code!, allKeys, execLlm!.provider, res);
+          pipelineLog('execute:expo:truncated:completed', { before: beforeLen, after: agentResponse.code.length, stillTruncated: isJsTruncated(agentResponse.code) });
         }
 
         // ── D : Validation + boucle auto-correction (max 2 passes) ────
