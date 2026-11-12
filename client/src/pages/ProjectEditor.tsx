@@ -3155,21 +3155,11 @@ ${jsCode}`;
 
                   {/* Zone preview : même pattern que le preview web — items-start, h-full sur l'enfant */}
                   <div className="flex-1 flex items-start justify-center p-3 bg-[#0c0c14] overflow-hidden">
-                    {activeSnackUrl ? (
-                      /* ── APERÇU NATIF RÉEL via Snack embed — priorité absolue sur le HTML traduit ── */
-                      <div
-                        className="h-full overflow-hidden shadow-2xl flex-shrink-0"
-                        style={{ aspectRatio: "390/844", maxWidth: "390px", borderRadius: "2.5rem", border: "8px solid #1c1c2e", background: "#000" }}
-                      >
-                        <iframe
-                          key="expo-snack-native-preview"
-                          src={`https://snack.expo.dev/embedded/${activeSnackUrl.replace("https://snack.expo.dev/", "").replace(/[?#].*/, "")}?platform=web&preview=true&theme=dark`}
-                          className="w-full h-full border-0"
-                          title="App Preview (Expo Snack natif)"
-                          allow="geolocation; camera; microphone"
-                        />
-                      </div>
-                    ) : (
+                    {/* Aperçu in-éditeur = rendu HTML de l'app : il tient dans le cadre
+                        téléphone étroit (portrait ~172px), contrairement à l'embed Snack
+                        qui n'affiche que le code sous ~480px de large. Le vrai web-player
+                        Snack reste accessible en grand via « Expo Snack » + QR ci-dessous. */}
+                    {(
                       <>
                         {expoHtmlLoading && !expoHtmlPreview && (
                           <div className="flex flex-col items-center gap-3 text-muted-foreground mt-16">
