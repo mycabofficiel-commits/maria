@@ -1803,7 +1803,7 @@ export default function ProjectEditor() {
             </div>
           </div>
           <div className="flex items-center gap-1.5 flex-shrink-0">
-            {hasCode && (
+            {hasCode && !isExpoProject && (
               <Button size="sm" variant={visualEditMode ? "default" : "outline"}
                 className={`text-xs h-8 px-2 sm:px-3 ${visualEditMode ? "bg-violet-600 hover:bg-violet-700 text-white border-0" : "border-border/60"}`}
                 onClick={() => {

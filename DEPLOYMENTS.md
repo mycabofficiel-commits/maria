@@ -40,3 +40,4 @@
 | 2026-11-12 23:38 | v1.2.31 | 245352a | fix: apercu Expo in-editeur = web-player Snack reel recadre sur le telephone (masque le code) au lieu de l'approximation HTML |
 | 2026-11-12 23:46 | v1.2.32 | c22635b | feat: zoom +/- sur l'apercu natif Expo recadre (voir toute l'app) |
 | 2026-11-12 23:52 | v1.2.33 | 706eb74 | fix: apercu Expo a hauteur fixe (telephone entier) + zoom defaut 66% pour voir toute l'app |
+| 2026-11-13 00:02 | v1.2.34 | 117235d | fix: masque l'Editeur Visuel pour les projets Expo (RN != DOM HTML, non editable visuellement; edition via chat) |
